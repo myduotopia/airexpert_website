@@ -1,0 +1,16 @@
+# 本地保留、不上 git 的大型原始資料與工具
+_mirror/
+old_website_data/
+網站存檔/
+organize.py
+
+# 系統 / 編輯器
+.DS_Store
+*.log
+node_modules/
+.env
+.env.*
+__pycache__/
+*.pyc
+.venv/
+venv/
