@@ -2,26 +2,56 @@
 
 超勁賀空壓科技官方網站（airexpert.com.tw）改版重建專案。
 
-## 專案現況
+## 技術架構
 
-- 舊站為靜態 PHP/HTML 網站，內容已完整存檔於本地（未納入 git）。
-- 新站規劃技術棧（討論中，暫定）：
-  - 前端：React.js
-  - 後端：Python
-  - 資料庫：Supabase
-  - 部署：Vercel / GCP（評估中，因後台將導入 AI 應用，可能採 GCP + Vertex AI）
+| 層 | 技術 | 部署 |
+|----|------|------|
+| 前端公開官網 | Next.js (App Router, TypeScript, Tailwind) | Vercel |
+| 後端 + AI 服務 | Python FastAPI | GCP Cloud Run + Vertex AI |
+| 資料 / Auth / 儲存 | Supabase | Tokyo (ap-northeast) |
 
-## 本地資料（不納入 git，見 `.gitignore`）
+混合雲：前端 Vercel（SEO/CDN/preview 最強），後端 AI 走 GCP（Vertex 同雲、低延遲）。
 
-下列為大型原始素材與工具，僅保留於本地端：
+## 專案結構（monorepo）
 
-| 路徑 | 說明 |
-|------|------|
-| `old_website_data/` | 廠商提供的舊站原始檔（HTML/CSS/JS/圖片） |
-| `_mirror/` | 以 wget 完整鏡像的舊站（可離線瀏覽原樣式） |
-| `網站存檔/` | 依舊站選單(sitemap)分類整理的文章與圖片 |
-| `organize.py` | 將鏡像重整成分類資料夾的腳本 |
+```
+frontend/   Next.js 前端（npm；ESLint + Prettier + tsc）
+backend/    FastAPI 後端（Black + Flake8 + pytest）
+.github/workflows/   CI（ci-backend / ci-frontend / claude-review）
+.claude/skills/      開發用 skills（worktree / fix-workflow / fix-review + vercel 前端 skills）
+```
 
 ## 開發
 
-待技術架構定案後補上安裝、開發、部署說明。
+**前端**
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:3000
+npm run lint && npm run typecheck && npm run format:check
+```
+
+**後端**
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env
+uvicorn app.main:app --reload   # http://localhost:8000
+black --check . && flake8 . && pytest -q
+```
+
+## CI / 自動化
+
+- PR 觸發 `CI Backend`（Test Backend）與 `CI Frontend`（Test Frontend）。
+- `Claude Code Review` 預設關閉：在 repo 加 `ANTHROPIC_API_KEY` secret 與 `ENABLE_CLAUDE_REVIEW=true` variable 後啟用。
+- skills：`fix-workflow`（自動修 CI）、`fix-review`（自動處理 review）、`worktree`（隔離開發）。
+
+## 舊站資料（不納入 git，見 `.gitignore`）
+
+| 路徑 | 說明 |
+|------|------|
+| `old_website_data/` | 廠商提供的舊站原始檔 |
+| `_mirror/` | wget 完整鏡像（離線可瀏覽原樣式） |
+| `網站存檔/` | 依舊站 sitemap 分類整理的文章與圖片 |
+| `organize.py` | 重整鏡像的腳本 |

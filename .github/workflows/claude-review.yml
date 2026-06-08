@@ -1,0 +1,32 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  claude-review:
+    name: claude-review
+    # 預設關閉。啟用方式：
+    #   1) repo Settings → Secrets and variables → Actions → New secret: ANTHROPIC_API_KEY
+    #   2) 同頁 Variables 分頁 → New variable: ENABLE_CLAUDE_REVIEW = true
+    # （也可改用 Vertex AI 作為 provider，見 anthropics/claude-code-action docs/cloud-providers.md）
+    if: ${{ vars.ENABLE_CLAUDE_REVIEW == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          prompt: |
+            Review this pull request for correctness, security, and best practices.
+            The repo is a monorepo: `frontend/` (Next.js + TypeScript) and
+            `backend/` (FastAPI + Python). Post concise, actionable inline comments.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
