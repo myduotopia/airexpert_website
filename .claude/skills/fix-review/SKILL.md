@@ -1,95 +1,125 @@
 ---
 name: fix-review
 description: |
-  Use when a pull request on airexpert_website has Claude Code Review feedback
-  (CI review comments) that you want triaged and resolved automatically, iterating
-  until the PR is merge-ready. Only asks the user when human judgment is needed.
-argument-hint: "<PR-number>"
+  Use when you want a pull request (or the current branch diff) on airexpert_website
+  code-reviewed and the findings fixed — using a LOCAL Claude code-review subagent,
+  not a GitHub-hosted action. No ANTHROPIC_API_KEY secret or CI variable required.
+  Reviews the diff, triages findings, applies fixes, and re-reviews until clean.
+argument-hint: "<PR-number> (optional; defaults to the current branch's PR)"
 disable-model-invocation: false
-allowed-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, TodoWrite, AskUserQuestion
+allowed-tools: Bash, Read, Write, Edit, Grep, Glob, TodoWrite, AskUserQuestion, Task, Agent, Skill
 ---
 
-# Fix Review Skill (airexpert_website)
+# Fix Review Skill (airexpert_website) — local subagent
 
-Automatically analyze and fix Claude Code Review feedback on a PR, iterating until
-no actionable comments remain.
+Run code review on a PR **locally** with a Claude subagent (the running Claude Code
+session), triage the findings, fix them, and iterate until clean. There is **no**
+GitHub Actions review step and **no** API-key secret — the review runs on your machine.
 
-**Announce at start:** "I'm using the fix-review skill to automatically resolve PR review feedback."
-
-> **Prerequisite:** Requires the Claude Code Review GitHub Action enabled on the repo
-> (posts review comments as `github-actions[bot]` / `claude[bot]`). Until it is set up,
-> this skill has nothing to act on — scaffold the review workflow first.
+**Announce at start:** "I'm using the fix-review skill to run a local code review and resolve findings."
 
 ## Project facts (airexpert)
 
 - **Repo**: `myduotopia/airexpert_website`, base branch `main`
-- Review bot logins: `github-actions[bot]`, `claude[bot]`
+- Monorepo: `frontend/` (Next.js + TS), `backend/` (FastAPI + Python)
+- Review is performed by a **local subagent**, results posted to the PR via `gh` (no API key).
 
 ## Arguments
 
-- `$ARGUMENTS` — PR number (e.g. `42`, `#42`)
+- `$ARGUMENTS` — PR number (e.g. `42`). Optional; if omitted, resolve the PR for the
+  current branch (`gh pr view --json number`), or review the uncommitted/branch diff directly.
 
 ---
 
-# Phase 1: Initialize
+# Phase 1: Initialize & collect the diff
 
 ```bash
+# Resolve PR + branch (PR optional)
 PR_NUM="${ARGUMENTS#\#}"
-[[ "$PR_NUM" =~ ^[0-9]+$ ]] || { echo "PR number must be numeric: $PR_NUM"; exit 1; }
-PR_BRANCH=$(gh pr view "$PR_NUM" --json headRefName -q '.headRefName')
+[ -z "$PR_NUM" ] && PR_NUM=$(gh pr view --json number -q '.number' 2>/dev/null || echo "")
+PR_BRANCH=$(git branch --show-current)
+
+# Make sure we're current
+git fetch origin main
+# The diff to review = branch vs base
+git diff origin/main...HEAD --stat
 ```
 
-Ensure you are on `$PR_BRANCH` (or its worktree), then `git pull --rebase origin "$PR_BRANCH"`.
-
----
-
-# Phase 2: Check Review Status
+Save the full diff for the reviewer:
 
 ```bash
-gh pr checks "$PR_NUM" --json name,conclusion,status
+git diff origin/main...HEAD > /tmp/airexpert-review-${PR_BRANCH//\//-}.diff
 ```
-
-| Review CI | Comments | Action |
-|---|---|---|
-| queued / in_progress | — | poll every 30s until complete |
-| failure | has comments | analyze + fix |
-| failure | none | infra error — show log, ask user |
-| success | has comments | ask user whether to address suggestions |
-| success | none | CLEAN — merge-ready |
 
 ---
 
-# Phase 3: Fetch & Triage Comments
+# Phase 2: Run the LOCAL code-review subagent
 
-```bash
-OWNER_REPO="myduotopia/airexpert_website"
-# Issue-level (summary) comments
-gh api "repos/$OWNER_REPO/issues/$PR_NUM/comments" \
-  --jq '.[] | select(.user.login=="github-actions[bot]" or .user.login=="claude[bot]") | {id,body,created_at}'
-# Inline review comments
-gh api "repos/$OWNER_REPO/pulls/$PR_NUM/comments" \
-  --jq '.[] | select(.user.login=="github-actions[bot]" or .user.login=="claude[bot]") | {id,path,line,body}'
+Dispatch a subagent to review the diff. **Prefer the built-in `/code-review` skill**
+if available (it reviews the current diff and can apply fixes); otherwise spawn a
+review subagent with the `Task`/`Agent` tool.
+
+**Option A — built-in skill (preferred):**
+Invoke the `code-review` skill via the `Skill` tool (e.g. `/code-review high`).
+Use `--comment` to post inline PR comments, `--fix` to apply fixes to the working tree.
+
+**Option B — dedicated subagent:**
+Spawn one subagent (agentType `code-reviewer` if registered, else general-purpose)
+with this brief:
+
+```
+Review this diff for the airexpert_website monorepo (Next.js frontend + FastAPI backend).
+Diff file: /tmp/airexpert-review-<branch>.diff  (read it; open referenced files for context)
+Report findings as JSON: a list of { severity: blocker|high|medium|low,
+category: correctness|security|performance|maintainability,
+file, line, title, detail, suggested_fix, confidence: 0..1 }.
+Be specific and actionable. Do NOT fix anything — only report.
+Focus on: correctness bugs, security (authz, injection, secret handling),
+Next.js/React best practices, FastAPI/pydantic correctness, and obvious perf issues.
 ```
 
-Classify each item with TodoWrite:
-
-- **AUTO_FIX** — clear, specific change (rename, add null check, fix typo)
-- **NEEDS_CONTEXT** — read more code to find the fix; if it becomes clear, treat as AUTO_FIX
-- **NEEDS_HUMAN** — architecture / design / scaling judgment
-- **INFORMATIONAL** — praise / FYI, no action
+For thoroughness on large diffs, spawn **multiple subagents by dimension**
+(correctness / security / frontend / backend) and merge their findings.
 
 ---
 
-# Phase 4: Apply Fixes
+# Phase 3: Triage findings
+
+Use TodoWrite. Classify each finding:
+
+- **AUTO_FIX** — clear, specific, high-confidence change
+- **NEEDS_CONTEXT** — read more code first; if it resolves, treat as AUTO_FIX
+- **NEEDS_HUMAN** — architecture / design / scaling judgment, or security with trade-offs
+- **INFORMATIONAL** — no action
+
+Drop low-confidence / out-of-scope findings (files not in the diff) with a note.
+
+---
+
+# Phase 4: Apply fixes
 
 - **AUTO_FIX / resolved NEEDS_CONTEXT**: read file → understand context → Edit → mark done.
-- **NEEDS_HUMAN**: batch all and present with analysis + options via `AskUserQuestion`.
-- After existing-test impact, run the relevant tests (see fix-workflow Phase 5 commands).
+  After fixing, run the relevant checks (see `fix-workflow` Phase 5):
+  `backend`: `black --check . && flake8 . && pytest -q`;
+  `frontend`: `npm run format:check && npm run lint && npm run typecheck && npm run build`.
+- **NEEDS_HUMAN**: batch and present with analysis + options via `AskUserQuestion`.
+
+**Optionally record the review on the PR** (local `gh`, no API key):
+
+```bash
+gh pr comment "$PR_NUM" --body "$(cat <<'EOF'
+## 本地 Code Review 摘要
+- 已修正: <列出>
+- 需人工決定: <列出>
+EOF
+)"
+```
 
 **Ask the user before committing.** Then:
+
 ```bash
 git add <specific files>
-git commit -m "fix: address Claude Code Review feedback for PR #$PR_NUM
+git commit -m "fix: address local code review findings
 
 - <list of changes>
 
@@ -99,38 +129,36 @@ git push origin "$PR_BRANCH"
 
 ---
 
-# Phase 5: Wait & Re-evaluate
+# Phase 5: Re-review & loop
 
-Review CI re-triggers on push. Poll the latest run (every 30s), then return to Phase 2.
-**Max 3 iterations**, then present remaining items and ask how to proceed.
+Re-run Phase 2 on the **new** diff (or only the changed files). Repeat until no
+actionable findings remain. **Max 3 iterations**, then present anything left and ask
+how to proceed.
 
 ---
 
-# Phase 6: Report Merge Readiness
+# Phase 6: Report
 
 ```markdown
-## PR #$PR_NUM is ready to merge
-Branch $PR_BRANCH → main
-Rounds: N · Resolved: N · Skipped (your decision): N
-CI: Claude Code Review passed · <other checks>
+## Local code review complete — PR #<N> (branch <PR_BRANCH>)
+Rounds: N · Fixed: N · Needs human: N · Dropped (low-confidence/out-of-scope): N
+Post-fix checks: backend ✅/❌ · frontend ✅/❌
 ```
 
 ---
 
 # Edge Cases
 
-- **Bot comment missing but CI passed**: check run log for a posting/permissions error.
-- **Rebase conflicts**: stop and ask the user before resolving.
-- **Comment about a file not in the PR diff**: skip and note it (reviewer out of scope).
-- **Human reviewer comments**: present to the user — do NOT auto-fix.
+- **No PR yet**: review the branch diff vs `origin/main` directly; offer to open a PR after.
+- **Empty diff**: nothing to review — report and exit.
+- **Rebase conflicts**: stop and ask before resolving.
+- **Finding references a file not in the diff**: skip + note (out of scope).
 
 # Red Flags — Never Do These
 
-- Apply fixes without understanding full context
-- Auto-fix `NEEDS_HUMAN` items without approval
-- Push without asking the user first
-- Ignore review comments about security issues
-- Modify files not mentioned in the review
-- Loop more than 3 times without user intervention
-- Make changes on `main` instead of the PR branch
-- Auto-resolve merge conflicts without user awareness
+- Let the review subagent edit files — it only reports; **this skill** applies fixes after triage.
+- Apply `NEEDS_HUMAN` items without approval.
+- Push without asking the user first.
+- Ignore security findings.
+- Loop more than 3 times without user intervention.
+- Make changes on `main` instead of the PR/feature branch.

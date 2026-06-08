@@ -44,8 +44,9 @@ black --check . && flake8 . && pytest -q
 ## CI / 自動化
 
 - PR 觸發 `CI Backend`（Test Backend）與 `CI Frontend`（Test Frontend）。
-- `Claude Code Review` 預設關閉：在 repo 加 `ANTHROPIC_API_KEY` secret 與 `ENABLE_CLAUDE_REVIEW=true` variable 後啟用。
-- skills：`fix-workflow`（自動修 CI）、`fix-review`（自動處理 review）、`worktree`（隔離開發）。
+- **Code review 在本地執行**：用 `fix-review` skill 派本地 Claude code-review subagent，
+  不需在 GitHub 加 `ANTHROPIC_API_KEY` secret 或 review workflow。
+- skills：`fix-workflow`（自動修 CI）、`fix-review`（本地 code review + 修正）、`worktree`（隔離開發）。
 
 ## 舊站資料（不納入 git，見 `.gitignore`）
 

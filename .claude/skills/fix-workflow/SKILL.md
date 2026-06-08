@@ -58,8 +58,10 @@ Classify (adjust name patterns to your CI):
 |---|---|---|
 | "Backend" / "Test Backend" | `BACKEND_TEST` | fetch logs + fix |
 | "Frontend" / "Test Frontend" | `FRONTEND_TEST` | fetch logs + fix |
-| "claude-review" | skip — use **fix-review** |
 | "Deploy" / "Vercel" | skip — deploy depends on tests |
+
+> Code review is **local** (run the **fix-review** skill — a local Claude subagent),
+> not a CI check, so there is no review job to fix here.
 
 | Test status | Action |
 |---|---|
