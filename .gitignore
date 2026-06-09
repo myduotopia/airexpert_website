@@ -4,12 +4,21 @@ old_website_data/
 網站存檔/
 organize.py
 
+# Pencil 設計檔（大型，本地保留）
+*.pen
+
+# Supabase CLI 暫存
+supabase/.temp/
+
 # 系統 / 編輯器
 .DS_Store
 *.log
 node_modules/
 .env
 .env.*
+# 但範例檔要進 git
+!.env.example
+!.env.*.example
 __pycache__/
 *.pyc
 .venv/
