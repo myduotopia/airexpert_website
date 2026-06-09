@@ -34,7 +34,7 @@ export function ProductImage({
     // TODO(#8): replace with real product imagery once content is imported.
     return (
       <div
-        className={`bg-surface-muted text-border flex items-center justify-center ${className ?? ""}`}
+        className={`bg-surface-muted text-border flex h-full w-full items-center justify-center ${className ?? ""}`}
         aria-hidden="true"
       >
         <ImagePlaceholderIcon size={40} />

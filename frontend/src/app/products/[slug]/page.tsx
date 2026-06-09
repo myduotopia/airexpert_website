@@ -27,6 +27,13 @@ type DetailPageProps = {
   params: Promise<{ slug: string }>;
 };
 
+// Prerender known product pages at build; new slugs still render on-demand
+// (dynamicParams defaults to true). Empty today (no products yet) → all dynamic.
+export async function generateStaticParams() {
+  const products = await getPublishedProducts();
+  return products.map((product) => ({ slug: product.slug }));
+}
+
 // generateMetadata and the page both call getProductBySlug; the data layer wraps
 // it in React cache(), so the slug is fetched only once per request.
 export async function generateMetadata(
@@ -178,7 +185,10 @@ export default async function ProductDetailPage(props: DetailPageProps) {
           {product.body_html ? (
             <div
               className="text-text-muted prose-sm max-w-none text-[14px] leading-[1.7]"
-              // body_html is editor-authored content stored in the CMS.
+              // body_html is CMS/service_role-authored and anon RLS is read-only,
+              // so it is trusted today. TODO(security): sanitize with an allowlist
+              // before any editor/AI authoring path (see ai_content_drafts) can
+              // write body_html, to avoid stored XSS.
               dangerouslySetInnerHTML={{ __html: product.body_html }}
             />
           ) : null}
