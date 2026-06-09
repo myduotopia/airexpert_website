@@ -64,7 +64,7 @@ export function CarbonDashboard() {
         <div
           className="flex h-[170px] items-end justify-between gap-2"
           role="img"
-          aria-label="2019 至 2025 年度碳排放呈下降趨勢"
+          aria-label="年度碳排放趨勢，2019 至 2025 年下降 42%，目前約 8,420 tCO₂e/年"
         >
           {BARS.map((bar, index) => {
             const isLast = index === BARS.length - 1;

@@ -4,15 +4,14 @@ import { HOME_COLORS } from "@/components/home/tokens";
 
 // Reusable news card. Static props for MVP; the shape (category/date/title/
 // excerpt/href) maps cleanly onto an Article from @/lib/data when wired later
-// (#8). `imageUrl` is optional — until real cover images exist a placeholder
-// block is rendered (TODO: swap for next/image when assets land).
+// (#8). Cover is a placeholder block for now (TODO: add an image prop +
+// next/image when real assets land in #8).
 export type NewsCardProps = {
   category: string;
   date: string;
   title: string;
   excerpt: string;
   href: string;
-  imageUrl?: string;
 };
 
 export function NewsCard({
