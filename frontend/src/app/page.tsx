@@ -1,17 +1,26 @@
-// Minimal placeholder confirming the layout shell renders.
-// The real Home page sections are built in issue #5.
+import { Hero } from "@/components/home/Hero";
+import { HeroImage } from "@/components/home/HeroImage";
+import { StatBar } from "@/components/home/StatBar";
+import { Partners } from "@/components/home/Partners";
+import { ProductOverview } from "@/components/home/ProductOverview";
+import { TechSection } from "@/components/home/TechSection";
+import { NewsTeaser } from "@/components/home/NewsTeaser";
+import { CtaBanner } from "@/components/home/CtaBanner";
+
+// Home page body (issue #5). The shell Header/Footer come from the root layout,
+// so this file only composes the page sections. Content is static for MVP per
+// docs/design/home-page.md; news/products can wire to @/lib/data later (#8/#11).
 export default function Home() {
   return (
-    <section className="mx-auto flex max-w-[1440px] flex-col items-center justify-center gap-4 px-6 py-32 text-center md:px-20">
-      <p className="text-text-muted font-mono text-[10px] tracking-[0.5px] uppercase">
-        V3.08 Eco Green Light
-      </p>
-      <h1 className="text-ink text-3xl font-bold sm:text-4xl">
-        超勁賀空壓科技 AirExpert
-      </h1>
-      <p className="text-text-muted max-w-md text-[15px] leading-[1.6]">
-        版型外殼與設計系統已就緒。首頁內容將於後續 issue 建置。
-      </p>
-    </section>
+    <>
+      <Hero />
+      <HeroImage />
+      <StatBar />
+      <Partners />
+      <ProductOverview />
+      <TechSection />
+      <NewsTeaser />
+      <CtaBanner />
+    </>
   );
 }
