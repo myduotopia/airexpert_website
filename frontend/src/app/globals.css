@@ -1,26 +1,34 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * AirExpert Design System — V3.08 "Eco Green Light"
+ * Light, editorial, eco/green-accented. White base, light-green alternating
+ * sections, thin green-grey borders, dark near-black-green footer + CTA banner.
+ * This is a LIGHT theme — there is no dark-mode auto-switch.
+ */
+@theme {
+  /* Colors (see airexpert-design-system SKILL.md "Color tokens") */
+  --color-base: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f6f1;
+  --color-border: #dce8dd;
+  --color-ink: #16201a;
+  --color-surface-dark: #16201a;
+  --color-surface-dark-2: #1f2e24;
+  --color-border-dark: #2a3a2f;
+  --color-primary: #2f8f5c;
+  --color-primary-deep: #1f6b43;
+  --color-primary-soft: #5fbf86;
+  --color-text-muted: #5c6b61;
+  --color-text-on-dark-muted: #8fa697;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Fonts (wired to next/font CSS vars from layout.tsx) */
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }
