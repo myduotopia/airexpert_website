@@ -10,6 +10,10 @@ type LogoProps = {
  * (Pencil node `o2OvdI`) once it is provided by the client. For now we render
  * a tasteful rounded-square placeholder using `currentColor` so callers can
  * tint it via a text-color token (green-deep on light, green-soft on dark).
+ *
+ * Decorative: in every current usage the mark sits beside the visible brand
+ * wordmark, so it is `aria-hidden` to avoid the screen reader announcing the
+ * brand name twice. If used standalone later, give it a label at the call site.
  */
 export function Logo({ className }: LogoProps) {
   return (
@@ -17,8 +21,7 @@ export function Logo({ className }: LogoProps) {
       width="40"
       height="26"
       viewBox="0 0 40 26"
-      role="img"
-      aria-label="超勁賀空壓科技 logo"
+      aria-hidden="true"
       className={className}
     >
       <rect width="40" height="26" rx="7" fill="currentColor" />

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { BRAND_NAME_CN, BRAND_NAME_EN } from "@/lib/brand";
 
 type FooterLink = {
   label: string;
@@ -11,8 +12,6 @@ type FooterColumn = {
   links: FooterLink[];
 };
 
-const BRAND_NAME_CN = "超勁賀空壓科技";
-const BRAND_NAME_EN = "JIN HE & CHAO HE AIR COMPRESSOR";
 const BRAND_DESCRIPTION =
   "以節能氣源系統推動永續製造。導入 ISO 50001 能源管理，協助產業邁向淨零目標。";
 const ISO_BADGE_LABEL = "ISO 50001 · NET-ZERO READY";

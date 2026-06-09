@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { BRAND_NAME_CN, BRAND_NAME_EN } from "@/lib/brand";
 
 type NavItem = {
   label: string;
@@ -21,8 +22,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: "關於", href: "/about" },
 ];
 
-const BRAND_NAME_CN = "超勁賀空壓科技";
-const BRAND_NAME_EN = "JIN HE & CHAO HE AIR COMPRESSOR";
 const CTA_LABEL = "預約談話";
 
 function isActive(pathname: string, href: string): boolean {
@@ -32,11 +31,7 @@ function isActive(pathname: string, href: string): boolean {
 
 function Brand() {
   return (
-    <Link
-      href="/"
-      className="flex items-center gap-3"
-      aria-label={BRAND_NAME_CN}
-    >
+    <Link href="/" className="flex items-center gap-3">
       {/* Green logo mark on light bg uses primary-deep token. */}
       <Logo className="text-primary-deep" />
       <span className="flex flex-col leading-tight">
@@ -52,12 +47,14 @@ function Brand() {
 }
 
 function LanguageSwitch() {
-  // TODO: wire to real i18n once locale routing exists; static for now.
+  // TODO: wire to real i18n once locale routing exists. Static, visual-only for
+  // now — presented as a labelled group rather than a misleading aria-current.
   return (
-    <div className="flex items-center gap-1 text-[13px]">
-      <span className="text-ink font-semibold" aria-current="true">
-        中
-      </span>
+    <div
+      className="flex items-center gap-1 text-[13px]"
+      aria-label="目前語言：中文"
+    >
+      <span className="text-ink font-semibold">中</span>
       <span className="text-border" aria-hidden="true">
         /
       </span>
@@ -70,7 +67,7 @@ function CtaPill({ className }: { className?: string }) {
   return (
     <Link
       href="/contact"
-      className={`bg-primary inline-flex items-center justify-center rounded-3xl px-[18px] py-[10px] text-[14px] font-semibold text-white transition-opacity hover:opacity-90 ${className ?? ""}`}
+      className={`bg-primary-deep inline-flex items-center justify-center rounded-3xl px-[18px] py-[10px] text-[14px] font-semibold text-white transition-opacity hover:opacity-90 ${className ?? ""}`}
     >
       {CTA_LABEL}
     </Link>

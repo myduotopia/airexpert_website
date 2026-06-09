@@ -25,8 +25,8 @@ thin green-grey borders, a dark green near-black footer + CTA banner.
 | `#16201A` | Dark bg (footer, CTA banner) **and** primary text on light | `ink` / `surface-dark` |
 | `#1F2E24` | Badge / chip bg on dark | `surface-dark-2` |
 | `#2A3A2F` | Divider on dark | `border-dark` |
-| `#2F8F5C` | **Primary green accent** — CTA buttons, highlight bg | `primary` |
-| `#1F6B43` | Logo mark green on light | `primary-deep` |
+| `#2F8F5C` | **Primary green accent** — highlight bg, badges (NOT for white-text buttons: only 4.04:1) | `primary` |
+| `#1F6B43` | **CTA button bg** (white text ≈6.5:1, passes WCAG AA) + logo mark on light | `primary-deep` |
 | `#5FBF86` | Logo / accent green on dark | `primary-soft` |
 | `#5C6B61` | Secondary text on light (inactive nav, sub-labels) | `text-muted` |
 | `#8FA697` | Muted text on dark (footer) | `text-on-dark-muted` |
@@ -53,7 +53,7 @@ Observed scale (px) / weight: brand CN 17/700 · nav 14/500 · footer links 13 (
 White bar, `border-bottom: 1px #DCE8DD`, padding `18px / 48px`, `justify-between`, `items-center`.
 - **Brand** (left, gap 12): green logo mark (40×26) + wordmark — CN `超勁賀空壓科技` Inter 17/700 `#16201A`; EN `JIN HE & CHAO HE AIR COMPRESSOR` JetBrains Mono 8 `#5C6B61`.
 - **Nav items** (center, gap 30): `首頁 · 產品系列 · 解決方案 · 技術文獻 · 最新消息 · 關於` — Inter 14/500; active `#16201A`, rest `#5C6B61`.
-- **Right** (gap 18): language switch `中 / EN` (Inter 13; active `#16201A` 600, slash `#DCE8DD`) + CTA pill `預約談話` — bg `#2F8F5C`, text `#FFFFFF` 14/600, radius 24, padding `10/18`.
+- **Right** (gap 18): language switch `中 / EN` (Inter 13; active `#16201A` 600, slash `#DCE8DD`) + CTA pill `預約談話` — bg `#1F6B43` (primary-deep, for WCAG AA; the Pencil frame shows `#2F8F5C` but white-on-that fails AA), text `#FFFFFF` 14/600, radius 24, padding `10/18`.
 
 > Nav IA is the design's simplified menu; map these labels to actual routes during #3/page issues (e.g. 產品系列→/products, 最新消息→/news, 關於→about). Don't invent extra nav items.
 
