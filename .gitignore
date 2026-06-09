@@ -10,6 +10,9 @@ organize.py
 # Supabase CLI 暫存
 supabase/.temp/
 
+# Agent 隔離 worktree（subagent isolation）
+.claude/worktrees/
+
 # 系統 / 編輯器
 .DS_Store
 *.log
