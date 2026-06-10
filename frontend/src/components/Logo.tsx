@@ -1,6 +1,9 @@
 type LogoProps = {
   /** Tailwind color class for the mark, e.g. `text-primary-deep`. */
   className?: string;
+  /** Rendered size; defaults to the design's 40×26. */
+  width?: number;
+  height?: number;
 };
 
 /**
@@ -13,11 +16,11 @@ type LogoProps = {
  * wordmark, so it is `aria-hidden` to avoid the screen reader announcing the
  * brand name twice. If used standalone later, give it a label at the call site.
  */
-export function Logo({ className }: LogoProps) {
+export function Logo({ className, width = 40, height = 26 }: LogoProps) {
   return (
     <svg
-      width="40"
-      height="26"
+      width={width}
+      height={height}
       viewBox="0 0 141 90"
       fill="currentColor"
       fillRule="evenodd"
