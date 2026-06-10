@@ -9,11 +9,7 @@ import { MetricsBox } from "@/components/products/MetricsBox";
 import { SpecTable } from "@/components/products/SpecTable";
 import { FeatureGrid } from "@/components/products/FeatureGrid";
 import { ProductCard } from "@/components/products/ProductCard";
-import {
-  ArrowRightIcon,
-  CheckIcon,
-  DownloadIcon,
-} from "@/components/products/icons";
+import { ArrowRight, Check, Download } from "lucide-react";
 import {
   SAMPLE_APPLICATIONS,
   SAMPLE_FEATURES,
@@ -125,7 +121,7 @@ export default async function ProductDetailPage(props: DetailPageProps) {
                 href="#"
                 className="border-border text-ink focus-visible:ring-primary hover:border-primary inline-flex items-center justify-center gap-2 rounded-[26px] border px-6 py-3 text-[14px] font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
               >
-                <DownloadIcon size={16} />
+                <Download size={16} aria-hidden="true" />
                 下載技術手冊 PDF
               </a>
             </div>
@@ -222,7 +218,7 @@ export default async function ProductDetailPage(props: DetailPageProps) {
                 key={app}
                 className="border-border bg-surface-muted text-ink inline-flex items-center gap-2 rounded-3xl border px-[18px] py-3 text-[14px] font-medium"
               >
-                <CheckIcon size={14} className="text-primary" />
+                <Check size={14} aria-hidden="true" className="text-primary" />
                 {app}
               </span>
             ))}
@@ -252,7 +248,7 @@ export default async function ProductDetailPage(props: DetailPageProps) {
               className="text-primary-deep inline-flex items-center gap-1 self-start text-[14px] font-medium"
             >
               查看所有產品
-              <ArrowRightIcon size={14} />
+              <ArrowRight size={14} aria-hidden="true" />
             </Link>
           </div>
         </section>

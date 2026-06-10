@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Leaf } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { BRAND_NAME_CN, BRAND_NAME_EN } from "@/lib/brand";
 
@@ -55,28 +56,6 @@ const LEGAL_LINKS: FooterLink[] = [
   { label: "ISO 9001 / ISO 50001", href: "/sustainability" },
 ];
 
-// Inline leaf icon (lucide `leaf` path) — kept inline to avoid adding the
-// lucide-react dependency for a single decorative glyph.
-function LeafIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className={className}
-    >
-      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-      <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-    </svg>
-  );
-}
-
 function BrandColumn() {
   return (
     <div className="max-w-[360px]">
@@ -98,7 +77,7 @@ function BrandColumn() {
       </p>
 
       <div className="bg-surface-dark-2 mt-5 inline-flex items-center gap-2 rounded-[20px] px-3 py-1.5">
-        <LeafIcon className="text-primary-soft" />
+        <Leaf size={14} aria-hidden="true" className="text-primary-soft" />
         <span className="text-primary-soft font-mono text-[10px] tracking-[0.5px]">
           {ISO_BADGE_LABEL}
         </span>
