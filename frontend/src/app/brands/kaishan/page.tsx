@@ -97,7 +97,7 @@ export default function KaishanPage() {
       </BrandSection>
 
       {/* Dr. Tang Yan — person card */}
-      <BrandSection tone="muted" eyebrow="EXPERT · 核心人物">
+      <BrandSection tone="muted" eyebrow="EXPERT · 核心人物" title="核心人物">
         <BrandSplit
           reverse
           aside={
