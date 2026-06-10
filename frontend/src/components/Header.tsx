@@ -31,13 +31,13 @@ function isActive(pathname: string, href: string): boolean {
 function Brand() {
   return (
     <Link href="/" className="flex items-center gap-3">
-      {/* Green logo mark on light bg uses primary-deep token. 1.3× the base size. */}
-      <Logo className="text-primary-deep" width={52} height={34} />
-      <span className="flex flex-col leading-tight">
-        <span className="text-ink text-[22px] leading-none font-bold">
+      {/* Green logo mark on light bg uses primary-deep token. */}
+      <Logo className="text-primary-deep" width={58} height={38} />
+      <span className="flex flex-col gap-1 leading-tight">
+        <span className="text-ink text-[28px] leading-none font-bold">
           {BRAND_NAME_CN}
         </span>
-        <span className="text-text-muted font-mono text-[10px] tracking-[0.5px]">
+        <span className="text-text-muted font-mono text-[14px] tracking-[0.5px]">
           {BRAND_NAME_EN}
         </span>
       </span>
@@ -61,7 +61,7 @@ export function Header() {
               key={item.href}
               href={item.href}
               aria-current={isActive(pathname, item.href) ? "page" : undefined}
-              className={`text-[14px] font-medium transition-colors ${
+              className={`text-[18px] font-medium transition-colors ${
                 isActive(pathname, item.href)
                   ? "text-ink"
                   : "text-text-muted hover:text-ink"
@@ -104,7 +104,7 @@ export function Header() {
                   aria-current={
                     isActive(pathname, item.href) ? "page" : undefined
                   }
-                  className={`block py-3 text-[15px] font-medium transition-colors ${
+                  className={`block py-3 text-[19px] font-medium transition-colors ${
                     isActive(pathname, item.href)
                       ? "text-ink"
                       : "text-text-muted hover:text-ink"

@@ -85,7 +85,7 @@ export default function EnergyTechPage() {
       {/* 01 — 雙段 vs 單段壓縮 */}
       <ServiceSection variant="muted">
         <SectionHeading eyebrow="01" title="空壓機雙段與單段壓縮的差異" />
-        <p className="text-text-muted max-w-[760px] text-[15px] leading-[1.75]">
+        <p className="text-text-muted max-w-[760px] text-[17px] leading-[1.75]">
           繼變頻技術後的突破：相同排氣量下，雙段壓縮排氣量比單段大，故同馬力數的雙段壓縮負荷量小於單段，耗電量降低{" "}
           <strong className="text-primary-deep font-semibold">15~20%</strong>
           。以 100HP 空壓機、每年 6336 小時計，實測年運轉電力可節省{" "}
@@ -109,7 +109,7 @@ export default function EnergyTechPage() {
       {/* 02 — 儲能型 vs 傳統型乾燥機 */}
       <ServiceSection>
         <SectionHeading eyebrow="02" title="儲能型與傳統型冷凍式乾燥機的差異" />
-        <p className="text-text-muted max-w-[760px] text-[15px] leading-[1.75]">
+        <p className="text-text-muted max-w-[760px] text-[17px] leading-[1.75]">
           儲能型利用 PCM
           相變材料讓冷媒壓縮機有休息節電空間，可配合廠內用氣量休息或運轉，不影響效能，卻水效果比傳統型提升{" "}
           <strong className="text-primary-deep font-semibold">10~20%</strong>。
@@ -117,14 +117,14 @@ export default function EnergyTechPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="border-border bg-surface flex flex-col gap-2 rounded-[14px] border p-6">
-            <h3 className="text-ink text-[16px] font-semibold">傳統型</h3>
-            <p className="text-text-muted text-[14px] leading-[1.7]">
+            <h3 className="text-ink text-[18px] font-semibold">傳統型</h3>
+            <p className="text-text-muted text-[16px] leading-[1.7]">
               製冷壓縮機與風扇須持續作動以維持冷媒效能。
             </p>
           </div>
           <div className="border-primary/40 bg-surface-muted flex flex-col gap-2 rounded-[14px] border p-6">
-            <h3 className="text-ink text-[16px] font-semibold">儲能型</h3>
-            <p className="text-text-muted text-[14px] leading-[1.7]">
+            <h3 className="text-ink text-[18px] font-semibold">儲能型</h3>
+            <p className="text-text-muted text-[16px] leading-[1.7]">
               冷媒冷卻 PCM 並凍結，凍結時壓縮機／風扇停止；PCM
               吸收壓縮空氣熱能期間不耗功率，融化後恢復運轉。
             </p>

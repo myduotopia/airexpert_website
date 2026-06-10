@@ -13,13 +13,13 @@ export function BrandHeader({ eyebrow, name, tagline }: BrandHeaderProps) {
   return (
     <section className="bg-surface border-border border-b">
       <div className="mx-auto max-w-[1440px] px-6 py-16 md:px-20 md:py-20">
-        <p className="text-text-muted font-mono text-[12px] tracking-[1px] uppercase">
+        <p className="text-text-muted font-mono text-[14px] tracking-[1px] uppercase">
           {eyebrow}
         </p>
-        <h1 className="text-ink mt-3 text-[34px] leading-[1.12] font-bold sm:text-[42px]">
+        <h1 className="text-ink mt-3 text-[36px] leading-[1.12] font-bold sm:text-[44px]">
           {name}
         </h1>
-        <p className="text-text-muted mt-4 max-w-[640px] text-[16px] leading-[1.65] md:text-[18px]">
+        <p className="text-text-muted mt-4 max-w-[640px] text-[18px] leading-[1.65] md:text-[20px]">
           {tagline}
         </p>
       </div>

@@ -35,16 +35,16 @@ export function NewsTeaser() {
         {/* Head row */}
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-col gap-2">
-            <p className="text-primary-deep font-mono text-[12px] tracking-[1px]">
+            <p className="text-primary-deep font-mono text-[14px] tracking-[1px]">
               NEWS · 最新消息
             </p>
-            <h2 className="text-ink text-[28px] leading-tight font-bold md:text-[34px]">
+            <h2 className="text-ink text-[30px] leading-tight font-bold md:text-[36px]">
               永續動態與技術觀點
             </h2>
           </div>
           <Link
             href="/news"
-            className="text-primary-deep inline-flex items-center gap-1 text-[14px] font-semibold transition-opacity hover:opacity-80"
+            className="text-primary-deep inline-flex items-center gap-1 text-[16px] font-semibold transition-opacity hover:opacity-80"
           >
             查看全部
             <ArrowRight className="h-4 w-4" aria-hidden="true" />

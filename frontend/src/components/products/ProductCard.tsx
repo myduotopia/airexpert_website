@@ -39,27 +39,27 @@ export function ProductCard({ product, variant = "list" }: ProductCardProps) {
       <div className="flex flex-col gap-2 p-4">
         {isRelated ? (
           product.brand || product.category ? (
-            <span className="text-text-muted font-mono text-[11px] tracking-[0.5px] uppercase">
+            <span className="text-text-muted font-mono text-[13px] tracking-[0.5px] uppercase">
               {product.brand ?? product.category}
             </span>
           ) : null
         ) : (
-          <span className="text-primary-deep font-mono text-[11px] tracking-[0.5px] uppercase">
+          <span className="text-primary-deep font-mono text-[13px] tracking-[0.5px] uppercase">
             {product.category}
           </span>
         )}
 
-        <h3 className="text-ink text-[15px] leading-snug font-semibold sm:text-[16px]">
+        <h3 className="text-ink text-[17px] leading-snug font-semibold sm:text-[18px]">
           {product.name}
         </h3>
 
         {!isRelated && product.summary ? (
-          <p className="text-text-muted line-clamp-2 text-[13px] leading-[1.6]">
+          <p className="text-text-muted line-clamp-2 text-[15px] leading-[1.6]">
             {product.summary}
           </p>
         ) : null}
 
-        <span className="text-primary-deep mt-1 inline-flex items-center gap-1 text-[13px] font-medium">
+        <span className="text-primary-deep mt-1 inline-flex items-center gap-1 text-[15px] font-medium">
           {isRelated ? "查看" : "查看詳情"}
           <ArrowRight
             size={14}

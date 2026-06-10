@@ -91,18 +91,18 @@ export default async function ProductDetailPage(props: DetailPageProps) {
         <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-14 px-6 py-14 md:px-20 md:pb-16 lg:grid-cols-[1fr_560px]">
           {/* Left: info */}
           <div className="flex flex-col gap-5">
-            <p className="text-primary-deep font-mono text-[12px] tracking-[1px] uppercase">
+            <p className="text-primary-deep font-mono text-[14px] tracking-[1px] uppercase">
               {product.category}
               {product.brand ? ` · ${product.brand}` : ""}
             </p>
-            <h1 className="text-ink text-[32px] leading-[1.15] font-bold sm:text-[42px]">
+            <h1 className="text-ink text-[34px] leading-[1.15] font-bold sm:text-[44px]">
               {product.name}
             </h1>
-            <p className="text-primary-deep font-mono text-[13px]">
+            <p className="text-primary-deep font-mono text-[15px]">
               SKU · {product.slug}
             </p>
             {product.summary ? (
-              <p className="text-text-muted text-[15px] leading-[1.65]">
+              <p className="text-text-muted text-[17px] leading-[1.65]">
                 {product.summary}
               </p>
             ) : null}
@@ -112,14 +112,14 @@ export default async function ProductDetailPage(props: DetailPageProps) {
             <div className="mt-2 flex flex-wrap gap-3">
               <Link
                 href="/contact"
-                className="bg-primary-deep focus-visible:ring-primary inline-flex items-center justify-center rounded-[26px] px-6 py-3 text-[14px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none"
+                className="bg-primary-deep focus-visible:ring-primary inline-flex items-center justify-center rounded-[26px] px-6 py-3 text-[16px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none"
               >
                 申請報價
               </Link>
               {/* TODO(#8): point at the product's real technical manual PDF. */}
               <a
                 href="#"
-                className="border-border text-ink focus-visible:ring-primary hover:border-primary inline-flex items-center justify-center gap-2 rounded-[26px] border px-6 py-3 text-[14px] font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                className="border-border text-ink focus-visible:ring-primary hover:border-primary inline-flex items-center justify-center gap-2 rounded-[26px] border px-6 py-3 text-[16px] font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
               >
                 <Download size={16} aria-hidden="true" />
                 下載技術手冊 PDF
@@ -166,21 +166,21 @@ export default async function ProductDetailPage(props: DetailPageProps) {
       <section className="bg-surface-muted border-border border-y">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-6 py-16 md:px-20">
           <div className="flex flex-col gap-2">
-            <p className="text-text-muted font-mono text-[12px] tracking-[1px] uppercase">
+            <p className="text-text-muted font-mono text-[14px] tracking-[1px] uppercase">
               SPECIFICATIONS · 技術規格
             </p>
-            <h2 className="text-ink text-[24px] font-bold sm:text-[30px]">
+            <h2 className="text-ink text-[26px] font-bold sm:text-[32px]">
               完整機種規格比較
             </h2>
           </div>
           {Object.keys(product.spec ?? {}).length > 0 ? (
             <SpecTable spec={product.spec} />
           ) : (
-            <p className="text-text-muted text-[14px]">規格資料建置中。</p>
+            <p className="text-text-muted text-[16px]">規格資料建置中。</p>
           )}
           {product.body_html ? (
             <div
-              className="text-text-muted prose-sm max-w-none text-[14px] leading-[1.7]"
+              className="text-text-muted prose-sm max-w-none text-[16px] leading-[1.7]"
               // body_html is CMS/service_role-authored and anon RLS is read-only,
               // so it is trusted today. TODO(security): sanitize with an allowlist
               // before any editor/AI authoring path (see ai_content_drafts) can
@@ -195,10 +195,10 @@ export default async function ProductDetailPage(props: DetailPageProps) {
       <section className="bg-surface">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-6 py-16 md:px-20">
           <div className="flex flex-col gap-2">
-            <p className="text-text-muted font-mono text-[12px] tracking-[1px] uppercase">
+            <p className="text-text-muted font-mono text-[14px] tracking-[1px] uppercase">
               KEY FEATURES · 核心優勢
             </p>
-            <h2 className="text-ink text-[24px] font-bold sm:text-[30px]">
+            <h2 className="text-ink text-[26px] font-bold sm:text-[32px]">
               為潔淨而生
             </h2>
           </div>
@@ -209,14 +209,14 @@ export default async function ProductDetailPage(props: DetailPageProps) {
       {/* Applications */}
       <section className="bg-surface border-border border-t">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-5 px-6 py-14 md:px-20">
-          <h2 className="text-ink text-[20px] font-bold sm:text-[24px]">
+          <h2 className="text-ink text-[22px] font-bold sm:text-[26px]">
             應用領域
           </h2>
           <div className="flex flex-wrap gap-3">
             {applications.map((app) => (
               <span
                 key={app}
-                className="border-border bg-surface-muted text-ink inline-flex items-center gap-2 rounded-3xl border px-[18px] py-3 text-[14px] font-medium"
+                className="border-border bg-surface-muted text-ink inline-flex items-center gap-2 rounded-3xl border px-[18px] py-3 text-[16px] font-medium"
               >
                 <Check size={14} aria-hidden="true" className="text-primary" />
                 {app}
@@ -231,10 +231,10 @@ export default async function ProductDetailPage(props: DetailPageProps) {
         <section className="bg-surface-muted border-border border-t">
           <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-6 py-14 md:px-20 md:pb-16">
             <div className="flex flex-col gap-2">
-              <p className="text-text-muted font-mono text-[12px] tracking-[1px] uppercase">
+              <p className="text-text-muted font-mono text-[14px] tracking-[1px] uppercase">
                 RELATED · 相關產品
               </p>
-              <h2 className="text-ink text-[24px] font-bold sm:text-[30px]">
+              <h2 className="text-ink text-[26px] font-bold sm:text-[32px]">
                 完整氣源系統搭配
               </h2>
             </div>
@@ -245,7 +245,7 @@ export default async function ProductDetailPage(props: DetailPageProps) {
             </div>
             <Link
               href="/products"
-              className="text-primary-deep inline-flex items-center gap-1 self-start text-[14px] font-medium"
+              className="text-primary-deep inline-flex items-center gap-1 self-start text-[16px] font-medium"
             >
               查看所有產品
               <ArrowRight size={14} aria-hidden="true" />

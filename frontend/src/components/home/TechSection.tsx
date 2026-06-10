@@ -39,13 +39,13 @@ export function TechSection() {
 
         {/* Right — copy + feature list */}
         <div className="flex flex-col gap-5 lg:w-[520px] lg:shrink-0">
-          <p className="text-primary-deep font-mono text-[12px] tracking-[1px]">
+          <p className="text-primary-deep font-mono text-[14px] tracking-[1px]">
             SUSTAINABILITY · 永續節能
           </p>
-          <h2 className="text-ink text-[28px] leading-tight font-bold md:text-[34px]">
+          <h2 className="text-ink text-[30px] leading-tight font-bold md:text-[36px]">
             以數據實踐淨零承諾
           </h2>
-          <p className="text-text-muted text-[15px] leading-[1.6]">
+          <p className="text-text-muted text-[17px] leading-[1.6]">
             從用氣基線量測到持續優化，導入 ISO 50001
             能源管理系統，讓每一度電與每一公斤碳排都被看見、被改善。
           </p>
@@ -65,10 +65,10 @@ export function TechSection() {
                   />
                 </span>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-ink text-[15px] font-semibold">
+                  <span className="text-ink text-[17px] font-semibold">
                     {title}
                   </span>
-                  <span className="text-text-muted text-[13px] leading-[1.5]">
+                  <span className="text-text-muted text-[15px] leading-[1.5]">
                     {description}
                   </span>
                 </div>

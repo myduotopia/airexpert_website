@@ -29,7 +29,7 @@ export function SpecTable({ caption, columns, rows, note }: SpecTableProps) {
   return (
     <figure className="flex flex-col gap-3">
       {caption ? (
-        <figcaption className="text-ink text-[15px] font-semibold">
+        <figcaption className="text-ink text-[17px] font-semibold">
           {caption}
         </figcaption>
       ) : null}
@@ -39,7 +39,7 @@ export function SpecTable({ caption, columns, rows, note }: SpecTableProps) {
           {/* Header row */}
           <div
             role="row"
-            className="bg-primary-deep flex text-[13px] font-bold text-white"
+            className="bg-primary-deep flex text-[15px] font-bold text-white"
           >
             {columns.map((col) => (
               <div
@@ -58,7 +58,7 @@ export function SpecTable({ caption, columns, rows, note }: SpecTableProps) {
             <div
               key={cells[0] ?? `row-${rowIndex}`}
               role="row"
-              className={`border-border flex border-t text-[13px] ${
+              className={`border-border flex border-t text-[15px] ${
                 rowIndex % 2 === 1 ? "bg-surface-muted" : "bg-surface"
               }`}
             >
@@ -87,7 +87,7 @@ export function SpecTable({ caption, columns, rows, note }: SpecTableProps) {
       </div>
 
       {note ? (
-        <p className="text-text-muted text-[12px] leading-[1.6]">{note}</p>
+        <p className="text-text-muted text-[14px] leading-[1.6]">{note}</p>
       ) : null}
     </figure>
   );

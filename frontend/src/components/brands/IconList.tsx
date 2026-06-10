@@ -27,7 +27,7 @@ export function IconList({ items, icon: Icon, columns = 2 }: IconListProps) {
               aria-hidden="true"
             />
           </span>
-          <span className="text-ink pt-1.5 text-[14px] leading-[1.5]">
+          <span className="text-ink pt-1.5 text-[16px] leading-[1.5]">
             {item}
           </span>
         </li>

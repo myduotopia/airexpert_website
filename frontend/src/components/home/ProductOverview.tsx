@@ -39,10 +39,10 @@ export function ProductOverview() {
       <div className="mx-auto flex max-w-[1440px] flex-col gap-8 px-6 py-20 md:px-20">
         {/* Heading block */}
         <div className="mx-auto flex max-w-[720px] flex-col gap-3 text-center">
-          <p className="text-primary-deep font-mono text-[12px] tracking-[1px]">
+          <p className="text-primary-deep font-mono text-[14px] tracking-[1px]">
             PRODUCT SYSTEMS · 產品系列
           </p>
-          <h2 className="text-ink text-[30px] leading-tight font-bold md:text-[38px]">
+          <h2 className="text-ink text-[32px] leading-tight font-bold md:text-[40px]">
             完整節能氣源系統，單一窗口整合
           </h2>
         </div>
@@ -63,8 +63,8 @@ export function ProductOverview() {
                   aria-hidden="true"
                 />
               </span>
-              <h3 className="text-ink text-[18px] font-semibold">{title}</h3>
-              <p className="text-text-muted text-[13px] leading-[1.6]">
+              <h3 className="text-ink text-[20px] font-semibold">{title}</h3>
+              <p className="text-text-muted text-[15px] leading-[1.6]">
                 {description}
               </p>
             </li>

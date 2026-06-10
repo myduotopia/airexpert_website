@@ -45,8 +45,8 @@ export function ProductGrid({ products }: ProductGridProps) {
   if (products.length === 0) {
     return (
       <div className="border-border bg-surface-muted text-text-muted flex flex-col items-center justify-center gap-2 rounded-[14px] border border-dashed px-6 py-20 text-center">
-        <p className="text-ink text-[18px] font-semibold">內容建置中</p>
-        <p className="text-[14px]">產品資料即將上線，敬請期待。</p>
+        <p className="text-ink text-[20px] font-semibold">內容建置中</p>
+        <p className="text-[16px]">產品資料即將上線，敬請期待。</p>
       </div>
     );
   }
@@ -68,7 +68,7 @@ export function ProductGrid({ products }: ProductGridProps) {
               type="button"
               onClick={() => setActive(chip)}
               aria-pressed={isActive}
-              className={`focus-visible:ring-primary rounded-3xl border px-4 py-2 text-[14px] font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+              className={`focus-visible:ring-primary rounded-3xl border px-4 py-2 text-[16px] font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none ${
                 isActive
                   ? "border-primary-deep bg-primary-deep text-white"
                   : "border-border bg-surface-muted text-ink hover:border-primary"

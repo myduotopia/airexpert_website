@@ -35,17 +35,17 @@ export function NewsCard({
 
         <div className="flex flex-1 flex-col gap-2 p-5">
           <div className="flex items-center gap-3">
-            <span className="text-primary-deep text-[12px] font-semibold">
+            <span className="text-primary-deep text-[14px] font-semibold">
               {category}
             </span>
-            <span className="text-text-muted font-mono text-[12px]">
+            <span className="text-text-muted font-mono text-[14px]">
               {date}
             </span>
           </div>
-          <h3 className="text-ink group-hover:text-primary-deep text-[16px] leading-snug font-semibold transition-colors">
+          <h3 className="text-ink group-hover:text-primary-deep text-[18px] leading-snug font-semibold transition-colors">
             {title}
           </h3>
-          <p className="text-text-muted text-[13px] leading-[1.6]">{excerpt}</p>
+          <p className="text-text-muted text-[15px] leading-[1.6]">{excerpt}</p>
         </div>
       </Link>
     </li>

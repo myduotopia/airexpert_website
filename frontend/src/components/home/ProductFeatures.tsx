@@ -49,10 +49,10 @@ export function ProductFeatures() {
     <section className="bg-surface-muted border-border border-t">
       <div className="mx-auto max-w-[1440px] px-6 py-20 md:px-12 md:py-24">
         <div className="flex flex-col items-center gap-3 text-center">
-          <p className="text-primary-deep font-mono text-[12px] tracking-[1px] uppercase">
+          <p className="text-primary-deep font-mono text-[14px] tracking-[1px] uppercase">
             KEY FEATURES · 產品特色
           </p>
-          <h2 className="text-ink text-[28px] font-bold sm:text-[36px]">
+          <h2 className="text-ink text-[30px] font-bold sm:text-[38px]">
             為潔淨與節能而生
           </h2>
         </div>
@@ -70,10 +70,10 @@ export function ProductFeatures() {
                 />
               </span>
               <div className="flex flex-col gap-1.5">
-                <h3 className="text-ink text-[16px] font-semibold">
+                <h3 className="text-ink text-[18px] font-semibold">
                   {f.title}
                 </h3>
-                <p className="text-text-muted text-[14px] leading-[1.6]">
+                <p className="text-text-muted text-[16px] leading-[1.6]">
                   {f.desc}
                 </p>
               </div>

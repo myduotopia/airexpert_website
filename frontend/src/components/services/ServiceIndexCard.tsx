@@ -24,9 +24,9 @@ export function ServiceIndexCard({ service }: ServiceIndexCardProps) {
       <span className="bg-primary-soft/25 text-primary-deep flex h-[46px] w-[46px] items-center justify-center rounded-[23px]">
         <Icon size={22} aria-hidden="true" />
       </span>
-      <h2 className="text-ink text-[18px] font-semibold">{title}</h2>
-      <p className="text-text-muted text-[14px] leading-[1.65]">{summary}</p>
-      <span className="text-primary-deep mt-auto inline-flex items-center gap-1 text-[14px] font-medium">
+      <h2 className="text-ink text-[20px] font-semibold">{title}</h2>
+      <p className="text-text-muted text-[16px] leading-[1.65]">{summary}</p>
+      <span className="text-primary-deep mt-auto inline-flex items-center gap-1 text-[16px] font-medium">
         了解更多
         <ArrowRight
           className="h-4 w-4 transition-transform group-hover:translate-x-0.5"

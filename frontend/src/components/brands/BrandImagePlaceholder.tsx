@@ -22,7 +22,7 @@ export function BrandImagePlaceholder({
       aria-hidden="true"
     >
       <ImageIcon className="h-8 w-8" />
-      <span className="font-mono text-[11px] tracking-[0.5px] uppercase">
+      <span className="font-mono text-[13px] tracking-[0.5px] uppercase">
         {label}
       </span>
     </div>

@@ -49,16 +49,16 @@ export default function BrandsIndexPage() {
                 href={brand.href}
                 className="border-border bg-surface hover:border-primary focus-visible:ring-primary group flex h-full flex-col gap-3 rounded-[16px] border p-8 transition-colors focus-visible:ring-2 focus-visible:outline-none"
               >
-                <span className="text-primary-deep font-mono text-[12px] tracking-[1px] uppercase">
+                <span className="text-primary-deep font-mono text-[14px] tracking-[1px] uppercase">
                   {brand.eyebrow}
                 </span>
-                <span className="text-ink text-[24px] font-bold">
+                <span className="text-ink text-[26px] font-bold">
                   {brand.name}
                 </span>
-                <span className="text-text-muted text-[15px] leading-[1.7]">
+                <span className="text-text-muted text-[17px] leading-[1.7]">
                   {brand.tagline}
                 </span>
-                <span className="text-primary-deep mt-2 inline-flex items-center gap-1 text-[14px] font-semibold">
+                <span className="text-primary-deep mt-2 inline-flex items-center gap-1 text-[16px] font-semibold">
                   了解更多
                   <ArrowRight
                     className="h-4 w-4 transition-transform group-hover:translate-x-1"

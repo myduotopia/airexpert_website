@@ -46,11 +46,11 @@ export function SectionHeading({
   return (
     <div className="flex flex-col gap-2">
       {eyebrow ? (
-        <p className="text-text-muted font-mono text-[12px] tracking-[1px] uppercase">
+        <p className="text-text-muted font-mono text-[14px] tracking-[1px] uppercase">
           {eyebrow}
         </p>
       ) : null}
-      <Tag className="text-ink text-[24px] leading-tight font-bold sm:text-[30px]">
+      <Tag className="text-ink text-[26px] leading-tight font-bold sm:text-[32px]">
         {title}
       </Tag>
     </div>

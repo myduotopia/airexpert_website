@@ -108,13 +108,13 @@ export function PainCarousel() {
             <div className="from-surface-dark/95 via-surface-dark/45 to-surface-dark/10 absolute inset-0 bg-gradient-to-t" />
             <div className="absolute inset-0">
               <div className="mx-auto flex h-full max-w-[1440px] flex-col justify-end px-6 pb-16 md:px-12 md:pb-20">
-                <p className="text-primary-soft font-mono text-[13px] tracking-[1px]">
+                <p className="text-primary-soft font-mono text-[15px] tracking-[1px]">
                   痛點 {s.n} · {s.cat}
                 </p>
-                <h2 className="mt-3 max-w-[20ch] text-[28px] leading-[1.2] font-bold text-white sm:text-[40px] lg:text-[52px]">
+                <h2 className="mt-3 max-w-[20ch] text-[30px] leading-[1.2] font-bold text-white sm:text-[42px] lg:text-[54px]">
                   {s.headline}
                 </h2>
-                <p className="mt-3 text-[16px] text-white/85 sm:text-[20px]">
+                <p className="mt-3 text-[18px] text-white/85 sm:text-[22px]">
                   {s.tagline}
                 </p>
               </div>

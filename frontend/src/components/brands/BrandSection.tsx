@@ -32,17 +32,17 @@ export function BrandSection({
         {(eyebrow || title || lead) && (
           <div className="flex max-w-[760px] flex-col gap-3">
             {eyebrow && (
-              <p className="text-primary-deep font-mono text-[12px] tracking-[1px] uppercase">
+              <p className="text-primary-deep font-mono text-[14px] tracking-[1px] uppercase">
                 {eyebrow}
               </p>
             )}
             {title && (
-              <h2 className="text-ink text-[28px] leading-tight font-bold md:text-[34px]">
+              <h2 className="text-ink text-[30px] leading-tight font-bold md:text-[36px]">
                 {title}
               </h2>
             )}
             {lead && (
-              <p className="text-text-muted text-[15px] leading-[1.7] md:text-[16px]">
+              <p className="text-text-muted text-[17px] leading-[1.7] md:text-[18px]">
                 {lead}
               </p>
             )}

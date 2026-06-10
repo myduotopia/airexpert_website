@@ -7,7 +7,7 @@ export function Footer() {
   return (
     <footer className="bg-surface-dark text-white">
       <div className="mx-auto max-w-[1440px] px-6 py-6 md:px-12">
-        <p className="text-text-on-dark-muted font-mono text-[11px] tracking-[0.5px]">
+        <p className="text-text-on-dark-muted font-mono text-[13px] tracking-[0.5px]">
           {COPYRIGHT}
         </p>
       </div>

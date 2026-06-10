@@ -26,13 +26,13 @@ export function SpecTable({ spec }: SpecTableProps) {
           <tr className="bg-primary-deep text-white">
             <th
               scope="col"
-              className="px-5 py-3 text-[13px] font-bold whitespace-nowrap"
+              className="px-5 py-3 text-[15px] font-bold whitespace-nowrap"
             >
               項目
             </th>
             <th
               scope="col"
-              className="px-5 py-3 font-mono text-[13px] font-bold whitespace-nowrap"
+              className="px-5 py-3 font-mono text-[15px] font-bold whitespace-nowrap"
             >
               規格
             </th>
@@ -51,11 +51,11 @@ export function SpecTable({ spec }: SpecTableProps) {
               >
                 <th
                   scope="row"
-                  className="text-ink px-5 py-3 text-[13px] font-semibold whitespace-nowrap"
+                  className="text-ink px-5 py-3 text-[15px] font-semibold whitespace-nowrap"
                 >
                   {key}
                 </th>
-                <td className="text-text-muted px-5 py-3 font-mono text-[13px]">
+                <td className="text-text-muted px-5 py-3 font-mono text-[15px]">
                   {display}
                 </td>
               </tr>

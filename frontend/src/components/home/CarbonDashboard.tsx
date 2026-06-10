@@ -28,10 +28,10 @@ export function CarbonDashboard() {
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <span className="text-ink text-[15px] font-semibold">
+          <span className="text-ink text-[17px] font-semibold">
             年度碳排放趨勢
           </span>
-          <span className="text-text-muted font-mono text-[11px]">
+          <span className="text-text-muted font-mono text-[13px]">
             tCO₂e · 2019–2025
           </span>
         </div>
@@ -43,7 +43,7 @@ export function CarbonDashboard() {
             className="text-primary-deep h-3.5 w-3.5"
             aria-hidden="true"
           />
-          <span className="text-primary-deep font-mono text-[12px] font-bold">
+          <span className="text-primary-deep font-mono text-[14px] font-bold">
             −42%
           </span>
         </span>
@@ -51,10 +51,10 @@ export function CarbonDashboard() {
 
       {/* Big number */}
       <div className="flex items-baseline gap-2">
-        <span className="text-ink font-mono text-[32px] leading-none font-bold md:text-[38px]">
+        <span className="text-ink font-mono text-[34px] leading-none font-bold md:text-[40px]">
           8,420
         </span>
-        <span className="text-primary-deep font-mono text-[14px] font-bold">
+        <span className="text-primary-deep font-mono text-[16px] font-bold">
           tCO₂e / yr
         </span>
       </div>
@@ -90,7 +90,7 @@ export function CarbonDashboard() {
           {BARS.map((bar) => (
             <span
               key={bar.year}
-              className="text-text-muted flex-1 text-center font-mono text-[11px]"
+              className="text-text-muted flex-1 text-center font-mono text-[13px]"
             >
               {bar.year}
             </span>

@@ -18,10 +18,10 @@ export function FeatureGrid({ features }: FeatureGridProps) {
             <span className="bg-primary-soft/25 text-primary-deep flex h-[42px] w-[42px] items-center justify-center rounded-[21px]">
               <Icon size={21} aria-hidden="true" />
             </span>
-            <h3 className="text-ink text-[15px] font-semibold">
+            <h3 className="text-ink text-[17px] font-semibold">
               {feature.title}
             </h3>
-            <p className="text-text-muted text-[12px] leading-[1.55]">
+            <p className="text-text-muted text-[14px] leading-[1.55]">
               {feature.description}
             </p>
           </div>

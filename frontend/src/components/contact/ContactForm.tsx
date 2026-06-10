@@ -101,11 +101,11 @@ export function ContactForm() {
         <h2
           ref={successHeadingRef}
           tabIndex={-1}
-          className="text-ink text-[22px] font-bold outline-none"
+          className="text-ink text-[24px] font-bold outline-none"
         >
           感謝您的來信
         </h2>
-        <p className="text-text-muted max-w-[360px] text-[15px] leading-[1.65]">
+        <p className="text-text-muted max-w-[360px] text-[17px] leading-[1.65]">
           我們已收到您的需求，專人將盡快與您聯繫。若為緊急事項，歡迎直接來電。
         </p>
       </div>
@@ -113,8 +113,8 @@ export function ContactForm() {
   }
 
   const inputClass =
-    "border-border bg-surface text-ink placeholder:text-text-muted/70 focus-visible:border-primary-deep focus-visible:ring-primary-deep/30 aria-[invalid=true]:border-primary-deep w-full rounded-lg border px-4 py-3 text-[15px] outline-none transition-colors focus-visible:ring-2";
-  const labelClass = "text-ink text-[14px] font-semibold";
+    "border-border bg-surface text-ink placeholder:text-text-muted/70 focus-visible:border-primary-deep focus-visible:ring-primary-deep/30 aria-[invalid=true]:border-primary-deep w-full rounded-lg border px-4 py-3 text-[17px] outline-none transition-colors focus-visible:ring-2";
+  const labelClass = "text-ink text-[16px] font-semibold";
 
   return (
     <form
@@ -139,7 +139,7 @@ export function ContactForm() {
           className={inputClass}
         />
         {errors.name ? (
-          <p className="text-primary-deep text-[13px]">請填寫您的姓名。</p>
+          <p className="text-primary-deep text-[15px]">請填寫您的姓名。</p>
         ) : null}
       </div>
 
@@ -198,8 +198,8 @@ export function ContactForm() {
         id={contactHintId}
         className={
           errors.contact
-            ? "text-primary-deep -mt-3 text-[13px]"
-            : "text-text-muted -mt-3 text-[13px]"
+            ? "text-primary-deep -mt-3 text-[15px]"
+            : "text-text-muted -mt-3 text-[15px]"
         }
       >
         {errors.contact
@@ -223,7 +223,7 @@ export function ContactForm() {
           className={`${inputClass} resize-y`}
         />
         {errors.message ? (
-          <p className="text-primary-deep text-[13px]">請描述您的需求。</p>
+          <p className="text-primary-deep text-[15px]">請描述您的需求。</p>
         ) : null}
       </div>
 
@@ -234,7 +234,7 @@ export function ContactForm() {
       {status === "error" ? (
         <p
           aria-live="assertive"
-          className="border-border bg-surface-muted text-ink rounded-lg border px-4 py-3 text-[14px] leading-[1.6]"
+          className="border-border bg-surface-muted text-ink rounded-lg border px-4 py-3 text-[16px] leading-[1.6]"
         >
           很抱歉，送出時發生問題，請稍後再試一次，或直接來電與我們聯繫。
         </p>
@@ -243,7 +243,7 @@ export function ContactForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="bg-primary-deep focus-visible:ring-primary-deep/40 inline-flex items-center justify-center gap-2 rounded-[26px] px-7 py-[14px] text-[15px] font-semibold text-white transition-opacity outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+        className="bg-primary-deep focus-visible:ring-primary-deep/40 inline-flex items-center justify-center gap-2 rounded-[26px] px-7 py-[14px] text-[17px] font-semibold text-white transition-opacity outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {submitting ? (
           <>

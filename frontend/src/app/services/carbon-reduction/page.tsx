@@ -82,7 +82,7 @@ export default function CarbonReductionPage() {
           eyebrow="WHY ESG · 為何推動 ESG"
           title="ESG 不只是責任，更是策略"
         />
-        <p className="text-text-muted max-w-[760px] text-[15px] leading-[1.75]">
+        <p className="text-text-muted max-w-[760px] text-[17px] leading-[1.75]">
           管理風險、滿足投資者需求、遵守法律、提升品牌形象與競爭優勢，同時提高員工滿意度與創新效率——既是社會責任，也是帶來商業利益的策略。
         </p>
       </ServiceSection>
@@ -100,16 +100,16 @@ export default function CarbonReductionPage() {
               className="border-border bg-surface flex items-center gap-3 rounded-[12px] border px-4 py-3"
             >
               <span
-                className="bg-primary-soft/25 text-primary-deep flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[13px] font-bold"
+                className="bg-primary-soft/25 text-primary-deep flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[15px] font-bold"
                 aria-hidden="true"
               >
                 {index + 1}
               </span>
-              <span className="text-ink text-[14px] font-medium">{stage}</span>
+              <span className="text-ink text-[16px] font-medium">{stage}</span>
             </li>
           ))}
         </ol>
-        <p className="text-text-muted max-w-[760px] text-[14px] leading-[1.7]">
+        <p className="text-text-muted max-w-[760px] text-[16px] leading-[1.7]">
           其中「數據收集」最優先也最重要：①收集所有空壓設備基本資訊（型號、功率、運行時間、負載）②確定每台設備能源消耗量（kWh）。
         </p>
       </ServiceSection>

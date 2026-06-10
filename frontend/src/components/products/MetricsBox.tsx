@@ -25,10 +25,10 @@ export function MetricsBox({ metrics }: MetricsBoxProps) {
             index % 2 === 1 ? "border-border border-l" : ""
           } ${index >= 2 ? "border-border border-t" : ""}`}
         >
-          <dt className="text-text-muted font-mono text-[11px] tracking-[0.5px] uppercase">
+          <dt className="text-text-muted font-mono text-[13px] tracking-[0.5px] uppercase">
             {metric.label}
           </dt>
-          <dd className="text-ink text-[18px] font-bold">{metric.value}</dd>
+          <dd className="text-ink text-[20px] font-bold">{metric.value}</dd>
         </div>
       ))}
     </dl>

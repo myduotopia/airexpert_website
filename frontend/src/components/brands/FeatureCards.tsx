@@ -31,10 +31,10 @@ export function FeatureCards({ items, columns = 3 }: FeatureCardsProps) {
               aria-hidden="true"
             />
           </span>
-          <h3 className="text-ink text-[18px] leading-snug font-semibold">
+          <h3 className="text-ink text-[20px] leading-snug font-semibold">
             {title}
           </h3>
-          <p className="text-text-muted text-[14px] leading-[1.7]">
+          <p className="text-text-muted text-[16px] leading-[1.7]">
             {description}
           </p>
         </li>

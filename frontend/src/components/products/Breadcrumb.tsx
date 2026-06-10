@@ -21,7 +21,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
       aria-label="麵包屑"
       className="bg-surface-muted border-border border-b"
     >
-      <ol className="text-text-muted mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-6 py-3.5 font-mono text-[12px] md:px-20">
+      <ol className="text-text-muted mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-6 py-3.5 font-mono text-[14px] md:px-20">
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
           return (

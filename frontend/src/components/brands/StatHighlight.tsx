@@ -17,10 +17,10 @@ export function StatHighlight({ stats }: StatHighlightProps) {
           key={stat.label}
           className="border-border bg-surface flex flex-col gap-2 rounded-[14px] border p-7"
         >
-          <dt className="text-text-muted order-2 text-[14px] leading-[1.6]">
+          <dt className="text-text-muted order-2 text-[16px] leading-[1.6]">
             {stat.label}
           </dt>
-          <dd className="text-primary-deep order-1 font-mono text-[42px] leading-none font-bold">
+          <dd className="text-primary-deep order-1 font-mono text-[44px] leading-none font-bold">
             {stat.value}
           </dd>
         </div>

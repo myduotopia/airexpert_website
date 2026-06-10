@@ -74,18 +74,18 @@ export default function KaishanPage() {
             />
           }
         >
-          <p className="text-text-muted text-[15px] leading-[1.8] md:text-[16px]">
+          <p className="text-text-muted text-[17px] leading-[1.8] md:text-[18px]">
             研發團隊在湯炎博士帶領下，按北美研發中心完成的模型設計提供參數設計，上海研發中心進行圖紙設計，衢州技術中心開展工藝設計的分工，開發出大量擁有自主知識產權、世界領先的高新技術產品。
           </p>
           <ul className="mt-6 flex flex-col gap-3">
-            <li className="text-ink flex items-start gap-3 text-[14px] leading-[1.6]">
+            <li className="text-ink flex items-start gap-3 text-[16px] leading-[1.6]">
               <MapPin
                 className="text-primary-deep mt-0.5 h-[18px] w-[18px] shrink-0"
                 aria-hidden="true"
               />
               美國西雅圖北美研發中心（Jersey North America Development Center）
             </li>
-            <li className="text-ink flex items-start gap-3 text-[14px] leading-[1.6]">
+            <li className="text-ink flex items-start gap-3 text-[16px] leading-[1.6]">
               <MapPin
                 className="text-primary-deep mt-0.5 h-[18px] w-[18px] shrink-0"
                 aria-hidden="true"
@@ -112,9 +112,9 @@ export default function KaishanPage() {
                   aria-hidden="true"
                 />
               </span>
-              <h3 className="text-ink text-[24px] font-bold">湯炎 博士</h3>
+              <h3 className="text-ink text-[26px] font-bold">湯炎 博士</h3>
             </div>
-            <p className="text-text-muted text-[15px] leading-[1.8] md:text-[16px]">
+            <p className="text-text-muted text-[17px] leading-[1.8] md:text-[18px]">
               全球為數不多最頂尖的螺旋式壓縮機專家之一，海外二十餘年領導數家世界著名壓縮機公司的膨脹發電站、天然氣、冷媒及空氣壓縮機產品開發，擁有多項美國專利。發明的
               T、α、Y
               型線應用於多家世界知名壓縮機公司產品，約佔每年全球螺旋式產品 15%

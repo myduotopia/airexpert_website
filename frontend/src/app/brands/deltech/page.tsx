@@ -66,21 +66,21 @@ export default function DeltechPage() {
             <BrandImagePlaceholder label="SPX FLOW HQ" className="h-[300px]" />
           }
         >
-          <p className="text-text-muted text-[15px] leading-[1.8] md:text-[16px]">
+          <p className="text-text-muted text-[17px] leading-[1.8] md:text-[18px]">
             SPX FLOW
             總部位於美國北卡羅來納州夏洛特市，是全球領先供應商，提供高度工程化的流體組件、製程設備、統包系統工程及相關售後備件與服務；服務食品飲料、能源電力、通用工業三大市場，年銷售額超過
             20 億美金，在全球超過 35 個國家設分支機構、150
             多個國家有銷售辦事處。
           </p>
           <ul className="mt-6 flex flex-col gap-3">
-            <li className="text-ink flex items-start gap-3 text-[14px] leading-[1.6]">
+            <li className="text-ink flex items-start gap-3 text-[16px] leading-[1.6]">
               <Globe
                 className="text-primary-deep mt-0.5 h-[18px] w-[18px] shrink-0"
                 aria-hidden="true"
               />
               年銷售額超過 20 億美金
             </li>
-            <li className="text-ink flex items-start gap-3 text-[14px] leading-[1.6]">
+            <li className="text-ink flex items-start gap-3 text-[16px] leading-[1.6]">
               <Globe
                 className="text-primary-deep mt-0.5 h-[18px] w-[18px] shrink-0"
                 aria-hidden="true"
@@ -106,11 +106,11 @@ export default function DeltechPage() {
             />
           }
         >
-          <p className="text-text-muted text-[15px] leading-[1.8] md:text-[16px]">
+          <p className="text-text-muted text-[17px] leading-[1.8] md:text-[18px]">
             利用相變材料（PCM）的潛熱儲能特性，可大幅降低冷媒壓縮機運轉時間，讓冷凍式乾燥機不必持續運轉。適用
             20~3000 馬力的空壓機。
           </p>
-          <div className="text-ink mt-6 flex items-start gap-3 text-[14px] leading-[1.6]">
+          <div className="text-ink mt-6 flex items-start gap-3 text-[16px] leading-[1.6]">
             <Battery
               className="text-primary-deep mt-0.5 h-[18px] w-[18px] shrink-0"
               aria-hidden="true"

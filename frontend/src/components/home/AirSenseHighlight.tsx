@@ -22,14 +22,14 @@ export function AirSenseHighlight() {
             against white text). Consistent with Header/CTA precedent. */}
         <span className="bg-primary-deep inline-flex w-fit items-center gap-1.5 rounded-[20px] px-3 py-1.5 text-white">
           <Cloud className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="font-mono text-[11px] font-bold tracking-[0.5px]">
+          <span className="font-mono text-[13px] font-bold tracking-[0.5px]">
             AIRSENSE CLOUD
           </span>
         </span>
-        <h3 className="text-ink text-[26px] leading-tight font-bold md:text-[30px]">
+        <h3 className="text-ink text-[28px] leading-tight font-bold md:text-[32px]">
           智慧監控雲端平台
         </h3>
-        <p className="text-text-muted text-[15px] leading-[1.6]">
+        <p className="text-text-muted text-[17px] leading-[1.6]">
           即時監測壓力、流量與耗能，結合 ISO 50001
           能源管理框架，量化每一度節能成效。
         </p>
@@ -42,10 +42,10 @@ export function AirSenseHighlight() {
             key={stat.label}
             className="border-border bg-surface flex flex-col items-center gap-1 rounded-[12px] border p-5 text-center"
           >
-            <span className="text-primary-deep font-mono text-[22px] font-bold md:text-[26px]">
+            <span className="text-primary-deep font-mono text-[24px] font-bold md:text-[28px]">
               {stat.value}
             </span>
-            <span className="text-text-muted text-[12px]">{stat.label}</span>
+            <span className="text-text-muted text-[14px]">{stat.label}</span>
           </div>
         ))}
       </div>

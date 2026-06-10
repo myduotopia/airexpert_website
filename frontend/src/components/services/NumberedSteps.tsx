@@ -30,16 +30,16 @@ export function NumberedSteps({
           className="border-border bg-surface flex flex-col gap-3 rounded-[14px] border p-6 sm:flex-row sm:gap-5"
         >
           <span
-            className="bg-primary-soft/25 text-primary-deep flex h-10 w-10 shrink-0 items-center justify-center rounded-[20px] font-mono text-[15px] font-bold"
+            className="bg-primary-soft/25 text-primary-deep flex h-10 w-10 shrink-0 items-center justify-center rounded-[20px] font-mono text-[17px] font-bold"
             aria-hidden="true"
           >
             {String(index + 1).padStart(2, "0")}
           </span>
           <div className="flex flex-col gap-2">
-            <Tag className="text-ink text-[16px] font-semibold sm:text-[17px]">
+            <Tag className="text-ink text-[18px] font-semibold sm:text-[19px]">
               {step.title}
             </Tag>
-            <div className="text-text-muted text-[14px] leading-[1.7]">
+            <div className="text-text-muted text-[16px] leading-[1.7]">
               {step.body}
             </div>
           </div>
