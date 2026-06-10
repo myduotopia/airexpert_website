@@ -31,3 +31,4 @@ venv/
 # Next.js
 .next/
 out/
+.vercel
