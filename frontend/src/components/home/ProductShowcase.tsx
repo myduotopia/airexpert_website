@@ -1,37 +1,36 @@
-import { Wind, Gauge, Fan, Tornado, Snowflake, Filter } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import Image from "next/image";
 
-type Category = { icon: LucideIcon; name: string; desc: string };
+type Category = { img: string; name: string; desc: string };
 
-// 產品示意圖 — the 6 schema product categories, V3.08-styled showcase.
+// 產品示意圖 — the 6 schema product categories with real product photos.
 const CATEGORIES: Category[] = [
   {
-    icon: Wind,
+    img: "/categories/cat-air-compressor.jpg",
     name: "變頻空壓機",
     desc: "永磁變頻螺旋、無油與微油機種，7.5–600 HP 完整涵蓋。",
   },
   {
-    icon: Gauge,
+    img: "/categories/cat-vacuum-pump.jpg",
     name: "變頻真空泵",
     desc: "乾式與微油變頻真空系統，穩定深真空表現。",
   },
   {
-    icon: Fan,
+    img: "/categories/cat-blower.jpg",
     name: "變頻鼓風機",
     desc: "氣懸浮／磁懸浮離心式，污水與氣力輸送應用。",
   },
   {
-    icon: Tornado,
+    img: "/categories/cat-centrifugal.jpg",
     name: "離心式空壓機",
     desc: "大型離心機種，300–4500 kW 高流量需求。",
   },
   {
-    icon: Snowflake,
+    img: "/categories/cat-refrigerated-dryer.jpg",
     name: "冷凍式乾燥機",
     desc: "相變儲能與冷凍式乾燥，穩定露點控制。",
   },
   {
-    icon: Filter,
+    img: "/categories/cat-adsorption-dryer.jpg",
     name: "吸附式乾燥機",
     desc: "壓縮熱回收與雙塔吸附，達 −70°C 低露點。",
   },
@@ -57,15 +56,24 @@ export function ProductShowcase() {
           {CATEGORIES.map((c) => (
             <div
               key={c.name}
-              className="border-border bg-surface flex flex-col gap-4 rounded-2xl border p-7 transition-shadow hover:shadow-[0_6px_28px_rgba(22,32,26,0.07)]"
+              className="border-border bg-surface group flex flex-col overflow-hidden rounded-2xl border transition-shadow hover:shadow-[0_6px_28px_rgba(22,32,26,0.07)]"
             >
-              <span className="bg-primary-soft/20 flex h-12 w-12 items-center justify-center rounded-xl">
-                <c.icon className="text-primary h-6 w-6" aria-hidden="true" />
-              </span>
-              <h3 className="text-ink text-[18px] font-semibold">{c.name}</h3>
-              <p className="text-text-muted text-[14px] leading-[1.6]">
-                {c.desc}
-              </p>
+              <div className="bg-surface flex aspect-[4/3] items-center justify-center p-6">
+                <Image
+                  src={c.img}
+                  alt={c.name}
+                  width={800}
+                  height={800}
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                  className="h-full w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+                />
+              </div>
+              <div className="border-border flex flex-col gap-2 border-t p-6">
+                <h3 className="text-ink text-[18px] font-semibold">{c.name}</h3>
+                <p className="text-text-muted text-[14px] leading-[1.6]">
+                  {c.desc}
+                </p>
+              </div>
             </div>
           ))}
         </div>
