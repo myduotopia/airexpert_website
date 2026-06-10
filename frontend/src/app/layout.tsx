@@ -33,13 +33,12 @@ export const metadata: Metadata = {
     template: "%s ｜ 超勁賀空壓科技",
   },
   description: SITE_DESCRIPTION,
-  alternates: {
-    canonical: "/",
-  },
+  // No root-level canonical: without one each route self-canonicalizes to its
+  // own URL. A blanket "/" here would wrongly mark every page a duplicate of home.
   openGraph: {
     type: "website",
     locale: "zh_TW",
-    url: SITE_URL,
+    url: "/",
     siteName: SITE_NAME,
     title: SITE_NAME,
     description: SITE_DESCRIPTION,
