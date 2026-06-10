@@ -16,10 +16,50 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+// Overridable at deploy; same fallback as sitemap.ts / robots.ts.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airexpert.com.tw";
+
+const SITE_NAME = "超勁賀空壓科技 AirExpert";
+const SITE_DESCRIPTION =
+  "超勁賀空壓科技以節能氣源系統推動永續製造，提供空氣壓縮機、真空泵浦、鼓風機與乾燥機，導入 ISO 50001 能源管理，協助產業邁向淨零目標。";
+
 export const metadata: Metadata = {
-  title: "超勁賀空壓科技 AirExpert",
-  description:
-    "超勁賀空壓科技以節能氣源系統推動永續製造，提供空氣壓縮機、真空泵浦、鼓風機與乾燥機，導入 ISO 50001 能源管理，協助產業邁向淨零目標。",
+  // metadataBase resolves relative OG/Twitter image + canonical URLs to absolute.
+  metadataBase: new URL(SITE_URL),
+  // Child pages set only their own title; `template` appends the brand suffix.
+  // `default` is used by pages without a title (and as the OpenGraph title).
+  title: {
+    default: SITE_NAME,
+    template: "%s ｜ 超勁賀空壓科技",
+  },
+  description: SITE_DESCRIPTION,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "zh_TW",
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    // TODO(seo): replace with a real 1200×630 PNG; /og-default.svg is a
+    // lightweight placeholder until brand artwork is produced.
+    images: [
+      {
+        url: "/og-default.svg",
+        width: 1200,
+        height: 630,
+        alt: SITE_NAME,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: ["/og-default.svg"],
+  },
 };
 
 export default function RootLayout({

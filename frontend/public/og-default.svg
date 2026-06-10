@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="超勁賀空壓科技 AirExpert">
+  <rect width="1200" height="630" fill="#0f3d2e" />
+  <rect x="0" y="0" width="1200" height="8" fill="#3fae6a" />
+  <text x="80" y="300" font-family="'Inter', 'Noto Sans TC', sans-serif" font-size="84" font-weight="700" fill="#ffffff">超勁賀空壓科技</text>
+  <text x="80" y="392" font-family="'JetBrains Mono', monospace" font-size="44" font-weight="600" fill="#3fae6a" letter-spacing="4">AirExpert</text>
+  <text x="80" y="470" font-family="'Inter', 'Noto Sans TC', sans-serif" font-size="30" fill="#c9d8d0">節能氣源系統 · 永續製造 · ISO 50001</text>
+</svg>
