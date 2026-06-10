@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Loader2, Send, CheckCircle2 } from "lucide-react";
 import { submitContactForm } from "@/lib/contact";
 import type { ContactSubmissionInput } from "@/lib/types";
@@ -28,6 +28,13 @@ export function ContactForm() {
 
   const [status, setStatus] = useState<Status>("idle");
   const [errors, setErrors] = useState<FieldErrors>({});
+
+  // Move focus to the confirmation on success so screen readers announce it
+  // (content already present when a live region first mounts is not announced).
+  const successHeadingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (status === "success") successHeadingRef.current?.focus();
+  }, [status]);
 
   // Stable ids for label/aria associations.
   const baseId = useId();
@@ -82,6 +89,7 @@ export function ContactForm() {
     return (
       <div
         className="border-border bg-surface flex flex-col items-center gap-4 rounded-2xl border px-6 py-12 text-center"
+        role="status"
         aria-live="polite"
       >
         <span className="bg-surface-muted flex h-14 w-14 items-center justify-center rounded-full">
@@ -90,7 +98,13 @@ export function ContactForm() {
             aria-hidden="true"
           />
         </span>
-        <h2 className="text-ink text-[22px] font-bold">感謝您的來信</h2>
+        <h2
+          ref={successHeadingRef}
+          tabIndex={-1}
+          className="text-ink text-[22px] font-bold outline-none"
+        >
+          感謝您的來信
+        </h2>
         <p className="text-text-muted max-w-[360px] text-[15px] leading-[1.65]">
           我們已收到您的需求，專人將盡快與您聯繫。若為緊急事項，歡迎直接來電。
         </p>
@@ -188,7 +202,9 @@ export function ContactForm() {
             : "text-text-muted -mt-3 text-[13px]"
         }
       >
-        電話與 Email 至少擇一填寫，方便我們回覆您。
+        {errors.contact
+          ? "請至少填寫電話或 Email，方便我們回覆您。"
+          : "電話與 Email 至少擇一填寫，方便我們回覆您。"}
       </p>
 
       {/* Message (required) */}
