@@ -42,11 +42,11 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     title: SITE_NAME,
     description: SITE_DESCRIPTION,
-    // TODO(seo): replace with a real 1200×630 PNG; /og-default.svg is a
-    // lightweight placeholder until brand artwork is produced.
+    // TODO(seo): replace with final brand artwork; /og-default.png is a
+    // simple brand-colour 1200×630 placeholder.
     images: [
       {
-        url: "/og-default.svg",
+        url: "/og-default.png",
         width: 1200,
         height: 630,
         alt: SITE_NAME,
@@ -57,7 +57,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: SITE_NAME,
     description: SITE_DESCRIPTION,
-    images: ["/og-default.svg"],
+    images: ["/og-default.png"],
   },
 };
 
