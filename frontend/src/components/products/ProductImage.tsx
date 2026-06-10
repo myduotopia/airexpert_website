@@ -1,6 +1,6 @@
 import Image from "next/image";
 import type { MediaImage } from "@/lib/types";
-import { ImagePlaceholderIcon } from "./icons";
+import { ImageIcon } from "lucide-react";
 
 type ProductImageProps = {
   /** First/primary image is usually passed; null/undefined renders a placeholder. */
@@ -37,7 +37,7 @@ export function ProductImage({
         className={`bg-surface-muted text-border flex h-full w-full items-center justify-center ${className ?? ""}`}
         aria-hidden="true"
       >
-        <ImagePlaceholderIcon size={40} />
+        <ImageIcon size={40} aria-hidden="true" />
       </div>
     );
   }

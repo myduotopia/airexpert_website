@@ -16,7 +16,7 @@ export function FeatureGrid({ features }: FeatureGridProps) {
             className="border-border bg-surface flex flex-col gap-3.5 rounded-[14px] border p-5"
           >
             <span className="bg-primary-soft/25 text-primary-deep flex h-[42px] w-[42px] items-center justify-center rounded-[21px]">
-              <Icon size={21} />
+              <Icon size={21} aria-hidden="true" />
             </span>
             <h3 className="text-ink text-[15px] font-semibold">
               {feature.title}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Product } from "@/lib/types";
 import { ProductImage } from "./ProductImage";
-import { ArrowRightIcon } from "./icons";
+import { ArrowRight } from "lucide-react";
 
 type ProductCardProps = {
   product: Product;
@@ -61,8 +61,9 @@ export function ProductCard({ product, variant = "list" }: ProductCardProps) {
 
         <span className="text-primary-deep mt-1 inline-flex items-center gap-1 text-[13px] font-medium">
           {isRelated ? "查看" : "查看詳情"}
-          <ArrowRightIcon
+          <ArrowRight
             size={14}
+            aria-hidden="true"
             className="transition-transform group-hover:translate-x-0.5"
           />
         </span>
