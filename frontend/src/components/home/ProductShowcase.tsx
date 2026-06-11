@@ -48,7 +48,7 @@ export function ProductShowcase() {
             完整節能氣源系統
           </h2>
           <p className="text-text-muted max-w-[560px] text-[17px] leading-[1.6]">
-            從空壓、真空、鼓風到乾燥，單一窗口整合最適合您現場的節能配置。
+            從空壓、真空、鼓風到乾燥，單一窗口整合最適合廠務設備的節能配置。
           </p>
         </div>
 

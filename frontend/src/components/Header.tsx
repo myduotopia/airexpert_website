@@ -19,7 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "商品介紹", href: "/maintenance" },
   { label: "最新消息", href: "/maintenance" },
   { label: "服務項目", href: "/maintenance" },
-  { label: "加入時機", href: "/maintenance" },
+  { label: "節能實績", href: "/maintenance" },
   { label: "公司活動", href: "/events" },
   { label: "聯絡我們", href: "/contact" },
 ];
