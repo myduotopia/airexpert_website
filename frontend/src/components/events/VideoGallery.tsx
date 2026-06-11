@@ -124,7 +124,7 @@ export function VideoGallery() {
                 </span>
               </div>
             </div>
-            <p className="text-ink mt-3 line-clamp-2 text-[17px] leading-[1.5] font-medium">
+            <p className="text-ink mt-3 line-clamp-2 min-h-[51px] text-[17px] leading-[1.5] font-medium">
               {v.caption}
             </p>
           </button>
