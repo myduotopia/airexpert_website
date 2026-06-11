@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
-import { Logo } from "@/components/Logo";
 import { BRAND_NAME_CN, BRAND_NAME_EN } from "@/lib/brand";
 
 type NavItem = {
@@ -12,27 +12,41 @@ type NavItem = {
   href: string;
 };
 
-// Interim launch nav. The non-home items redirect to /maintenance
-// (see next.config.ts) while their content is being updated.
+// Interim launch nav. 首頁 → home, 公司活動 → /events, 聯絡我們 → /contact;
+// the remaining sections link to /maintenance while their content is updated.
 const NAV_ITEMS: NavItem[] = [
   { label: "首頁", href: "/" },
-  { label: "產品系列", href: "/products" },
-  { label: "解決方案", href: "/services" },
-  { label: "技術文獻", href: "/tech" },
-  { label: "最新消息", href: "/news" },
-  { label: "關於", href: "/about" },
+  { label: "商品介紹", href: "/maintenance" },
+  { label: "最新消息", href: "/maintenance" },
+  { label: "服務項目", href: "/maintenance" },
+  { label: "加入時機", href: "/maintenance" },
+  { label: "公司活動", href: "/events" },
+  { label: "聯絡我們", href: "/contact" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
+  // Don't highlight the shared /maintenance links (several map to it).
+  if (href === "/maintenance") return false;
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function Brand() {
   return (
-    <Link href="/" className="flex items-center gap-3">
-      {/* Green logo mark on light bg uses primary-deep token. */}
-      <Logo className="text-primary-deep" width={58} height={38} />
+    <Link
+      href="/"
+      className="flex items-center gap-3"
+      aria-label={BRAND_NAME_CN}
+    >
+      {/* Official 超勁賀 brand mark (blue), from the company logo artwork. */}
+      <Image
+        src="/brand/logo-mark.png"
+        alt=""
+        width={150}
+        height={99}
+        priority
+        className="h-[46px] w-auto"
+      />
       <span className="flex flex-col gap-1 leading-tight">
         <span className="text-ink text-[28px] leading-none font-bold">
           {BRAND_NAME_CN}
@@ -55,10 +69,10 @@ export function Header() {
         <Brand />
 
         {/* Desktop nav (語言切換 / 預約談話 CTA hidden for the interim launch) */}
-        <nav className="hidden items-center gap-[30px] lg:flex">
+        <nav className="hidden items-center gap-[22px] lg:flex">
           {NAV_ITEMS.map((item) => (
             <Link
-              key={item.href}
+              key={item.label}
               href={item.href}
               aria-current={isActive(pathname, item.href) ? "page" : undefined}
               className={`text-[18px] font-medium transition-colors ${
@@ -97,7 +111,7 @@ export function Header() {
         >
           <ul className="mx-auto flex max-w-[1440px] flex-col px-6 py-2 md:px-12">
             {NAV_ITEMS.map((item) => (
-              <li key={item.href}>
+              <li key={item.label}>
                 <Link
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
