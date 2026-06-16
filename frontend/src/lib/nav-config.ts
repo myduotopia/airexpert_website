@@ -32,7 +32,7 @@ export const PRIMARY_NAV: NavSection[] = [
   { key: "home", label: "首頁", href: "/", ready: true },
   { key: "brands", label: "品牌介紹", href: "/brands", ready: true },
   { key: "products", label: "商品介紹", href: "/products", ready: true },
-  { key: "news", label: "最新消息", href: "/news", ready: false },
+  { key: "news", label: "最新消息", href: "/news", ready: true },
   { key: "services", label: "服務項目", href: "/services", ready: false },
   { key: "cases", label: "節能實績", href: "/cases", ready: false },
   { key: "events", label: "公司活動", href: "/events", ready: true },
