@@ -1,0 +1,6 @@
+# Products already seeded — do NOT re-seed in issue #31.
+#
+# 商品（products 表）已於 MVP #10 透過 supabase/seed_products.py 匯入。
+# 本 tab（#31 商品介紹）僅實作前台版型 + 後台 CRUD，不重複 seed 商品資料。
+#
+# 後台新增/編輯走 @/lib/admin/crud（table "products"），不需任何 seed 腳本。
