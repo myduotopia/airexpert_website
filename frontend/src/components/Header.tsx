@@ -6,29 +6,13 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { BRAND_NAME_CN, BRAND_NAME_EN } from "@/lib/brand";
+import { PRIMARY_NAV, navHref, type NavSection } from "@/lib/nav-config";
 
-type NavItem = {
-  label: string;
-  href: string;
-};
-
-// Interim launch nav. 首頁 → home, 公司活動 → /events, 聯絡我們 → /contact;
-// the remaining sections link to /maintenance while their content is updated.
-const NAV_ITEMS: NavItem[] = [
-  { label: "首頁", href: "/" },
-  { label: "商品介紹", href: "/maintenance" },
-  { label: "最新消息", href: "/maintenance" },
-  { label: "服務項目", href: "/maintenance" },
-  { label: "節能實績", href: "/maintenance" },
-  { label: "公司活動", href: "/events" },
-  { label: "聯絡我們", href: "/contact" },
-];
-
-function isActive(pathname: string, href: string): boolean {
-  // Don't highlight the shared /maintenance links (several map to it).
-  if (href === "/maintenance") return false;
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isActive(pathname: string, section: NavSection): boolean {
+  // 未上線的 section 連到 /maintenance（多個共用），不高亮。
+  if (!section.ready) return false;
+  if (section.href === "/") return pathname === "/";
+  return pathname === section.href || pathname.startsWith(`${section.href}/`);
 }
 
 function Brand() {
@@ -70,18 +54,18 @@ export function Header() {
 
         {/* Desktop nav (語言切換 / 預約談話 CTA hidden for the interim launch) */}
         <nav className="hidden items-center gap-[22px] lg:flex">
-          {NAV_ITEMS.map((item) => (
+          {PRIMARY_NAV.map((section) => (
             <Link
-              key={item.label}
-              href={item.href}
-              aria-current={isActive(pathname, item.href) ? "page" : undefined}
+              key={section.key}
+              href={navHref(section)}
+              aria-current={isActive(pathname, section) ? "page" : undefined}
               className={`text-[18px] font-medium transition-colors ${
-                isActive(pathname, item.href)
+                isActive(pathname, section)
                   ? "text-ink"
                   : "text-text-muted hover:text-ink"
               }`}
             >
-              {item.label}
+              {section.label}
             </Link>
           ))}
         </nav>
@@ -110,21 +94,21 @@ export function Header() {
           className="border-border bg-surface border-t lg:hidden"
         >
           <ul className="mx-auto flex max-w-[1440px] flex-col px-6 py-2 md:px-12">
-            {NAV_ITEMS.map((item) => (
-              <li key={item.label}>
+            {PRIMARY_NAV.map((section) => (
+              <li key={section.key}>
                 <Link
-                  href={item.href}
+                  href={navHref(section)}
                   onClick={() => setMenuOpen(false)}
                   aria-current={
-                    isActive(pathname, item.href) ? "page" : undefined
+                    isActive(pathname, section) ? "page" : undefined
                   }
                   className={`block py-3 text-[19px] font-medium transition-colors ${
-                    isActive(pathname, item.href)
+                    isActive(pathname, section)
                       ? "text-ink"
                       : "text-text-muted hover:text-ink"
                   }`}
                 >
-                  {item.label}
+                  {section.label}
                 </Link>
               </li>
             ))}

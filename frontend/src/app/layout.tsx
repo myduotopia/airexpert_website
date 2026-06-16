@@ -4,6 +4,7 @@ import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { FloatingSocial } from "@/components/FloatingSocial";
+import { SiteChrome } from "@/components/SiteChrome";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -73,10 +74,13 @@ export default function RootLayout({
       className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
-        <FloatingSocial />
+        <SiteChrome
+          header={<Header />}
+          footer={<Footer />}
+          social={<FloatingSocial />}
+        >
+          {children}
+        </SiteChrome>
       </body>
     </html>
   );

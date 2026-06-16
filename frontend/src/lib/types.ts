@@ -77,6 +77,8 @@ export interface Case {
   body_html: string | null;
   metrics: CaseMetrics;
   images: MediaImage[];
+  seo_title: string | null;
+  seo_description: string | null;
   status: ContentStatus;
   legacy_path: string | null;
   created_at: string;
@@ -159,4 +161,47 @@ export interface AiContentDraft {
   status: AiDraftStatus;
   created_by: string | null;
   created_at: string;
+}
+
+// ---------- brands（V2：品牌介紹 KAISHAN / DELTECH，0002_v2_cms.sql） ----------
+export interface Brand {
+  id: string;
+  slug: string;
+  name: string;
+  logo_url: string | null;
+  summary: string | null;
+  body_html: string | null;
+  images: MediaImage[];
+  seo_title: string | null;
+  seo_description: string | null;
+  sort_order: number;
+  status: ContentStatus;
+  legacy_path: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---------- services（V2：服務項目 ×4，0002_v2_cms.sql） ----------
+export interface Service {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  body_html: string | null;
+  images: MediaImage[];
+  seo_title: string | null;
+  seo_description: string | null;
+  sort_order: number;
+  status: ContentStatus;
+  legacy_path: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---------- site_settings（V2：全域內容，key→jsonb，0002_v2_cms.sql） ----------
+// value 為開放 jsonb；各 key 的形狀由使用端（首頁 / 聯絡頁）自行 narrow。
+export interface SiteSetting<T = Record<string, unknown>> {
+  key: string;
+  value: T;
+  updated_at: string;
 }
