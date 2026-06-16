@@ -20,7 +20,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     key: "products",
     label: "商品介紹",
     href: "/admin/products",
-    enabled: false,
+    enabled: true,
   },
   { key: "news", label: "最新消息", href: "/admin/news", enabled: false },
   {
