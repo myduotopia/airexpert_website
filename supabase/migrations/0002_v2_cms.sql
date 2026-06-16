@@ -37,6 +37,17 @@ $$;
 create policy "admin reads own profile" on admin_profiles
   for select to authenticated using (id = auth.uid());
 
+-- is_admin() 僅供登入者評估（縱深防禦）。anon 雖然 auth.uid() 為 null 會得 false，
+-- 但預設 EXECUTE 給 PUBLIC，仍明確收斂。
+-- Supabase 預設也直接 grant 給 anon，故一併收斂（不只 public 偽角色）。
+revoke execute on function is_admin() from public, anon;
+grant execute on function is_admin() to authenticated;
+
+-- admin_profiles 無 insert/update/delete policy（刻意 fail-closed，未納入下方 admin all 迴圈）：
+-- 管理員只能由 service_role 或直接 SQL 佈建。新增第一位 admin：
+--   insert into admin_profiles (id, email) values ('<auth.users.id>', '<email>');
+-- PR-2 的 admin 身分流程（getServerSupabase().auth.getUser() + is_admin()）依賴此表有列。
+
 -- ============================================================
 -- 品牌介紹 (KAISHAN / DELTECH) — 02、03
 -- ============================================================
@@ -85,11 +96,13 @@ create trigger services_updated_at before update on services
 -- ============================================================
 -- 全域內容 / 設定（首頁 hero、精選區塊、聯絡資訊…）
 -- key 例：home_hero / home_featured / contact_info / footer
--- 註：AI provider 金鑰等敏感設定不存這裡（site_settings 公開讀）；#37 另建 admin-only 表加密儲存。
+-- is_public：是否對外公開讀取。預設 false（fail-closed）——前台需要的 key（首頁/聯絡）
+-- seed 時要明確設 is_public=true。敏感設定即使誤放這裡也不會外洩（#37 仍會另建加密表）。
 -- ============================================================
 create table site_settings (
   key        text primary key,
   value      jsonb not null default '{}'::jsonb,
+  is_public  boolean not null default false,
   updated_at timestamptz not null default now()
 );
 create trigger site_settings_updated_at before update on site_settings
@@ -114,9 +127,9 @@ create policy "public read published brands" on brands
 create policy "public read published services" on services
   for select using (status = 'published');
 
--- site_settings 公開讀（前台首頁 / 聯絡資訊需要）
-create policy "public read site_settings" on site_settings
-  for select using (true);
+-- site_settings 只公開讀 is_public=true 的列（fail-closed；新 key 預設不外洩）
+create policy "public read public site_settings" on site_settings
+  for select using (is_public);
 
 -- admin（authenticated 且 is_admin）對所有內容表全權讀寫。
 -- 與既有「公開讀 published」policy 並存（RLS policy 為 permissive，OR 關係）。
