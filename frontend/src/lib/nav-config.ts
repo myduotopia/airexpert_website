@@ -30,7 +30,7 @@ export const MAINTENANCE_HREF = "/maintenance";
 
 export const PRIMARY_NAV: NavSection[] = [
   { key: "home", label: "首頁", href: "/", ready: true },
-  { key: "brands", label: "品牌介紹", href: "/brands", ready: false },
+  { key: "brands", label: "品牌介紹", href: "/brands", ready: true },
   { key: "products", label: "商品介紹", href: "/products", ready: false },
   { key: "news", label: "最新消息", href: "/news", ready: false },
   { key: "services", label: "服務項目", href: "/services", ready: false },
