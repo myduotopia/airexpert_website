@@ -198,9 +198,35 @@ export const HOME_DEFAULTS: HomeContent = {
 };
 
 // 取單一 key，找不到（或尚未 seed）時退回 default。
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * 以 fallback（型別預設值）為骨架，深層套用 DB 存的 value。
+ * 後台可能存進壞形狀的 jsonb（語法正確但缺欄位 / 型別不符 / 純量）——
+ * 此處讓型別不符的欄位退回預設、陣列僅在確實是陣列時採用，
+ * 確保前台 server render 不會因此 crash（缺漏只影響該欄位、不影響整頁）。
+ */
+function mergeShape<T>(value: unknown, fallback: T): T {
+  if (Array.isArray(fallback)) {
+    return (Array.isArray(value) ? value : fallback) as T;
+  }
+  if (isPlainObject(fallback)) {
+    if (!isPlainObject(value)) return fallback;
+    const out: Record<string, unknown> = { ...fallback };
+    for (const k of Object.keys(fallback)) {
+      out[k] = mergeShape(value[k], (fallback as Record<string, unknown>)[k]);
+    }
+    return out as T;
+  }
+  return (typeof value === typeof fallback ? value : fallback) as T;
+}
+
 async function settingOr<T>(key: string, fallback: T): Promise<T> {
   const value = await getSiteSetting<T>(key);
-  return value ?? fallback;
+  if (value == null) return fallback;
+  return mergeShape(value, fallback);
 }
 
 /**
