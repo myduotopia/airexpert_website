@@ -8,6 +8,7 @@ import { createRow, updateRow, deleteRow } from "@/lib/admin/crud";
 import { CACHE_TAGS } from "@/lib/data/cache";
 import type { ActionResult } from "@/lib/admin/crud";
 import type { ContentStatus, MediaImage } from "@/lib/types";
+import { NEWS_CATEGORIES } from "@/components/news/constants";
 
 const TABLE = "articles";
 const TAGS = [CACHE_TAGS.articles];
@@ -53,6 +54,24 @@ function buildValues(fd: FormData): Record<string, unknown> {
   };
 }
 
+const SLUG_RE = /^[a-z0-9-]+$/;
+
+// server 端為信任邊界：不能只靠 client 的 <select>/<input>，必須驗 slug 格式與分類白名單。
+function validate(values: Record<string, unknown>): string | null {
+  if (!values.title || !values.slug || !values.category) {
+    return "標題、網址代稱（slug）與分類為必填";
+  }
+  if (!SLUG_RE.test(values.slug as string)) {
+    return "網址代稱（slug）僅能使用小寫英數字與連字號（-）";
+  }
+  if (
+    !(NEWS_CATEGORIES as readonly string[]).includes(values.category as string)
+  ) {
+    return "分類無效";
+  }
+  return null;
+}
+
 export type FormState = { error?: string };
 
 export async function createArticle(
@@ -61,9 +80,8 @@ export async function createArticle(
 ): Promise<FormState> {
   await requireAdmin();
   const values = buildValues(fd);
-  if (!values.title || !values.slug || !values.category) {
-    return { error: "標題、網址代稱（slug）與分類為必填" };
-  }
+  const err = validate(values);
+  if (err) return { error: err };
   const res = await createRow(TABLE, values, TAGS);
   if (!res.ok) return { error: res.error };
   redirect("/admin/news");
@@ -76,9 +94,8 @@ export async function updateArticle(
 ): Promise<FormState> {
   await requireAdmin();
   const values = buildValues(fd);
-  if (!values.title || !values.slug || !values.category) {
-    return { error: "標題、網址代稱（slug）與分類為必填" };
-  }
+  const err = validate(values);
+  if (err) return { error: err };
   const res = await updateRow(TABLE, id, values, TAGS);
   if (!res.ok) return { error: res.error };
   redirect("/admin/news");
