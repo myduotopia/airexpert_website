@@ -37,12 +37,27 @@ const inputCls =
 const textareaCls =
   "border-border focus:border-primary w-full rounded-lg border bg-white px-3 py-2 text-[14px] outline-none";
 
+/** AI 草稿等預填值（建立模式用；article 仍為 undefined 以維持「建立文章」流程）。 */
+export type ArticlePrefill = Partial<
+  Pick<
+    Article,
+    | "title"
+    | "category"
+    | "excerpt"
+    | "body_html"
+    | "seo_title"
+    | "seo_description"
+  >
+>;
+
 export function ArticleForm({
   action,
   article,
+  prefill,
 }: {
   action: Action;
   article?: Article;
+  prefill?: ArticlePrefill;
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
   const [cover, setCover] = useState(article?.cover_image ?? "");
@@ -68,7 +83,7 @@ export function ArticleForm({
           id={`${uid}-title`}
           name="title"
           required
-          defaultValue={article?.title ?? ""}
+          defaultValue={article?.title ?? prefill?.title ?? ""}
           className={inputCls}
         />
       </div>
@@ -96,7 +111,9 @@ export function ArticleForm({
             id={`${uid}-category`}
             name="category"
             required
-            defaultValue={article?.category ?? NEWS_CATEGORIES[0]}
+            defaultValue={
+              article?.category ?? prefill?.category ?? NEWS_CATEGORIES[0]
+            }
             className={inputCls}
           >
             {NEWS_CATEGORIES.map((c) => (
@@ -116,7 +133,7 @@ export function ArticleForm({
           id={`${uid}-excerpt`}
           name="excerpt"
           rows={2}
-          defaultValue={article?.excerpt ?? ""}
+          defaultValue={article?.excerpt ?? prefill?.excerpt ?? ""}
           className={textareaCls}
         />
       </div>
@@ -129,7 +146,7 @@ export function ArticleForm({
           id={`${uid}-body`}
           name="body_html"
           rows={10}
-          defaultValue={article?.body_html ?? ""}
+          defaultValue={article?.body_html ?? prefill?.body_html ?? ""}
           placeholder="<p>段落…</p>"
           className={`${textareaCls} font-mono text-[13px]`}
         />
@@ -206,7 +223,7 @@ export function ArticleForm({
         <input
           id={`${uid}-seo-title`}
           name="seo_title"
-          defaultValue={article?.seo_title ?? ""}
+          defaultValue={article?.seo_title ?? prefill?.seo_title ?? ""}
           className={inputCls}
         />
       </div>
@@ -219,7 +236,9 @@ export function ArticleForm({
           id={`${uid}-seo-desc`}
           name="seo_description"
           rows={2}
-          defaultValue={article?.seo_description ?? ""}
+          defaultValue={
+            article?.seo_description ?? prefill?.seo_description ?? ""
+          }
           className={textareaCls}
         />
       </div>

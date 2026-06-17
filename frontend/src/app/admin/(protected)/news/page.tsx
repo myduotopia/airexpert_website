@@ -32,12 +32,20 @@ export default async function AdminNewsPage() {
             共 {articles.length} 篇文章。
           </p>
         </div>
-        <Link
-          href="/admin/news/new"
-          className="bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-4 text-[14px] font-semibold text-white transition-colors"
-        >
-          新增文章
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/news/ai"
+            className="border-border text-primary-deep hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border px-4 text-[14px] font-semibold transition-colors"
+          >
+            ✨ AI 生成
+          </Link>
+          <Link
+            href="/admin/news/new"
+            className="bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-4 text-[14px] font-semibold text-white transition-colors"
+          >
+            新增文章
+          </Link>
+        </div>
       </div>
 
       <div className="mt-6">
