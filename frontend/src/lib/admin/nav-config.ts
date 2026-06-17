@@ -36,6 +36,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     key: "settings",
     label: "網站設定",
     href: "/admin/settings",
-    enabled: false,
+    enabled: true,
   },
 ];
