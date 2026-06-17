@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProductBySlug, getPublishedProducts } from "@/lib/data";
+import { sanitizeBodyHtml } from "@/lib/sanitize";
 import type { Product } from "@/lib/types";
 import { Breadcrumb } from "@/components/products/Breadcrumb";
 import { ProductImage } from "@/components/products/ProductImage";
@@ -181,11 +182,10 @@ export default async function ProductDetailPage(props: DetailPageProps) {
           {product.body_html ? (
             <div
               className="text-text-muted prose-sm max-w-none text-[16px] leading-[1.7]"
-              // body_html is CMS/service_role-authored and anon RLS is read-only,
-              // so it is trusted today. TODO(security): sanitize with an allowlist
-              // before any editor/AI authoring path (see ai_content_drafts) can
-              // write body_html, to avoid stored XSS.
-              dangerouslySetInnerHTML={{ __html: product.body_html }}
+              // body_html 經 sanitizeBodyHtml allowlist 消毒後才渲染（防 stored XSS）。
+              dangerouslySetInnerHTML={{
+                __html: sanitizeBodyHtml(product.body_html),
+              }}
             />
           ) : null}
         </div>

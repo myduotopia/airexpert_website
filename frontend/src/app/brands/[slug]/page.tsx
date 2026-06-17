@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight, Download } from "lucide-react";
 import { getBrandBySlug, getPublishedBrands } from "@/lib/data";
+import { sanitizeBodyHtml } from "@/lib/sanitize";
 import { Breadcrumb } from "@/components/products/Breadcrumb";
 import { BrandImagePlaceholder } from "@/components/brands/BrandImagePlaceholder";
 import { BrandCta } from "@/components/brands/BrandCta";
@@ -165,11 +166,10 @@ export default async function BrandDetailPage(props: DetailPageProps) {
             </div>
             <div
               className="text-text-muted prose-sm max-w-[860px] text-[16px] leading-[1.8] md:text-[18px]"
-              // body_html is CMS/service_role-authored and anon RLS is read-only,
-              // so it is trusted today. TODO(security): sanitize with an allowlist
-              // before any editor/AI authoring path can write body_html, to avoid
-              // stored XSS (mirrors the products detail page note).
-              dangerouslySetInnerHTML={{ __html: brand.body_html }}
+              // body_html 經 sanitizeBodyHtml allowlist 消毒後才渲染（防 stored XSS）。
+              dangerouslySetInnerHTML={{
+                __html: sanitizeBodyHtml(brand.body_html),
+              }}
             />
           </div>
         </section>

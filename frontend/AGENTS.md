@@ -14,3 +14,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 資料一律走 `@/lib/data`（server-only，已依 domain 分檔於 `src/lib/data/*`）；
 後台寫入走 `@/lib/supabase-admin`（service_role），並須先以 `@/lib/supabase-server` 驗證 admin 身分。
+
+渲染任何 CMS `body_html`（dangerouslySetInnerHTML）**必須**先經 `@/lib/sanitize` 的
+`sanitizeBodyHtml()` allowlist 消毒，避免 stored XSS。
