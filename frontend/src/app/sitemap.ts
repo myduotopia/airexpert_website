@@ -1,5 +1,9 @@
 import type { MetadataRoute } from "next";
-import { getPublishedBrands, getPublishedProducts } from "@/lib/data";
+import {
+  getPublishedBrands,
+  getPublishedProducts,
+  getPublishedServices,
+} from "@/lib/data";
 
 // Overridable at deploy; same fallback as robots.ts / layout metadataBase.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airexpert.com.tw";
@@ -12,10 +16,6 @@ const STATIC_PATHS = [
   "/contact",
   "/brands",
   "/services",
-  "/services/energy-plan",
-  "/services/energy-tech",
-  "/services/carbon-reduction",
-  "/services/room-planning",
 ] as const;
 
 // File convention: app/sitemap.ts default-exports a function returning
@@ -49,5 +49,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  return [...staticEntries, ...productEntries, ...brandEntries];
+  // Published service detail pages (/services/[slug]) — DB-driven, mirroring
+  // products/brands (replaces the previously hardcoded static service paths).
+  const services = await getPublishedServices();
+  const serviceEntries: MetadataRoute.Sitemap = services.map((service) => ({
+    url: `${SITE_URL}/services/${service.slug}`,
+    lastModified: service.updated_at ? new Date(service.updated_at) : now,
+    changeFrequency: "monthly",
+    priority: 0.6,
+  }));
+
+  return [
+    ...staticEntries,
+    ...productEntries,
+    ...brandEntries,
+    ...serviceEntries,
+  ];
 }
