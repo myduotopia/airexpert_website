@@ -30,7 +30,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     enabled: true,
   },
   { key: "cases", label: "節能實績", href: "/admin/cases", enabled: true },
-  { key: "events", label: "公司活動", href: "/admin/events", enabled: false },
+  { key: "events", label: "公司活動", href: "/admin/events", enabled: true },
   { key: "contact", label: "聯絡來信", href: "/admin/contact", enabled: false },
   {
     key: "settings",
