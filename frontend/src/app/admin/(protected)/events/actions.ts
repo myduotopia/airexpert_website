@@ -85,6 +85,12 @@ export async function saveAlbum(
   const title = str(formData, "title");
   const slug = str(formData, "slug");
   if (!title || !slug) return { ok: false, error: "標題與 slug 為必填" };
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    return {
+      ok: false,
+      error: "網址代稱（slug）僅能使用小寫英數字與連字號（-）",
+    };
+  }
 
   const values = {
     title,
