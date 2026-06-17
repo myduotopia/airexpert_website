@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
-import { ClipboardList, Cpu, Building2, Leaf } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { getPublishedServices } from "@/lib/data";
 import { ServiceHeader } from "@/components/services/ServiceHeader";
 import { ServiceSection } from "@/components/services/ServiceSection";
-import {
-  ServiceIndexCard,
-  type ServiceLink,
-} from "@/components/services/ServiceIndexCard";
 import { ServiceCtaBanner } from "@/components/services/ServiceCtaBanner";
 
 export const metadata: Metadata = {
@@ -14,35 +12,9 @@ export const metadata: Metadata = {
     "AirExpert 超勁賀空壓科技提供一站式節能氣源服務：節能方案、節能技術、機房規劃與減碳行動，協助工廠落實高效與淨零。",
 };
 
-const SERVICES: ServiceLink[] = [
-  {
-    icon: ClipboardList,
-    title: "節能方案",
-    summary: "幫助客戶釐清節能觀念，製作符合每間工廠不同狀況的省電方案。",
-    href: "/services/energy-plan",
-  },
-  {
-    icon: Cpu,
-    title: "節能技術",
-    summary: "利用有別於傳統空壓機及乾燥機的技術，提供客戶廠內最佳省電效益。",
-    href: "/services/energy-tech",
-  },
-  {
-    icon: Building2,
-    title: "機房規劃",
-    summary:
-      "良好的管路佈置從規劃與施工初期做起，避免日後洩漏、腐蝕或壓降難以補救。",
-    href: "/services/room-planning",
-  },
-  {
-    icon: Leaf,
-    title: "減碳行動",
-    summary: "以系統化碳盤查與智能監控，協助企業落實 ESG 與淨零。",
-    href: "/services/carbon-reduction",
-  },
-];
+export default async function ServicesIndexPage() {
+  const services = await getPublishedServices();
 
-export default function ServicesIndexPage() {
   return (
     <>
       <ServiceHeader
@@ -52,11 +24,35 @@ export default function ServicesIndexPage() {
       />
 
       <ServiceSection>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {SERVICES.map((service) => (
-            <ServiceIndexCard key={service.href} service={service} />
-          ))}
-        </div>
+        {services.length > 0 ? (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {services.map((service) => (
+              <Link
+                key={service.id}
+                href={`/services/${service.slug}`}
+                className="border-border bg-surface focus-visible:ring-primary hover:border-primary group flex flex-col gap-4 rounded-[16px] border p-6 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              >
+                <h2 className="text-ink text-[20px] font-semibold">
+                  {service.title}
+                </h2>
+                {service.summary ? (
+                  <p className="text-text-muted text-[16px] leading-[1.65]">
+                    {service.summary}
+                  </p>
+                ) : null}
+                <span className="text-primary-deep mt-auto inline-flex items-center gap-1 text-[16px] font-medium">
+                  了解更多
+                  <ArrowRight
+                    className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+                    aria-hidden="true"
+                  />
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-text-muted text-[16px]">服務項目建置中。</p>
+        )}
       </ServiceSection>
 
       <ServiceCtaBanner />
