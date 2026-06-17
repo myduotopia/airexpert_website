@@ -34,7 +34,7 @@ export const PRIMARY_NAV: NavSection[] = [
   { key: "products", label: "商品介紹", href: "/products", ready: true },
   { key: "news", label: "最新消息", href: "/news", ready: true },
   { key: "services", label: "服務項目", href: "/services", ready: true },
-  { key: "cases", label: "節能實績", href: "/cases", ready: false },
+  { key: "cases", label: "節能實績", href: "/cases", ready: true },
   { key: "events", label: "公司活動", href: "/events", ready: true },
   { key: "contact", label: "聯絡我們", href: "/contact", ready: true },
 ];
