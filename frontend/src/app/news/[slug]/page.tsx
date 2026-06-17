@@ -4,6 +4,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { getArticleBySlug, getPublishedArticles } from "@/lib/data";
+import { sanitizeBodyHtml } from "@/lib/sanitize";
 import { ArticleCard } from "@/components/news/ArticleCard";
 import { formatNewsDate } from "@/components/news/format";
 
@@ -139,10 +140,10 @@ export default async function ArticleDetailPage(props: DetailPageProps) {
           {article.body_html ? (
             <div
               className="text-ink/90 [&_a]:text-primary-deep [&_h2]:text-ink [&_h3]:text-ink max-w-none text-[17px] leading-[1.8] [&_a]:underline [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:text-[24px] [&_h2]:font-bold [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-[20px] [&_h3]:font-semibold [&_li]:my-1 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-4 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6"
-              // body_html 由 CMS / service_role 撰寫、anon RLS 唯讀，故目前可信任。
-              // TODO(security)：在任何 editor / AI 撰寫路徑（見 ai_content_drafts）
-              // 能寫入 body_html 前，須以 allowlist 進行 sanitize 以避免儲存型 XSS。
-              dangerouslySetInnerHTML={{ __html: article.body_html }}
+              // body_html 經 sanitizeBodyHtml allowlist 消毒後才渲染（防 stored XSS）。
+              dangerouslySetInnerHTML={{
+                __html: sanitizeBodyHtml(article.body_html),
+              }}
             />
           ) : (
             <p className="text-text-muted text-[16px]">內容建置中。</p>
