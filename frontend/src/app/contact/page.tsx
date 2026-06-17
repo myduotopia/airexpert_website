@@ -1,141 +1,82 @@
 import type { Metadata } from "next";
-import { Phone, Mail, MapPin, ArrowRight, type LucideIcon } from "lucide-react";
-import Link from "next/link";
+import { getContactInfo } from "@/lib/data";
 import { ContactForm } from "@/components/contact/ContactForm";
 
 export const metadata: Metadata = {
   title: "聯絡我們",
   description:
-    "與 AirExpert 超勁賀空壓科技聯繫。留下您的需求，專人將協助評估節能氣源系統與 ISO 50001 能源管理方案。",
+    "與 AirExpert 超勁賀空壓科技聯繫。南北兩處服務中心，提供空壓系統諮詢、現場評估與節能改善。留下您的需求，專人將盡快與您聯繫。",
 };
 
-// Contact info cards (real company details from airexpert.com.tw).
-// `href` is null for non-linkable entries.
-type ContactItem = {
-  icon: LucideIcon;
-  label: string;
-  // Each line of the value (kept as an array so addresses can wrap cleanly).
-  lines: string[];
-  href: string | null;
-};
+// 聯絡頁（V3.08 Eco Green Light，frame LZMiB）。
+// Hero band（#F1F6F1）→ ContactBody（左：線上諮詢表單；右：南北服務中心聯絡資訊）。
+// 聯絡資訊改從 site_settings 的 contact_info 取（is_public 公開讀），DB 未 seed 時退回預設。
+export default async function ContactPage() {
+  const info = await getContactInfo();
 
-const CONTACT_ITEMS: ContactItem[] = [
-  {
-    icon: Phone,
-    label: "全國免付費專線",
-    lines: ["0800-88-4588"],
-    href: "tel:0800884588",
-  },
-  {
-    icon: Mail,
-    label: "Email",
-    lines: ["Service@airexpert.com.tw"],
-    href: "mailto:Service@airexpert.com.tw",
-  },
-  {
-    icon: MapPin,
-    label: "北區服務中心 · 勁賀空壓科技",
-    lines: ["電話 02-2675-9977", "新北市樹林區備內街 136 號 1 樓"],
-    href: "tel:0226759977",
-  },
-  {
-    icon: MapPin,
-    label: "南區服務中心 · 超賀空壓科技",
-    lines: ["電話 07-699-8686", "高雄市湖內區中山路二段 256 號"],
-    href: "tel:076998686",
-  },
-];
-
-export default function ContactPage() {
   return (
     <>
-      {/* Page header band */}
+      {/* Hero band */}
       <section className="bg-surface border-border border-b">
-        <div className="mx-auto max-w-[1440px] px-6 py-16 md:px-20 md:py-20">
-          <p className="text-text-muted font-mono text-[14px] tracking-[1px] uppercase">
-            CONTACT · 聯絡我們
+        <div className="mx-auto flex max-w-[1440px] flex-col items-center gap-[14px] px-6 py-12 text-center md:px-20 md:pt-[72px] md:pb-12">
+          <p className="font-mono text-[12px] tracking-[1px] text-[#1F6B43] uppercase">
+            {info.eyebrow}
           </p>
-          <h1 className="text-ink mt-3 text-[32px] leading-[1.15] font-bold sm:text-[40px]">
-            與我們談談您的氣源需求
+          <h1 className="text-ink text-[32px] leading-[1.15] font-bold sm:text-[40px] md:text-[48px]">
+            {info.title}
           </h1>
-          <p className="text-text-muted mt-4 max-w-[640px] text-[17px] leading-[1.65]">
-            無論是新廠氣源規劃、設備汰換或能源診斷，留下您的需求，AirExpert
-            專人將盡快與您聯繫，協助評估最合適的節能方案。
+          <p className="text-text-muted max-w-[640px] text-[16px] leading-[1.6]">
+            {info.subtitle}
           </p>
         </div>
       </section>
 
-      {/* Contact info + form */}
-      <section className="bg-surface-muted">
-        <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-10 px-6 py-14 md:px-20 md:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:gap-16">
-          {/* LEFT — company contact info */}
-          <div className="flex flex-col gap-5">
-            <h2 className="text-ink text-[22px] font-bold">聯絡資訊</h2>
-            <ul className="flex flex-col gap-4">
-              {CONTACT_ITEMS.map(({ icon: Icon, label, lines, href }) => (
-                <li
-                  key={label}
-                  className="border-border bg-surface flex items-start gap-4 rounded-xl border p-5"
-                >
-                  <span className="border-border bg-surface-muted flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border">
-                    <Icon
-                      className="text-primary-deep h-5 w-5"
-                      aria-hidden="true"
-                    />
-                  </span>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-text-muted text-[15px] font-medium">
-                      {label}
-                    </span>
-                    {href ? (
-                      <Link
-                        href={href}
-                        className="text-ink hover:text-primary-deep focus-visible:ring-primary-deep/40 rounded text-[17px] leading-[1.5] font-semibold transition-colors outline-none focus-visible:ring-2"
-                      >
-                        {lines.join(" ")}
-                      </Link>
-                    ) : (
-                      lines.map((line) => (
-                        <span
-                          key={line}
-                          className="text-ink text-[17px] leading-[1.5] font-semibold"
-                        >
-                          {line}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* RIGHT — contact form */}
+      {/* ContactBody — left form, right service-center info */}
+      <section className="bg-surface">
+        <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-12 px-6 py-12 md:px-20 md:py-16 lg:grid-cols-[minmax(0,1fr)_420px]">
+          {/* LEFT — online enquiry form */}
           <div className="flex flex-col gap-4">
-            <h2 className="text-ink text-[22px] font-bold">填寫需求表單</h2>
+            <h2 className="text-ink text-[22px] font-bold">線上諮詢</h2>
             <ContactForm />
           </div>
-        </div>
-      </section>
 
-      {/* Closing info row */}
-      <section className="bg-surface-dark">
-        <div className="mx-auto flex max-w-[1440px] flex-col items-start gap-4 px-6 py-14 md:flex-row md:items-center md:justify-between md:px-20">
-          <div className="flex flex-col gap-2">
-            <h2 className="text-[26px] font-bold text-white md:text-[30px]">
-              想先了解我們的產品系列？
-            </h2>
-            <p className="text-text-on-dark-muted max-w-[560px] text-[17px] leading-[1.6]">
-              從變頻空壓機到吸附式乾燥機，探索整合式氣源解決方案。
-            </p>
+          {/* RIGHT — service-center contact info cards */}
+          <div className="flex flex-col gap-4">
+            {info.centers.map((center) => (
+              <div
+                key={center.name}
+                className="border-border bg-surface-muted flex flex-col gap-[10px] rounded-[14px] border p-6"
+              >
+                <h3 className="text-ink text-[16px] font-bold">
+                  {center.name}
+                </h3>
+                <dl className="flex flex-col gap-[10px]">
+                  {center.lines.map((line) => (
+                    <div
+                      key={`${line.label}-${line.value}`}
+                      className="flex gap-[10px]"
+                    >
+                      <dt className="text-text-muted w-11 shrink-0 font-mono text-[12px] leading-[1.5]">
+                        {line.label}
+                      </dt>
+                      <dd className="text-ink text-[14px] leading-[1.5]">
+                        {line.href ? (
+                          <a
+                            href={line.href}
+                            className="hover:text-primary-deep focus-visible:ring-primary-deep/40 rounded transition-colors outline-none focus-visible:ring-2"
+                          >
+                            {line.value}
+                          </a>
+                        ) : (
+                          line.value
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
           </div>
-          <Link
-            href="/products"
-            className="bg-primary-deep focus-visible:ring-primary-soft/50 inline-flex shrink-0 items-center justify-center gap-2 rounded-[26px] px-7 py-[14px] text-[17px] font-semibold text-white transition-opacity outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2"
-          >
-            探索產品系列
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
         </div>
       </section>
     </>

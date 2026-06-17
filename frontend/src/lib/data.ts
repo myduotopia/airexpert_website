@@ -45,3 +45,13 @@ export { getPublishedServices, getServiceBySlug } from "./data/services";
 
 // 全域內容 / 設定（V2 新表）
 export { getSiteSetting } from "./data/site";
+
+// 聯絡資訊（site_settings key=contact_info）
+export {
+  getContactInfo,
+  CONTACT_INFO_KEY,
+  CONTACT_INFO_DEFAULT,
+  type ContactInfo,
+  type ContactCenter,
+  type ContactLine,
+} from "./data/contact-info";
