@@ -15,7 +15,6 @@ export interface AdminNavItem {
 export const ADMIN_NAV: AdminNavItem[] = [
   { key: "dashboard", label: "總覽", href: "/admin", enabled: true },
   { key: "home", label: "首頁設定", href: "/admin/home", enabled: true },
-  { key: "brands", label: "品牌介紹", href: "/admin/brands", enabled: true },
   {
     key: "products",
     label: "商品介紹",
