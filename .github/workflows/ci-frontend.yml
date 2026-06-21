@@ -39,3 +39,7 @@ jobs:
 
       - name: Build frontend (test build)
         run: npm run build
+        env:
+          # 公開（anon）值；SSG 階段資料層需要連 Supabase 取已發佈內容。
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
