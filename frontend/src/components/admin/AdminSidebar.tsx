@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ADMIN_NAV } from "@/lib/admin/nav-config";
+import { navForRole } from "@/lib/admin/nav-config";
+import type { AdminRole } from "@/lib/admin/auth";
 import { logoutAction } from "@/app/admin/actions";
 
 function isActive(pathname: string, href: string): boolean {
@@ -10,8 +11,15 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminSidebar({ email }: { email: string }) {
+export function AdminSidebar({
+  email,
+  role,
+}: {
+  email: string;
+  role: AdminRole;
+}) {
   const pathname = usePathname();
+  const nav = navForRole(role);
 
   return (
     <aside className="border-border bg-surface flex w-[230px] shrink-0 flex-col border-r">
@@ -22,7 +30,7 @@ export function AdminSidebar({ email }: { email: string }) {
 
       <nav className="flex-1 overflow-y-auto px-3 py-3">
         <ul className="flex flex-col gap-0.5">
-          {ADMIN_NAV.map((item) => {
+          {nav.map((item) => {
             const active = isActive(pathname, item.href);
             if (!item.enabled) {
               return (
