@@ -66,11 +66,12 @@ export function buildSeoMetadata(
       description: ogDescription,
       images: ogImage ? [ogImage] : undefined,
     },
-    robots: {
-      index: !seo.noindex,
-      follow: !seo.nofollow,
-    },
   };
+
+  // 僅在實際要限制索引時輸出 robots，避免一般頁面多出冗餘的 index,follow 標籤。
+  if (seo.noindex || seo.nofollow) {
+    metadata.robots = { index: !seo.noindex, follow: !seo.nofollow };
+  }
 
   if (canonical) {
     metadata.alternates = { canonical };

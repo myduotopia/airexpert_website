@@ -114,6 +114,11 @@ describe("buildSeoMetadata（detail 頁 metadata 組裝）", () => {
     );
     expect(m.robots).toEqual({ index: false, follow: false });
   });
+
+  it("noindex / nofollow 皆 false → 不輸出 robots（避免冗餘標籤）", () => {
+    const m = buildSeoMetadata({}, { title: "T" });
+    expect(m.robots).toBeUndefined();
+  });
 });
 
 describe("jsonLdScriptHtml（安全序列化）", () => {
