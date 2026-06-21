@@ -107,19 +107,9 @@ export function ReorderableTable<T>({
               return (
                 <tr
                   key={key}
-                  draggable
-                  onDragStart={() => {
-                    fromIndex.current = index;
-                    setDragKey(key);
-                  }}
                   onDragEnter={() => setOverKey(key)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => handleDrop(index)}
-                  onDragEnd={() => {
-                    fromIndex.current = null;
-                    setDragKey(null);
-                    setOverKey(null);
-                  }}
                   className={`border-border border-b last:border-b-0 ${
                     dragKey === key
                       ? "opacity-40"
@@ -128,7 +118,21 @@ export function ReorderableTable<T>({
                         : "hover:bg-surface-muted"
                   }`}
                 >
-                  <td className="text-text-muted w-10 cursor-grab px-2 py-3 active:cursor-grabbing">
+                  {/* 只有把手可拖移，避免誤拖整列 / 干擾欄內連結與刪除鈕。 */}
+                  <td
+                    draggable
+                    onDragStart={() => {
+                      fromIndex.current = index;
+                      setDragKey(key);
+                    }}
+                    onDragEnd={() => {
+                      fromIndex.current = null;
+                      setDragKey(null);
+                      setOverKey(null);
+                    }}
+                    aria-label="拖曳排序"
+                    className="text-text-muted w-10 cursor-grab px-2 py-3 active:cursor-grabbing"
+                  >
                     <GripVertical size={16} aria-hidden="true" />
                   </td>
                   {columns.map((c, i) => (

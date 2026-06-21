@@ -43,7 +43,7 @@ export function CaseForm({
   caseItem?: Case;
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
-  useNavigateOnSuccess(state.ok, "/admin/cases");
+  useNavigateOnSuccess(state, "/admin/cases");
   const [images, setImages] = useState(imagesToText(caseItem?.images ?? []));
   const uid = useId();
 

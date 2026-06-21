@@ -57,6 +57,8 @@ export async function deleteRow(
 /**
  * 依新順序把 sort_order 重設為 0,1,2…（序列、不重複、由小到大）。
  * 供後台列表拖移排序使用。orderedIds 為列表的完整新順序 id 陣列。
+ * 註：N 筆 UPDATE 非單一交易；若中途某筆失敗，已成功的會保留，
+ *    sort_order 可能暫時非連續，下次成功排序即修正（admin-only、低頻，可接受）。
  */
 export async function reorderRows(
   table: string,

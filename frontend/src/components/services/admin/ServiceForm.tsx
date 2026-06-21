@@ -34,7 +34,7 @@ export function ServiceForm({
   service?: Service;
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
-  useNavigateOnSuccess(state.ok, "/admin/services");
+  useNavigateOnSuccess(state, "/admin/services");
   const [images, setImages] = useState(imagesToText(service?.images ?? []));
   const uid = useId();
 

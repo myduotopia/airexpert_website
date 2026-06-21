@@ -61,7 +61,7 @@ export function ArticleForm({
   prefill?: ArticlePrefill;
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
-  useNavigateOnSuccess(state.ok, "/admin/news");
+  useNavigateOnSuccess(state, "/admin/news");
   const [cover, setCover] = useState(article?.cover_image ?? "");
   const [images, setImages] = useState(imagesToText(article?.images ?? []));
   const uid = useId();

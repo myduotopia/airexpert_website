@@ -42,7 +42,7 @@ export function ProductForm({
     action,
     {},
   );
-  useNavigateOnSuccess(state.ok, "/admin/products");
+  useNavigateOnSuccess(state, "/admin/products");
 
   return (
     <form action={formAction} className="flex max-w-[760px] flex-col gap-6">
