@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { BRAND_NAME_CN, BRAND_NAME_EN } from "@/lib/brand";
@@ -22,15 +21,11 @@ function Brand({ logoUrl }: { logoUrl: string }) {
       className="flex items-center gap-3"
       aria-label={BRAND_NAME_CN}
     >
-      {/* 品牌 LOGO：後台可於「首頁與品牌設定」覆寫；未設定時退回內建素材。 */}
-      <Image
-        src={logoUrl}
-        alt=""
-        width={150}
-        height={99}
-        priority
-        className="h-[46px] w-auto"
-      />
+      {/* 品牌 LOGO：後台可於「首頁與品牌設定」覆寫；未設定時退回內建素材。
+          用原生 <img>：後台可上傳 SVG（next/image 未開 dangerouslyAllowSVG 會 400），
+          且任意長寬比的上傳圖以 h-[46px] w-auto 等比縮放不變形。 */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={logoUrl} alt="" className="h-[46px] w-auto" />
       <span className="flex flex-col gap-1 leading-tight">
         <span className="text-ink text-[28px] leading-none font-bold">
           {BRAND_NAME_CN}
