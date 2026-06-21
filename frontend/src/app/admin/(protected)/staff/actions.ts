@@ -45,11 +45,13 @@ export async function createSeoManager(
 
   const admin = getAdminSupabase();
 
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
+  const { data: created, error: createErr } = await admin.auth.admin.createUser(
+    {
+      email,
+      password,
+      email_confirm: true,
+    },
+  );
   if (createErr || !created?.user) {
     return { error: `建立帳號失敗：${createErr?.message ?? "未知錯誤"}` };
   }

@@ -52,8 +52,8 @@ export default async function AdminStaffPage() {
       <div>
         <h1 className="text-ink text-[24px] font-bold">人員管理</h1>
         <p className="text-text-muted mt-1 text-[15px]">
-          管理後台帳號。SEO 代管帳號只能編輯各內容的 SEO meta，看不到內文、帳號與網站設定。
-          共 {managers.length} 個代管帳號。
+          管理後台帳號。SEO 代管帳號只能編輯各內容的 SEO
+          meta，看不到內文、帳號與網站設定。 共 {managers.length} 個代管帳號。
         </p>
       </div>
 
