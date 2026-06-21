@@ -2,11 +2,12 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Loader2, Send, CheckCircle2 } from "lucide-react";
-import { submitContactForm } from "@/lib/contact";
+import { submitContactAction } from "@/app/contact/actions";
 import type { ContactSubmissionInput } from "@/lib/types";
 
 // Contact form (issue #9). The only client component on /contact.
-// Submits via `submitContactForm` (anon insert, NO `.select()` — see lib/contact.ts).
+// 送出改走 server action `submitContactAction`（issue #59）：server 端 insert + 觸發
+// Email/LINE 通知（機密只在 server 端使用）。通知失敗不影響送出成功。
 // States: idle | submitting | success | error.
 
 type Status = "idle" | "submitting" | "success" | "error";
@@ -77,8 +78,8 @@ export function ContactForm() {
     };
 
     try {
-      await submitContactForm(payload);
-      setStatus("success");
+      const result = await submitContactAction(payload);
+      setStatus(result.ok ? "success" : "error");
     } catch {
       setStatus("error");
     }
