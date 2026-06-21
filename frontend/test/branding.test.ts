@@ -88,7 +88,9 @@ describe("parseBrandingFields（後台表單 → 寫入 value 形狀）", () => 
   });
 
   it("空欄位被省略（不寫空字串），讓前台退回預設", () => {
-    const v = parseBrandingFields(fd({ logo_url: "https://x/l.png", favicon_url: "" }));
+    const v = parseBrandingFields(
+      fd({ logo_url: "https://x/l.png", favicon_url: "" }),
+    );
     expect(v).toEqual({ logo_url: "https://x/l.png" });
     expect("favicon_url" in v).toBe(false);
   });

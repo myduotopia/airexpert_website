@@ -45,7 +45,9 @@ function AssetField({
             <img src={url} alt={`${label}預覽`} className={previewClassName} />
           </span>
         ) : (
-          <span className="text-text-muted text-[13px]">尚未設定（將使用內建預設）</span>
+          <span className="text-text-muted text-[13px]">
+            尚未設定（將使用內建預設）
+          </span>
         )}
         <ImageUploader folder={folder} onUploaded={setUrl} />
       </div>

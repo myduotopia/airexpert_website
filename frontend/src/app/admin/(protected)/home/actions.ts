@@ -60,7 +60,10 @@ export async function saveBranding(
 
   const { error } = await getAdminSupabase()
     .from("site_settings")
-    .upsert({ key: BRANDING_KEY, value, is_public: true }, { onConflict: "key" });
+    .upsert(
+      { key: BRANDING_KEY, value, is_public: true },
+      { onConflict: "key" },
+    );
 
   if (error) return { ok: false, error: error.message };
 

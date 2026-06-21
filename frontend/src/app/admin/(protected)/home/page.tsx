@@ -94,7 +94,8 @@ export default async function AdminHomePage() {
           </span>
         </div>
         <p className="text-text-muted mt-1 text-[14px]">
-          LOGO 套用於前台頁首、favicon 套用於瀏覽器分頁。留空則使用內建預設素材。
+          LOGO 套用於前台頁首、favicon
+          套用於瀏覽器分頁。留空則使用內建預設素材。
         </p>
         <div className="mt-4">
           <BrandingForm
@@ -112,13 +113,12 @@ export default async function AdminHomePage() {
             目前未顯示於前台
           </span>
         </div>
-        <div className="border-border bg-surface-muted mt-3 rounded-lg border p-4 text-[13px] leading-relaxed text-text-muted">
+        <div className="border-border bg-surface-muted text-text-muted mt-3 rounded-lg border p-4 text-[13px] leading-relaxed">
           <p className="text-ink font-medium">關於目前的首頁版面</p>
           <p className="mt-1">
-            前台首頁目前採用「過渡版面」（痛點輪播 → 產品展示 →
-            產品特色 → 社群追蹤），<strong>不會</strong>讀取以下區段設定。
-            這些區段（Hero / Stats /
-            產品系列…）屬於完整 V3.08 首頁，待正式版面切換後才會生效。
+            前台首頁目前採用「過渡版面」（痛點輪播 → 產品展示 → 產品特色 →
+            社群追蹤），<strong>不會</strong>讀取以下區段設定。 這些區段（Hero /
+            Stats / 產品系列…）屬於完整 V3.08 首頁，待正式版面切換後才會生效。
             你仍可在此預先編輯內容；儲存的內容會保留，切換版面後即套用。
           </p>
         </div>

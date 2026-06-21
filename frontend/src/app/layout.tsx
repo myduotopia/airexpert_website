@@ -31,43 +31,43 @@ const SITE_DESCRIPTION =
 export async function generateMetadata(): Promise<Metadata> {
   const { favicon_url } = await getBranding();
   return {
-  // metadataBase resolves relative OG/Twitter image + canonical URLs to absolute.
-  metadataBase: new URL(SITE_URL),
-  // Browser tab / bookmark icon — admin-configurable via site_settings.branding.
-  icons: { icon: favicon_url },
-  // Child pages set only their own title; `template` appends the brand suffix.
-  // `default` is used by pages without a title (and as the OpenGraph title).
-  title: {
-    default: SITE_NAME,
-    template: "%s ｜ 超勁賀空壓科技",
-  },
-  description: SITE_DESCRIPTION,
-  // No root-level canonical: without one each route self-canonicalizes to its
-  // own URL. A blanket "/" here would wrongly mark every page a duplicate of home.
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/",
-    siteName: SITE_NAME,
-    title: SITE_NAME,
+    // metadataBase resolves relative OG/Twitter image + canonical URLs to absolute.
+    metadataBase: new URL(SITE_URL),
+    // Browser tab / bookmark icon — admin-configurable via site_settings.branding.
+    icons: { icon: favicon_url },
+    // Child pages set only their own title; `template` appends the brand suffix.
+    // `default` is used by pages without a title (and as the OpenGraph title).
+    title: {
+      default: SITE_NAME,
+      template: "%s ｜ 超勁賀空壓科技",
+    },
     description: SITE_DESCRIPTION,
-    // TODO(seo): replace with final brand artwork; /og-default.png is a
-    // simple brand-colour 1200×630 placeholder.
-    images: [
-      {
-        url: "/og-default.png",
-        width: 1200,
-        height: 630,
-        alt: SITE_NAME,
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: SITE_NAME,
-    description: SITE_DESCRIPTION,
-    images: ["/og-default.png"],
-  },
+    // No root-level canonical: without one each route self-canonicalizes to its
+    // own URL. A blanket "/" here would wrongly mark every page a duplicate of home.
+    openGraph: {
+      type: "website",
+      locale: "zh_TW",
+      url: "/",
+      siteName: SITE_NAME,
+      title: SITE_NAME,
+      description: SITE_DESCRIPTION,
+      // TODO(seo): replace with final brand artwork; /og-default.png is a
+      // simple brand-colour 1200×630 placeholder.
+      images: [
+        {
+          url: "/og-default.png",
+          width: 1200,
+          height: 630,
+          alt: SITE_NAME,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: SITE_NAME,
+      description: SITE_DESCRIPTION,
+      images: ["/og-default.png"],
+    },
   };
 }
 

@@ -70,9 +70,10 @@ function strOr(value: unknown, fallback: string): string {
  * 該欄位獨立退回 BRANDING_DEFAULTS，確保 Header 與 metadata icons 不會拿到空值。
  */
 export async function getBranding(): Promise<Branding> {
-  const value = await getSiteSetting<Partial<Record<keyof Branding, unknown>>>(
-    BRANDING_KEY,
-  );
+  const value =
+    await getSiteSetting<Partial<Record<keyof Branding, unknown>>>(
+      BRANDING_KEY,
+    );
   return {
     logo_url: strOr(value?.logo_url, BRANDING_DEFAULTS.logo_url),
     favicon_url: strOr(value?.favicon_url, BRANDING_DEFAULTS.favicon_url),
