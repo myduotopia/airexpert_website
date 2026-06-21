@@ -4,6 +4,7 @@ import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { SubmitButton } from "@/components/admin/SubmitButton";
+import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import type { Service, ContentStatus } from "@/lib/types";
 import type { FormState } from "@/app/admin/(protected)/services/actions";
 
@@ -33,6 +34,7 @@ export function ServiceForm({
   service?: Service;
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
+  useNavigateOnSuccess(state, "/admin/services");
   const [images, setImages] = useState(imagesToText(service?.images ?? []));
   const uid = useId();
 
@@ -60,33 +62,18 @@ export function ServiceForm({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={`${uid}-slug`} className={labelCls}>
-            網址代稱 slug *
-          </label>
-          <input
-            id={`${uid}-slug`}
-            name="slug"
-            required
-            defaultValue={service?.slug ?? ""}
-            placeholder="energy-plan"
-            className={inputCls}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={`${uid}-sort`} className={labelCls}>
-            排序（小→大）
-          </label>
-          <input
-            id={`${uid}-sort`}
-            name="sort_order"
-            type="number"
-            defaultValue={service?.sort_order ?? 0}
-            className={inputCls}
-          />
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${uid}-slug`} className={labelCls}>
+          網址代稱 slug *
+        </label>
+        <input
+          id={`${uid}-slug`}
+          name="slug"
+          required
+          defaultValue={service?.slug ?? ""}
+          placeholder="energy-plan"
+          className={inputCls}
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">

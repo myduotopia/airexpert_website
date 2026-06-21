@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { SubmitButton } from "@/components/admin/SubmitButton";
+import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { ProductImagesField } from "@/components/admin/ProductImagesField";
 import { PRODUCT_CATEGORIES } from "@/components/products/categories";
 import type { Product } from "@/lib/types";
@@ -41,6 +42,7 @@ export function ProductForm({
     action,
     {},
   );
+  useNavigateOnSuccess(state, "/admin/products");
 
   return (
     <form action={formAction} className="flex max-w-[760px] flex-col gap-6">
@@ -114,16 +116,6 @@ export function ProductForm({
             <option value="published">已發佈</option>
             <option value="archived">已封存</option>
           </select>
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className={labelCls}>排序（數字小者在前）</span>
-          <input
-            name="sort_order"
-            type="number"
-            defaultValue={product?.sort_order ?? 0}
-            className={inputCls}
-          />
         </label>
       </div>
 

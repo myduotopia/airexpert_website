@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
-import { DataTable } from "@/components/admin/DataTable";
+import { ReorderableTable } from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { formatNewsDate } from "@/components/news/format";
-import { deleteArticle } from "./actions";
+import { deleteArticle, reorderNewsAction } from "./actions";
 import type { Article } from "@/lib/types";
 
 export const metadata = { title: "最新消息 — 後台" };
@@ -14,8 +14,8 @@ async function getAllArticles(): Promise<Article[]> {
   const { data, error } = await getAdminSupabase()
     .from("articles")
     .select("*")
-    .order("published_at", { ascending: false, nullsFirst: true })
-    .order("created_at", { ascending: false });
+    .order("sort_order", { ascending: true })
+    .order("published_at", { ascending: false, nullsFirst: true });
   if (error) throw new Error(`讀取文章失敗：${error.message}`);
   return (data ?? []) as Article[];
 }
@@ -49,9 +49,10 @@ export default async function AdminNewsPage() {
       </div>
 
       <div className="mt-6">
-        <DataTable
+        <ReorderableTable
           rows={articles}
           getKey={(a) => a.id}
+          onReorder={reorderNewsAction}
           empty="尚無文章，點右上角「新增文章」開始建立。"
           columns={[
             {

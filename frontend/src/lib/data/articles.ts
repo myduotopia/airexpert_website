@@ -14,6 +14,7 @@ export const getPublishedArticles = cache(
         .from("articles")
         .select("*")
         .eq("status", "published")
+        .order("sort_order", { ascending: true })
         .order("published_at", { ascending: false, nullsFirst: false });
 
       throwOnError("getPublishedArticles", error);
@@ -32,6 +33,7 @@ export const getArticlesByCategory = cache(
         .select("*")
         .eq("status", "published")
         .eq("category", category)
+        .order("sort_order", { ascending: true })
         .order("published_at", { ascending: false, nullsFirst: false });
 
       throwOnError("getArticlesByCategory", error);

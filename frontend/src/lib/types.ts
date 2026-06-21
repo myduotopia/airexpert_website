@@ -61,6 +61,7 @@ export interface Article {
   seo_description: string | null;
   status: ContentStatus;
   published_at: string | null;
+  sort_order: number;
   legacy_path: string | null;
   created_at: string;
   updated_at: string;
@@ -80,6 +81,7 @@ export interface Case {
   seo_title: string | null;
   seo_description: string | null;
   status: ContentStatus;
+  sort_order: number;
   legacy_path: string | null;
   created_at: string;
   updated_at: string;

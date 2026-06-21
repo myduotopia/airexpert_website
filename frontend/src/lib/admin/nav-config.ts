@@ -14,7 +14,8 @@ export interface AdminNavItem {
 
 export const ADMIN_NAV: AdminNavItem[] = [
   { key: "dashboard", label: "總覽", href: "/admin", enabled: true },
-  { key: "home", label: "首頁設定", href: "/admin/home", enabled: true },
+  // 首頁設定先隱藏（路由仍存在，只是不列在側欄）。
+  { key: "home", label: "首頁設定", href: "/admin/home", enabled: false },
   {
     key: "products",
     label: "商品介紹",

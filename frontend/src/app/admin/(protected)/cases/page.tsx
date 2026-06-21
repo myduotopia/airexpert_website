@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
-import { DataTable } from "@/components/admin/DataTable";
+import { ReorderableTable } from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
-import { deleteCase } from "./actions";
+import { deleteCase, reorderCasesAction } from "./actions";
 import type { Case } from "@/lib/types";
 
 export const metadata = { title: "節能實績 — 後台" };
@@ -13,6 +13,7 @@ async function getAllCases(): Promise<Case[]> {
   const { data, error } = await getAdminSupabase()
     .from("cases")
     .select("*")
+    .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
   if (error) throw new Error(`讀取實績失敗：${error.message}`);
   return (data ?? []) as Case[];
@@ -39,9 +40,10 @@ export default async function AdminCasesPage() {
       </div>
 
       <div className="mt-6">
-        <DataTable
+        <ReorderableTable
           rows={cases}
           getKey={(c) => c.id}
+          onReorder={reorderCasesAction}
           empty="尚無實績，點右上角「新增實績」開始建立。"
           columns={[
             {

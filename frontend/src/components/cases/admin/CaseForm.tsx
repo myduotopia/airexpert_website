@@ -4,6 +4,7 @@ import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { SubmitButton } from "@/components/admin/SubmitButton";
+import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { CASE_CATEGORIES } from "@/components/cases/constants";
 import type { Case, CaseMetrics, ContentStatus } from "@/lib/types";
 import type { FormState } from "@/app/admin/(protected)/cases/actions";
@@ -42,6 +43,7 @@ export function CaseForm({
   caseItem?: Case;
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
+  useNavigateOnSuccess(state, "/admin/cases");
   const [images, setImages] = useState(imagesToText(caseItem?.images ?? []));
   const uid = useId();
 
