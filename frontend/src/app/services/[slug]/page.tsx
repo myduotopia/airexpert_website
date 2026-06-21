@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { getServiceBySlug, getPublishedServices } from "@/lib/data";
 import { sanitizeBodyHtml } from "@/lib/sanitize";
+import { buildSeoMetadata } from "@/lib/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { ServiceCtaBanner } from "@/components/services/ServiceCtaBanner";
 
 // Next 16：dynamic `params` 為 Promise，須 await（見 node_modules/next/dist/docs）。
@@ -30,17 +32,11 @@ export async function generateMetadata(
     return { title: "找不到服務項目" };
   }
 
-  const title = service.seo_title ?? service.title;
-  const description = service.seo_description ?? service.summary ?? undefined;
-  const cover = service.images?.find((img) => img?.url)?.url;
-
-  return {
-    title,
-    description,
-    openGraph: cover
-      ? { title, description, images: [cover] }
-      : { title, description },
-  };
+  return buildSeoMetadata(service, {
+    title: service.title,
+    description: service.summary,
+    image: service.images?.find((img) => img?.url)?.url,
+  });
 }
 
 export default async function ServiceDetailPage(props: DetailPageProps) {
@@ -56,6 +52,7 @@ export default async function ServiceDetailPage(props: DetailPageProps) {
 
   return (
     <>
+      <JsonLd data={service.schema_jsonld} />
       {/* Breadcrumb */}
       <section className="bg-surface-muted border-border border-b">
         <div className="text-text-muted mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-6 py-4 font-mono text-[12px] md:px-20">

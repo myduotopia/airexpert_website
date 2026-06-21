@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProductBySlug, getPublishedProducts } from "@/lib/data";
 import { sanitizeBodyHtml } from "@/lib/sanitize";
+import { buildSeoMetadata } from "@/lib/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
 import type { Product } from "@/lib/types";
 import { Breadcrumb } from "@/components/products/Breadcrumb";
 import { ProductImage } from "@/components/products/ProductImage";
@@ -43,10 +45,11 @@ export async function generateMetadata(
     return { title: "找不到產品" };
   }
 
-  const title = product.seo_title ?? product.name;
-  const description = product.seo_description ?? product.summary ?? undefined;
-
-  return { title, description };
+  return buildSeoMetadata(product, {
+    title: product.name,
+    description: product.summary,
+    image: product.images?.[0]?.url,
+  });
 }
 
 /** Up to 4 hero metric highlights pulled from the product's spec jsonb. */
@@ -78,6 +81,7 @@ export default async function ProductDetailPage(props: DetailPageProps) {
 
   return (
     <>
+      <JsonLd data={product.schema_jsonld} />
       <Breadcrumb
         items={[
           { label: "首頁", href: "/" },

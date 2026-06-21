@@ -15,6 +15,7 @@ import {
   reorderRows,
   type ActionResult,
 } from "@/lib/admin/crud";
+import { parseSeoFields } from "@/lib/admin/seo-fields";
 import { CACHE_TAGS } from "@/lib/data";
 import type { ContentStatus } from "@/lib/types";
 
@@ -97,11 +98,15 @@ export async function saveAlbum(
     };
   }
 
+  const seo = parseSeoFields(formData);
+  if (!seo.ok) return { ok: false, error: seo.error };
+
   const values = {
     title,
     slug,
     description: str(formData, "description"),
     cover_image: str(formData, "cover_image"),
+    ...seo.values,
     status: normalizeStatus(formData.get("status")),
   };
 

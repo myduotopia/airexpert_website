@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { createRow, updateRow, deleteRow, reorderRows } from "@/lib/admin/crud";
 import { CACHE_TAGS } from "@/lib/data/cache";
 import type { ActionResult } from "@/lib/admin/crud";
+import { parseSeoFields, type SeoValues } from "@/lib/admin/seo-fields";
 import type { CaseMetrics, ContentStatus, MediaImage } from "@/lib/types";
 import { CASE_CATEGORIES } from "@/components/cases/constants";
 
@@ -49,7 +50,7 @@ function parseMetrics(raw: string): CaseMetrics {
   return out;
 }
 
-function buildValues(fd: FormData): Record<string, unknown> {
+function buildValues(fd: FormData, seo: SeoValues): Record<string, unknown> {
   const status = str(fd, "status") as ContentStatus;
   return {
     title: str(fd, "title"),
@@ -60,8 +61,7 @@ function buildValues(fd: FormData): Record<string, unknown> {
     body_html: nullable(str(fd, "body_html")),
     metrics: parseMetrics(str(fd, "metrics")),
     images: parseImages(str(fd, "images")),
-    seo_title: nullable(str(fd, "seo_title")),
-    seo_description: nullable(str(fd, "seo_description")),
+    ...seo,
     status: status || "draft",
   };
 }
@@ -91,7 +91,9 @@ export async function createCase(
   fd: FormData,
 ): Promise<FormState> {
   await requireAdmin();
-  const values = buildValues(fd);
+  const seo = parseSeoFields(fd);
+  if (!seo.ok) return { error: seo.error };
+  const values = buildValues(fd, seo.values);
   const err = validate(values);
   if (err) return { error: err };
   const res = await createRow(TABLE, values, TAGS);
@@ -105,7 +107,9 @@ export async function updateCase(
   fd: FormData,
 ): Promise<FormState> {
   await requireAdmin();
-  const values = buildValues(fd);
+  const seo = parseSeoFields(fd);
+  if (!seo.ok) return { error: seo.error };
+  const values = buildValues(fd, seo.values);
   const err = validate(values);
   if (err) return { error: err };
   const res = await updateRow(TABLE, id, values, TAGS);

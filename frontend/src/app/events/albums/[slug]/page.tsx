@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getPhotoAlbumBySlug } from "@/lib/data";
+import { buildSeoMetadata } from "@/lib/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { PhotoGrid } from "@/components/events/PhotoGrid";
 
 type PageProps = {
@@ -16,10 +18,11 @@ export async function generateMetadata({
   const { slug } = await params;
   const album = await getPhotoAlbumBySlug(slug);
   if (!album) return { title: "相簿不存在" };
-  return {
+  return buildSeoMetadata(album, {
     title: `${album.title} | 公司活動`,
-    description: album.description ?? undefined,
-  };
+    description: album.description,
+    image: album.cover_image,
+  });
 }
 
 export default async function AlbumDetailPage({ params }: PageProps) {
@@ -32,6 +35,7 @@ export default async function AlbumDetailPage({ params }: PageProps) {
 
   return (
     <>
+      <JsonLd data={album.schema_jsonld} />
       {/* Header band */}
       <section className="bg-surface-muted border-border border-b">
         <div className="mx-auto max-w-[1440px] px-6 pt-12 pb-10 md:px-20">

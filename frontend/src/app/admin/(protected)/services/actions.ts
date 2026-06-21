@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { createRow, updateRow, deleteRow, reorderRows } from "@/lib/admin/crud";
 import { CACHE_TAGS } from "@/lib/data/cache";
 import type { ActionResult } from "@/lib/admin/crud";
+import { parseSeoFields, type SeoValues } from "@/lib/admin/seo-fields";
 import type { ContentStatus, MediaImage } from "@/lib/types";
 
 const TABLE = "services";
@@ -28,7 +29,7 @@ function parseImages(raw: string): MediaImage[] {
     .map((url, sort) => ({ url, alt: null, sort }));
 }
 
-function buildValues(fd: FormData): Record<string, unknown> {
+function buildValues(fd: FormData, seo: SeoValues): Record<string, unknown> {
   const status = str(fd, "status") as ContentStatus;
   // sort_order 不在表單寫入（改由列表拖移排序維護），避免儲存時被覆蓋回 0。
   return {
@@ -37,8 +38,7 @@ function buildValues(fd: FormData): Record<string, unknown> {
     summary: nullable(str(fd, "summary")),
     body_html: nullable(str(fd, "body_html")),
     images: parseImages(str(fd, "images")),
-    seo_title: nullable(str(fd, "seo_title")),
-    seo_description: nullable(str(fd, "seo_description")),
+    ...seo,
     status: status || "draft",
   };
 }
@@ -63,7 +63,9 @@ export async function createService(
   fd: FormData,
 ): Promise<FormState> {
   await requireAdmin();
-  const values = buildValues(fd);
+  const seo = parseSeoFields(fd);
+  if (!seo.ok) return { error: seo.error };
+  const values = buildValues(fd, seo.values);
   const err = validate(values);
   if (err) return { error: err };
   const res = await createRow(TABLE, values, TAGS);
@@ -77,7 +79,9 @@ export async function updateService(
   fd: FormData,
 ): Promise<FormState> {
   await requireAdmin();
-  const values = buildValues(fd);
+  const seo = parseSeoFields(fd);
+  if (!seo.ok) return { error: seo.error };
+  const values = buildValues(fd, seo.values);
   const err = validate(values);
   if (err) return { error: err };
   const res = await updateRow(TABLE, id, values, TAGS);

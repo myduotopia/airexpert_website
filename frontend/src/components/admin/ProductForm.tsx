@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { ProductImagesField } from "@/components/admin/ProductImagesField";
+import { SeoFields } from "@/components/admin/SeoFields";
 import { PRODUCT_CATEGORIES } from "@/components/products/categories";
 import type { Product } from "@/lib/types";
 import type { ProductFormState } from "@/app/admin/(protected)/products/actions";
@@ -153,7 +154,7 @@ export function ProductForm({
         <ProductImagesField initial={product?.images ?? []} />
       </div>
 
-      {/* 內文 / SEO */}
+      {/* 內文 */}
       <label className="flex flex-col gap-1.5">
         <span className={labelCls}>詳情內文（HTML，選填）</span>
         <textarea
@@ -165,24 +166,8 @@ export function ProductForm({
         />
       </label>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className={labelCls}>SEO 標題（選填）</span>
-          <input
-            name="seo_title"
-            defaultValue={product?.seo_title ?? ""}
-            className={inputCls}
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className={labelCls}>SEO 描述（選填）</span>
-          <input
-            name="seo_description"
-            defaultValue={product?.seo_description ?? ""}
-            className={inputCls}
-          />
-        </label>
-      </div>
+      {/* SEO 設定（完整 meta） */}
+      <SeoFields values={product} />
 
       <div className="border-border flex items-center gap-3 border-t pt-5">
         <SubmitButton>{submitLabel}</SubmitButton>

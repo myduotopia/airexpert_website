@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { getArticleBySlug, getPublishedArticles } from "@/lib/data";
 import { sanitizeBodyHtml } from "@/lib/sanitize";
+import { buildSeoMetadata } from "@/lib/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { ArticleCard } from "@/components/news/ArticleCard";
 import { formatNewsDate } from "@/components/news/format";
 
@@ -32,16 +34,11 @@ export async function generateMetadata(
     return { title: "找不到文章" };
   }
 
-  const title = article.seo_title ?? article.title;
-  const description = article.seo_description ?? article.excerpt ?? undefined;
-
-  return {
-    title,
-    description,
-    openGraph: article.cover_image
-      ? { title, description, images: [article.cover_image] }
-      : { title, description },
-  };
+  return buildSeoMetadata(article, {
+    title: article.title,
+    description: article.excerpt,
+    image: article.cover_image,
+  });
 }
 
 export default async function ArticleDetailPage(props: DetailPageProps) {
@@ -73,6 +70,7 @@ export default async function ArticleDetailPage(props: DetailPageProps) {
 
   return (
     <>
+      <JsonLd data={article.schema_jsonld} />
       {/* Breadcrumb */}
       <section className="bg-surface-muted border-border border-b">
         <div className="text-text-muted mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-6 py-4 text-[13px] md:px-20">
