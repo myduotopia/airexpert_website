@@ -1,10 +1,14 @@
 import Link from "next/link";
-import { ADMIN_NAV } from "@/lib/admin/nav-config";
+import { navForRole } from "@/lib/admin/nav-config";
+import { getCurrentUserRole } from "@/lib/admin/auth";
 
 export const metadata = { title: "後台總覽" };
 
-export default function AdminDashboardPage() {
-  const sections = ADMIN_NAV.filter(
+export default async function AdminDashboardPage() {
+  // 依角色挑可見區段（seo_manager 不顯示網站設定 / 人員管理 / 聯絡來信）。
+  // 角色由 layout 的 requireRole 確保非 null；保險起見退回 seo_manager（最小權限）。
+  const role = (await getCurrentUserRole()) ?? "seo_manager";
+  const sections = navForRole(role).filter(
     (i) => i.key !== "dashboard" && i.key !== "settings",
   );
 
