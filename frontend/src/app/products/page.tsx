@@ -8,8 +8,15 @@ export const metadata: Metadata = {
     "AirExpert 超勁賀空壓科技完整氣源系統：變頻空壓機、真空泵、鼓風機與乾燥機，為潔淨、節能而生。",
 };
 
-export default async function ProductsPage() {
-  const products = await getPublishedProducts();
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string }>;
+}) {
+  const [{ category }, products] = await Promise.all([
+    searchParams,
+    getPublishedProducts(),
+  ]);
 
   return (
     <>
@@ -32,7 +39,7 @@ export default async function ProductsPage() {
       {/* Filters + grid */}
       <section className="bg-surface">
         <div className="mx-auto max-w-[1440px] px-6 py-12 md:px-20 md:py-16">
-          <ProductGrid products={products} />
+          <ProductGrid products={products} initial={category} />
         </div>
       </section>
     </>

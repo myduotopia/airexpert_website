@@ -1,4 +1,6 @@
 import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 type Category = { img: string; name: string; desc: string };
 
@@ -54,9 +56,11 @@ export function ProductShowcase() {
 
         <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {CATEGORIES.map((c) => (
-            <div
+            <Link
               key={c.name}
-              className="border-border bg-surface group flex flex-col overflow-hidden rounded-2xl border transition-shadow hover:shadow-[0_6px_28px_rgba(22,32,26,0.07)]"
+              href={`/products?category=${encodeURIComponent(c.name)}`}
+              aria-label={`查看${c.name}系列`}
+              className="border-border bg-surface group hover:border-primary focus-visible:ring-primary flex flex-col overflow-hidden rounded-2xl border transition-shadow hover:shadow-[0_6px_28px_rgba(22,32,26,0.07)] focus-visible:ring-2 focus-visible:outline-none"
             >
               <div className="bg-surface flex aspect-[4/3] items-center justify-center p-6">
                 <Image
@@ -73,8 +77,16 @@ export function ProductShowcase() {
                 <p className="text-text-muted text-[16px] leading-[1.6]">
                   {c.desc}
                 </p>
+                <span className="text-primary-deep mt-1 inline-flex items-center gap-1 text-[15px] font-medium">
+                  查看系列
+                  <ArrowRight
+                    size={16}
+                    className="transition-transform group-hover:translate-x-0.5"
+                    aria-hidden="true"
+                  />
+                </span>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
