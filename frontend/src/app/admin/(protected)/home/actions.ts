@@ -8,6 +8,8 @@ import { getAdminSupabase } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
 import { CACHE_TAGS } from "@/lib/data/cache";
 import { HOME_KEYS } from "@/lib/data/home";
+import { BRANDING_KEY } from "@/lib/data/site";
+import { parseBrandingFields } from "@/lib/admin/branding";
 
 const ALLOWED_KEYS = new Set<string>(Object.values(HOME_KEYS));
 
@@ -41,6 +43,30 @@ export async function saveHomeSetting(
   if (error) return { ok: false, error: error.message };
 
   // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
+  revalidateTag(CACHE_TAGS.siteSettings, "max");
+  return { ok: true };
+}
+
+// 品牌資產（LOGO / favicon）：upsert site_settings.branding（is_public=true，
+// 公開 layout / Header 需讀）。欄位 logo_url / favicon_url 為圖檔 URL（可上傳或手填）。
+// 空欄位省略 → 前台退回內建素材。安全邊界：先 requireAdmin()。
+export async function saveBranding(
+  _prev: SaveResult | null,
+  formData: FormData,
+): Promise<SaveResult> {
+  await requireAdmin();
+
+  const value = parseBrandingFields(formData);
+
+  const { error } = await getAdminSupabase()
+    .from("site_settings")
+    .upsert(
+      { key: BRANDING_KEY, value, is_public: true },
+      { onConflict: "key" },
+    );
+
+  if (error) return { ok: false, error: error.message };
+
   revalidateTag(CACHE_TAGS.siteSettings, "max");
   return { ok: true };
 }
