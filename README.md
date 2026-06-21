@@ -12,6 +12,10 @@
 
 混合雲：前端 Vercel（SEO/CDN/preview 最強），後端 AI 走 GCP（Vertex 同雲、低延遲）。
 
+> ⚠️ 上表為**目標架構**。目前實際在跑的是 Next.js (Vercel) + Supabase 單體，
+> GCP / FastAPI / Vertex 尚未啟用。現況 vs 目標的完整對照見
+> [docs/architecture.md](docs/architecture.md)。
+
 ## 專案結構（monorepo）
 
 ```
