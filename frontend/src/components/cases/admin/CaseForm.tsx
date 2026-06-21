@@ -3,6 +3,7 @@
 import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
+import { SeoFields } from "@/components/admin/SeoFields";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { CASE_CATEGORIES } from "@/components/cases/constants";
@@ -199,30 +200,8 @@ export function CaseForm({
         </select>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${uid}-seo-title`} className={labelCls}>
-          SEO 標題
-        </label>
-        <input
-          id={`${uid}-seo-title`}
-          name="seo_title"
-          defaultValue={caseItem?.seo_title ?? ""}
-          className={inputCls}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${uid}-seo-desc`} className={labelCls}>
-          SEO 描述
-        </label>
-        <textarea
-          id={`${uid}-seo-desc`}
-          name="seo_description"
-          rows={2}
-          defaultValue={caseItem?.seo_description ?? ""}
-          className={textareaCls}
-        />
-      </div>
+      {/* SEO 設定（完整 meta） */}
+      <SeoFields values={caseItem} />
 
       <div className="flex items-center gap-3 pt-2">
         <SubmitButton>{caseItem ? "儲存變更" : "建立實績"}</SubmitButton>

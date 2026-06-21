@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, MapPin, Factory } from "lucide-react";
 import { getCaseBySlug, getPublishedCases } from "@/lib/data";
 import { sanitizeBodyHtml } from "@/lib/sanitize";
+import { buildSeoMetadata } from "@/lib/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { MetricsCards } from "@/components/cases/MetricsCards";
 import { CaseCard } from "@/components/cases/CaseCard";
 
@@ -31,17 +33,10 @@ export async function generateMetadata(
     return { title: "找不到實績案例" };
   }
 
-  const title = caseItem.seo_title ?? caseItem.title;
-  const description = caseItem.seo_description ?? undefined;
-  const cover = caseItem.images?.[0]?.url;
-
-  return {
-    title,
-    description,
-    openGraph: cover
-      ? { title, description, images: [cover] }
-      : { title, description },
-  };
+  return buildSeoMetadata(caseItem, {
+    title: caseItem.title,
+    image: caseItem.images?.[0]?.url,
+  });
 }
 
 export default async function CaseDetailPage(props: DetailPageProps) {
@@ -75,6 +70,7 @@ export default async function CaseDetailPage(props: DetailPageProps) {
 
   return (
     <>
+      <JsonLd data={caseItem.schema_jsonld} />
       {/* Breadcrumb */}
       <section className="bg-surface-muted border-border border-b">
         <div className="text-text-muted mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-6 py-4 text-[13px] md:px-20">

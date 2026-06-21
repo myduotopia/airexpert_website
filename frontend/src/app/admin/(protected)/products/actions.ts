@@ -9,6 +9,7 @@ import { createRow, updateRow, deleteRow, reorderRows } from "@/lib/admin/crud";
 import { CACHE_TAGS } from "@/lib/data/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/supabase-admin";
+import { parseSeoFields, type SeoValues } from "@/lib/admin/seo-fields";
 import type { ContentStatus, MediaImage, ProductSpec } from "@/lib/types";
 import { PRODUCT_CATEGORIES } from "@/components/products/categories";
 
@@ -71,7 +72,10 @@ function parseImages(raw: string): MediaImage[] {
   }
 }
 
-function buildValues(formData: FormData): Record<string, unknown> {
+function buildValues(
+  formData: FormData,
+  seo: SeoValues,
+): Record<string, unknown> {
   const category = str(formData, "category");
   const status = str(formData, "status") as ContentStatus;
 
@@ -86,8 +90,7 @@ function buildValues(formData: FormData): Record<string, unknown> {
     body_html: nullableStr(formData, "body_html"),
     spec: parseSpec(str(formData, "spec")),
     images: parseImages(str(formData, "images")),
-    seo_title: nullableStr(formData, "seo_title"),
-    seo_description: nullableStr(formData, "seo_description"),
+    ...seo,
     status: STATUSES.includes(status) ? status : "draft",
   };
 }
@@ -105,7 +108,9 @@ export async function createProductAction(
   _prev: ProductFormState,
   formData: FormData,
 ): Promise<ProductFormState> {
-  const values = buildValues(formData);
+  const seo = parseSeoFields(formData);
+  if (!seo.ok) return { error: seo.error };
+  const values = buildValues(formData, seo.values);
   const invalid = validate(values);
   if (invalid) return { error: invalid };
 
@@ -120,7 +125,9 @@ export async function updateProductAction(
   _prev: ProductFormState,
   formData: FormData,
 ): Promise<ProductFormState> {
-  const values = buildValues(formData);
+  const seo = parseSeoFields(formData);
+  if (!seo.ok) return { error: seo.error };
+  const values = buildValues(formData, seo.values);
   const invalid = validate(values);
   if (invalid) return { error: invalid };
 

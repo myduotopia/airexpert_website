@@ -3,6 +3,7 @@
 import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
+import { SeoFields } from "@/components/admin/SeoFields";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { NEWS_CATEGORIES } from "@/components/news/constants";
@@ -218,32 +219,15 @@ export function ArticleForm({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${uid}-seo-title`} className={labelCls}>
-          SEO 標題
-        </label>
-        <input
-          id={`${uid}-seo-title`}
-          name="seo_title"
-          defaultValue={article?.seo_title ?? prefill?.seo_title ?? ""}
-          className={inputCls}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${uid}-seo-desc`} className={labelCls}>
-          SEO 描述
-        </label>
-        <textarea
-          id={`${uid}-seo-desc`}
-          name="seo_description"
-          rows={2}
-          defaultValue={
-            article?.seo_description ?? prefill?.seo_description ?? ""
-          }
-          className={textareaCls}
-        />
-      </div>
+      {/* SEO 設定（完整 meta）。article 為編輯現值；prefill 供建立模式（AI 草稿）帶入 seo_title/description。 */}
+      <SeoFields
+        values={{
+          ...(article ?? {}),
+          seo_title: article?.seo_title ?? prefill?.seo_title ?? null,
+          seo_description:
+            article?.seo_description ?? prefill?.seo_description ?? null,
+        }}
+      />
 
       <div className="flex items-center gap-3 pt-2">
         <SubmitButton>{article ? "儲存變更" : "建立文章"}</SubmitButton>

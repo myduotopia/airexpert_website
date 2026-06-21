@@ -6,6 +6,23 @@
 export type ContentStatus = "draft" | "published" | "archived";
 
 /**
+ * V3 完整 SEO meta 欄位（0003_v3_seo.sql）。
+ * products / articles / cases / services / photo_albums 五表共有。
+ * seo_title / seo_description 雖於 0001/0002 既有，仍納入此介面集中描述。
+ */
+export interface SeoColumns {
+  seo_title: string | null;
+  seo_description: string | null;
+  canonical_url: string | null;
+  og_title: string | null;
+  og_description: string | null;
+  og_image_url: string | null;
+  schema_jsonld: Record<string, unknown> | null;
+  noindex: boolean;
+  nofollow: boolean;
+}
+
+/**
  * 商品圖片 jsonb 形狀：images = [{ url, alt, sort }]
  * 同樣用於 articles / cases 的 images 欄位。
  */
@@ -28,7 +45,7 @@ export type ProductSpec = Record<string, string | number | null>;
 export type CaseMetrics = Record<string, string | number | null>;
 
 // ---------- products ----------
-export interface Product {
+export interface Product extends SeoColumns {
   id: string;
   slug: string;
   category: string;
@@ -38,8 +55,6 @@ export interface Product {
   body_html: string | null;
   spec: ProductSpec;
   images: MediaImage[];
-  seo_title: string | null;
-  seo_description: string | null;
   sort_order: number;
   status: ContentStatus;
   legacy_path: string | null;
@@ -48,7 +63,7 @@ export interface Product {
 }
 
 // ---------- articles ----------
-export interface Article {
+export interface Article extends SeoColumns {
   id: string;
   slug: string;
   category: string;
@@ -57,8 +72,6 @@ export interface Article {
   body_html: string | null;
   cover_image: string | null;
   images: MediaImage[];
-  seo_title: string | null;
-  seo_description: string | null;
   status: ContentStatus;
   published_at: string | null;
   sort_order: number;
@@ -68,7 +81,7 @@ export interface Article {
 }
 
 // ---------- cases ----------
-export interface Case {
+export interface Case extends SeoColumns {
   id: string;
   slug: string;
   category: string;
@@ -78,8 +91,6 @@ export interface Case {
   body_html: string | null;
   metrics: CaseMetrics;
   images: MediaImage[];
-  seo_title: string | null;
-  seo_description: string | null;
   status: ContentStatus;
   sort_order: number;
   legacy_path: string | null;
@@ -101,7 +112,7 @@ export interface Event {
 }
 
 // ---------- photo_albums ----------
-export interface PhotoAlbum {
+export interface PhotoAlbum extends SeoColumns {
   id: string;
   slug: string;
   title: string;
@@ -184,15 +195,13 @@ export interface Brand {
 }
 
 // ---------- services（V2：服務項目 ×4，0002_v2_cms.sql） ----------
-export interface Service {
+export interface Service extends SeoColumns {
   id: string;
   slug: string;
   title: string;
   summary: string | null;
   body_html: string | null;
   images: MediaImage[];
-  seo_title: string | null;
-  seo_description: string | null;
   sort_order: number;
   status: ContentStatus;
   legacy_path: string | null;

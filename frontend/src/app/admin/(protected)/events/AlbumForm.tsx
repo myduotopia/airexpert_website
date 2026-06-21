@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ImageUploader } from "@/components/admin/ImageUploader";
+import { SeoFields } from "@/components/admin/SeoFields";
 import type { PhotoAlbum, ContentStatus } from "@/lib/types";
 import { saveAlbum } from "./actions";
 
@@ -134,6 +135,9 @@ export function AlbumForm({ album }: { album?: PhotoAlbum }) {
           />
         )}
       </fieldset>
+
+      {/* SEO 設定（完整 meta） */}
+      <SeoFields values={album} />
 
       {error ? (
         <p role="alert" className="text-[13px] text-red-600">

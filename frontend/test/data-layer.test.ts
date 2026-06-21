@@ -20,8 +20,10 @@ import {
   getPublishedEvents,
   getPublishedBrands,
   getPublishedServices,
+  getProductBySlug,
 } from "@/lib/data";
 import { submitContactForm } from "@/lib/contact";
+import type { Product } from "@/lib/types";
 
 type Calls = {
   eq: [string, unknown][];
@@ -78,6 +80,51 @@ describe("資料層只讀 published（每個 read helper 都套 status='publishe
       expect(calls.eq).toContainEqual(["status", "published"]);
     });
   }
+});
+
+describe("V3 SEO 欄位（資料層 select * 帶回新欄位 + 型別包含新欄位）", () => {
+  it("getProductBySlug 以 select() 取回整列（含 0003 新增 SEO 欄位）", async () => {
+    const { builder, calls } = fakeClient();
+    vi.mocked(getSupabaseClient).mockReturnValue(
+      builder as unknown as ReturnType<typeof getSupabaseClient>,
+    );
+    await getProductBySlug("ax-s9");
+    // select("*") → 新增的 SEO 欄位自動隨整列回傳，無需逐欄列舉。
+    expect(calls.selectCalled).toBe(true);
+    expect(calls.eq).toContainEqual(["slug", "ax-s9"]);
+    expect(calls.eq).toContainEqual(["status", "published"]);
+  });
+
+  it("Product 型別包含完整 SEO 欄位（編譯期 + 執行期）", () => {
+    const row: Product = {
+      id: "1",
+      slug: "x",
+      category: "無油式",
+      brand: null,
+      name: "X",
+      summary: null,
+      body_html: null,
+      spec: {},
+      images: [],
+      seo_title: "t",
+      seo_description: "d",
+      canonical_url: "https://airexpert.com.tw/products/x",
+      og_title: "og",
+      og_description: "ogd",
+      og_image_url: "https://x/og.png",
+      schema_jsonld: { "@type": "Product" },
+      noindex: false,
+      nofollow: false,
+      sort_order: 0,
+      status: "published",
+      legacy_path: null,
+      created_at: "2026-01-01",
+      updated_at: "2026-01-01",
+    };
+    expect(row.canonical_url).toContain("airexpert");
+    expect(row.schema_jsonld).toEqual({ "@type": "Product" });
+    expect(row.noindex).toBe(false);
+  });
 });
 
 describe("聯絡表單", () => {
