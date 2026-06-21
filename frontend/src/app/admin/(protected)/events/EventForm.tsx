@@ -90,18 +90,6 @@ export function EventForm({ event }: { event?: Event }) {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="sort_order" className={labelClass}>
-            排序
-          </label>
-          <input
-            id="sort_order"
-            name="sort_order"
-            type="number"
-            defaultValue={event?.sort_order ?? 0}
-            className={inputClass}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
           <label htmlFor="status" className={labelClass}>
             狀態
           </label>

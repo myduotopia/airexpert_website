@@ -14,6 +14,7 @@ export const getPublishedCases = cache(
         .from("cases")
         .select("*")
         .eq("status", "published")
+        .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false });
 
       throwOnError("getPublishedCases", error);
@@ -32,6 +33,7 @@ export const getCasesByCategory = cache(
         .select("*")
         .eq("status", "published")
         .eq("category", category)
+        .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false });
 
       throwOnError("getCasesByCategory", error);

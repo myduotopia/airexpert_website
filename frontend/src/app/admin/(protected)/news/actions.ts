@@ -2,9 +2,8 @@
 
 // 最新消息後台寫入：把共用 crud server actions 綁定到 articles 表 + 失效 articles 快取 tag。
 // 表單由 ArticleForm（client）以 FormData 呼叫，這裡解析後轉交 createRow / updateRow。
-import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin/auth";
-import { createRow, updateRow, deleteRow } from "@/lib/admin/crud";
+import { createRow, updateRow, deleteRow, reorderRows } from "@/lib/admin/crud";
 import { CACHE_TAGS } from "@/lib/data/cache";
 import type { ActionResult } from "@/lib/admin/crud";
 import type { ContentStatus, MediaImage } from "@/lib/types";
@@ -72,7 +71,7 @@ function validate(values: Record<string, unknown>): string | null {
   return null;
 }
 
-export type FormState = { error?: string };
+export type FormState = { error?: string; ok?: boolean };
 
 export async function createArticle(
   _prev: FormState,
@@ -84,7 +83,7 @@ export async function createArticle(
   if (err) return { error: err };
   const res = await createRow(TABLE, values, TAGS);
   if (!res.ok) return { error: res.error };
-  redirect("/admin/news");
+  return { ok: true };
 }
 
 export async function updateArticle(
@@ -98,9 +97,14 @@ export async function updateArticle(
   if (err) return { error: err };
   const res = await updateRow(TABLE, id, values, TAGS);
   if (!res.ok) return { error: res.error };
-  redirect("/admin/news");
+  return { ok: true };
 }
 
 export async function deleteArticle(id: string): Promise<ActionResult> {
   return deleteRow(TABLE, id, TAGS);
+}
+
+/** 列表拖移排序：把 sort_order 依新順序重設為 0,1,2…。 */
+export async function reorderNewsAction(orderedIds: string[]) {
+  return reorderRows(TABLE, orderedIds, TAGS);
 }

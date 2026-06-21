@@ -54,6 +54,28 @@ export async function deleteRow(
   return { ok: true };
 }
 
+/**
+ * 依新順序把 sort_order 重設為 0,1,2…（序列、不重複、由小到大）。
+ * 供後台列表拖移排序使用。orderedIds 為列表的完整新順序 id 陣列。
+ */
+export async function reorderRows(
+  table: string,
+  orderedIds: string[],
+  revalidate: string[] = [],
+): Promise<ActionResult> {
+  await requireAdmin();
+  const admin = getAdminSupabase();
+  const results = await Promise.all(
+    orderedIds.map((id, i) =>
+      admin.from(table).update({ sort_order: i }).eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, error: failed.error.message };
+  for (const tag of revalidate) revalidateTag(tag, "max");
+  return { ok: true };
+}
+
 export async function setStatus(
   table: string,
   id: string,

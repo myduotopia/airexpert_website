@@ -4,9 +4,8 @@
 // 共用寫入邏輯（service_role + requireAdmin + revalidateTag）集中在 @/lib/admin/crud，
 // 這裡只負責：把表單欄位整理成 products 列、解析 spec/images 兩個 jsonb 欄位、
 // 並在成功後導回列表。table = "products"，PK = id。
-import { redirect } from "next/navigation";
 import { revalidateTag } from "next/cache";
-import { createRow, updateRow, deleteRow } from "@/lib/admin/crud";
+import { createRow, updateRow, deleteRow, reorderRows } from "@/lib/admin/crud";
 import { CACHE_TAGS } from "@/lib/data/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/supabase-admin";
@@ -15,7 +14,8 @@ import { PRODUCT_CATEGORIES } from "@/components/products/categories";
 
 const TAGS = [CACHE_TAGS.products];
 
-export type ProductFormState = { error?: string };
+// ok:true → 表單在 client 端導回列表（避免 server action 內 revalidate+redirect 卡住）。
+export type ProductFormState = { error?: string; ok?: boolean };
 
 const STATUSES: ContentStatus[] = ["draft", "published", "archived"];
 
@@ -74,8 +74,6 @@ function parseImages(raw: string): MediaImage[] {
 function buildValues(formData: FormData): Record<string, unknown> {
   const category = str(formData, "category");
   const status = str(formData, "status") as ContentStatus;
-  const sortRaw = str(formData, "sort_order");
-  const sort_order = Number.isFinite(Number(sortRaw)) ? Number(sortRaw) : 0;
 
   return {
     slug: str(formData, "slug"),
@@ -90,7 +88,6 @@ function buildValues(formData: FormData): Record<string, unknown> {
     images: parseImages(str(formData, "images")),
     seo_title: nullableStr(formData, "seo_title"),
     seo_description: nullableStr(formData, "seo_description"),
-    sort_order,
     status: STATUSES.includes(status) ? status : "draft",
   };
 }
@@ -115,7 +112,7 @@ export async function createProductAction(
   const res = await createRow("products", values, TAGS);
   if (!res.ok) return { error: res.error };
 
-  redirect("/admin/products");
+  return { ok: true };
 }
 
 export async function updateProductAction(
@@ -130,12 +127,17 @@ export async function updateProductAction(
   const res = await updateRow("products", id, values, TAGS);
   if (!res.ok) return { error: res.error };
 
-  redirect("/admin/products");
+  return { ok: true };
 }
 
 /** 列表上的刪除：由 DeleteButton 在 client 事件處理器呼叫（已 bind id）。 */
 export async function deleteProductAction(id: string) {
   return deleteRow("products", id, TAGS);
+}
+
+/** 列表拖移排序：把 sort_order 依新順序重設為 0,1,2…。 */
+export async function reorderProductsAction(orderedIds: string[]) {
+  return reorderRows("products", orderedIds, TAGS);
 }
 
 /**

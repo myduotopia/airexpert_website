@@ -3,9 +3,10 @@ import { getAdminSupabase } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
 import type { Event, PhotoAlbum } from "@/lib/types";
 import { DataTable, type Column } from "@/components/admin/DataTable";
+import { ReorderableTable } from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
-import { deleteEvent, deleteAlbum } from "./actions";
+import { deleteEvent, deleteAlbum, reorderEventsAction } from "./actions";
 
 export const metadata = { title: "公司活動管理" };
 
@@ -60,7 +61,6 @@ export default async function AdminEventsPage() {
         ),
     },
     { header: "活動日期", cell: (e) => formatDate(e.event_date) },
-    { header: "排序", cell: (e) => e.sort_order },
     { header: "狀態", cell: (e) => <StatusBadge status={e.status} /> },
     {
       header: "操作",
@@ -134,10 +134,11 @@ export default async function AdminEventsPage() {
           </Link>
         </div>
         <div className="mt-4">
-          <DataTable
+          <ReorderableTable
             rows={events}
             columns={eventColumns}
             getKey={(e) => e.id}
+            onReorder={reorderEventsAction}
             empty="尚無影片，點右上角「新增影片」建立。"
           />
         </div>

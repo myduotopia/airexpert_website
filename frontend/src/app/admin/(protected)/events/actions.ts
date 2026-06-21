@@ -9,7 +9,12 @@
 import { revalidateTag } from "next/cache";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
-import { deleteRow, setStatus, type ActionResult } from "@/lib/admin/crud";
+import {
+  deleteRow,
+  setStatus,
+  reorderRows,
+  type ActionResult,
+} from "@/lib/admin/crud";
 import { CACHE_TAGS } from "@/lib/data";
 import type { ContentStatus } from "@/lib/types";
 
@@ -30,11 +35,6 @@ function str(formData: FormData, key: string): string | null {
   return s === "" ? null : s;
 }
 
-function num(formData: FormData, key: string): number {
-  const n = Number(formData.get(key));
-  return Number.isFinite(n) ? n : 0;
-}
-
 // ---------------- events（交機影片） ----------------
 
 export async function saveEvent(
@@ -45,12 +45,12 @@ export async function saveEvent(
   const title = str(formData, "title");
   if (!title) return { ok: false, error: "標題為必填" };
 
+  // sort_order 不在表單寫入（改由列表拖移排序維護），避免儲存時被覆蓋。
   const values = {
     title,
     description: str(formData, "description"),
     video_url: str(formData, "video_url"),
     event_date: str(formData, "event_date"), // date 或 null
-    sort_order: num(formData, "sort_order"),
     status: normalizeStatus(formData.get("status")),
   };
 
@@ -73,6 +73,11 @@ export async function setEventStatus(
   status: ContentStatus,
 ): Promise<ActionResult> {
   return setStatus("events", id, status, EVENTS_TAGS);
+}
+
+/** 交機影片列表拖移排序：把 sort_order 依新順序重設為 0,1,2…。 */
+export async function reorderEventsAction(orderedIds: string[]) {
+  return reorderRows("events", orderedIds, EVENTS_TAGS);
 }
 
 // ---------------- photo_albums（活動相簿） ----------------

@@ -4,6 +4,7 @@ import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { SubmitButton } from "@/components/admin/SubmitButton";
+import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { NEWS_CATEGORIES } from "@/components/news/constants";
 import type { Article, ContentStatus } from "@/lib/types";
 import type { FormState } from "@/app/admin/(protected)/news/actions";
@@ -60,6 +61,7 @@ export function ArticleForm({
   prefill?: ArticlePrefill;
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
+  useNavigateOnSuccess(state.ok, "/admin/news");
   const [cover, setCover] = useState(article?.cover_image ?? "");
   const [images, setImages] = useState(imagesToText(article?.images ?? []));
   const uid = useId();

@@ -1,9 +1,16 @@
 import Link from "next/link";
-import { DataTable, type Column } from "@/components/admin/DataTable";
+import {
+  ReorderableTable,
+  type Column,
+} from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import type { Product } from "@/lib/types";
-import { listAllProductsForAdmin, deleteProductAction } from "./actions";
+import {
+  listAllProductsForAdmin,
+  deleteProductAction,
+  reorderProductsAction,
+} from "./actions";
 
 export const metadata = { title: "商品介紹 · 後台" };
 
@@ -34,7 +41,6 @@ export default async function AdminProductsPage() {
       cell: (p) => `${p.images?.length ?? 0} 張`,
       className: "whitespace-nowrap",
     },
-    { header: "排序", cell: (p) => p.sort_order, className: "tabular-nums" },
     { header: "狀態", cell: (p) => <StatusBadge status={p.status} /> },
     {
       header: "操作",
@@ -70,10 +76,11 @@ export default async function AdminProductsPage() {
         </Link>
       </div>
 
-      <DataTable
+      <ReorderableTable
         rows={products}
         columns={columns}
         getKey={(p) => p.id}
+        onReorder={reorderProductsAction}
         empty="尚無商品，點右上角「新增商品」建立第一筆。"
       />
     </div>

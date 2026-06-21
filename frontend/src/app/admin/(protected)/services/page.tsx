@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
-import { DataTable } from "@/components/admin/DataTable";
+import { ReorderableTable } from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
-import { deleteService } from "./actions";
+import { deleteService, reorderServicesAction } from "./actions";
 import type { Service } from "@/lib/types";
 
 export const metadata = { title: "服務項目 — 後台" };
@@ -40,9 +40,10 @@ export default async function AdminServicesPage() {
       </div>
 
       <div className="mt-6">
-        <DataTable
+        <ReorderableTable
           rows={services}
           getKey={(s) => s.id}
+          onReorder={reorderServicesAction}
           empty="尚無服務項目，點右上角「新增服務」開始建立。"
           columns={[
             {
@@ -60,12 +61,6 @@ export default async function AdminServicesPage() {
               header: "slug",
               cell: (s) => (
                 <span className="font-mono text-[13px]">{s.slug}</span>
-              ),
-            },
-            {
-              header: "排序",
-              cell: (s) => (
-                <span className="font-mono text-[13px]">{s.sort_order}</span>
               ),
             },
             { header: "狀態", cell: (s) => <StatusBadge status={s.status} /> },
