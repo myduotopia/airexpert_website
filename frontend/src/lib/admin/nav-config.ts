@@ -23,8 +23,9 @@ export interface AdminNavItem {
 
 export const ADMIN_NAV: AdminNavItem[] = [
   { key: "dashboard", label: "總覽", href: "/admin", enabled: true },
-  // 首頁設定先隱藏（路由仍存在，只是不列在側欄）。
-  { key: "home", label: "首頁設定", href: "/admin/home", enabled: false },
+  // 首頁與品牌設定：品牌資產（LOGO / favicon）全站即時生效，故列入側欄；
+  // 首頁區段內容因前台採過渡版面暫未顯示（頁內已標示），仍可預先編輯。
+  { key: "home", label: "首頁與品牌", href: "/admin/home", enabled: true },
   {
     key: "products",
     label: "商品介紹",

@@ -15,16 +15,16 @@ function isActive(pathname: string, section: NavSection): boolean {
   return pathname === section.href || pathname.startsWith(`${section.href}/`);
 }
 
-function Brand() {
+function Brand({ logoUrl }: { logoUrl: string }) {
   return (
     <Link
       href="/"
       className="flex items-center gap-3"
       aria-label={BRAND_NAME_CN}
     >
-      {/* Official 超勁賀 brand mark (blue), from the company logo artwork. */}
+      {/* 品牌 LOGO：後台可於「首頁與品牌設定」覆寫；未設定時退回內建素材。 */}
       <Image
-        src="/brand/logo-mark.png"
+        src={logoUrl}
         alt=""
         width={150}
         height={99}
@@ -43,14 +43,14 @@ function Brand() {
   );
 }
 
-export function Header() {
+export function Header({ logoUrl }: { logoUrl: string }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="border-border bg-surface sticky top-0 z-50 border-b">
       <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-[18px] md:px-12">
-        <Brand />
+        <Brand logoUrl={logoUrl} />
 
         {/* Desktop nav (語言切換 / 預約談話 CTA hidden for the interim launch) */}
         <nav className="hidden items-center gap-[22px] lg:flex">

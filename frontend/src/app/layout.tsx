@@ -5,6 +5,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { FloatingSocial } from "@/components/FloatingSocial";
 import { SiteChrome } from "@/components/SiteChrome";
+import { getBranding } from "@/lib/data/site";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -25,9 +26,15 @@ const SITE_NAME = "超勁賀空壓科技 AirExpert";
 const SITE_DESCRIPTION =
   "超勁賀空壓科技以節能氣源系統推動永續製造，提供空氣壓縮機、真空泵浦、鼓風機與乾燥機，導入 ISO 50001 能源管理，協助產業邁向淨零目標。";
 
-export const metadata: Metadata = {
+// generateMetadata（非靜態 export）：favicon 由後台品牌資產動態決定，
+// 未設定時退回內建 /favicon.ico（getBranding 已含 fallback）。
+export async function generateMetadata(): Promise<Metadata> {
+  const { favicon_url } = await getBranding();
+  return {
   // metadataBase resolves relative OG/Twitter image + canonical URLs to absolute.
   metadataBase: new URL(SITE_URL),
+  // Browser tab / bookmark icon — admin-configurable via site_settings.branding.
+  icons: { icon: favicon_url },
   // Child pages set only their own title; `template` appends the brand suffix.
   // `default` is used by pages without a title (and as the OpenGraph title).
   title: {
@@ -61,13 +68,16 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: ["/og-default.png"],
   },
-};
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { logo_url } = await getBranding();
+
   return (
     <html
       lang="zh-Hant-TW"
@@ -75,7 +85,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col">
         <SiteChrome
-          header={<Header />}
+          header={<Header logoUrl={logo_url} />}
           footer={<Footer />}
           social={<FloatingSocial />}
         >
