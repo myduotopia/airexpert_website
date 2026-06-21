@@ -9,10 +9,7 @@ import {
   CONTACT_NOTIFY_KEY,
   notifyContactSubmission,
 } from "@/lib/notify/contact-notify";
-import {
-  parseRecipients,
-  type ContactNotifyValue,
-} from "@/lib/notify/config";
+import { parseRecipients, type ContactNotifyValue } from "@/lib/notify/config";
 import type { NotifyResult } from "@/lib/notify/types";
 
 export type SettingsState = { ok?: boolean; error?: string };

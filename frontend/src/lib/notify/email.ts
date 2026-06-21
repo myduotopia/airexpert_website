@@ -75,6 +75,8 @@ export async function sendEmail(
   });
   if (!res.ok) {
     const detail = await res.text();
-    throw new Error(`Resend 寄送失敗（${res.status}）：${detail.slice(0, 200)}`);
+    throw new Error(
+      `Resend 寄送失敗（${res.status}）：${detail.slice(0, 200)}`,
+    );
   }
 }

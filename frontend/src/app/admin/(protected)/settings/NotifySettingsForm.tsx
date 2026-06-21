@@ -37,7 +37,11 @@ function ChannelStatus({
   );
 }
 
-export function NotifySettingsForm({ config }: { config: ContactNotifyPublic }) {
+export function NotifySettingsForm({
+  config,
+}: {
+  config: ContactNotifyPublic;
+}) {
   const [state, formAction] = useActionState<SettingsState, FormData>(
     saveContactNotifyConfig,
     {},
@@ -176,7 +180,8 @@ export function NotifySettingsForm({ config }: { config: ContactNotifyPublic }) 
         className="border-border flex flex-col gap-3 border-t pt-5"
       >
         <p className="text-text-muted text-[13px]">
-          以一筆測試資料實際發送 Email + LINE，確認設定是否正常（不會寫入來信紀錄）。
+          以一筆測試資料實際發送 Email +
+          LINE，確認設定是否正常（不會寫入來信紀錄）。
         </p>
         <div>
           <SubmitButton variant="primary" pendingText="發送中…">

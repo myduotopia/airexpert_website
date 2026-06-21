@@ -34,7 +34,8 @@ export default async function AdminSettingsPage() {
           聯絡通知（Email + LINE）
         </h2>
         <p className="text-text-muted mb-4 text-[14px]">
-          聯絡表單送出後，會寄 Email 並推播 LINE 給以下設定的收件人。通知失敗不影響訪客送出。
+          聯絡表單送出後，會寄 Email 並推播 LINE
+          給以下設定的收件人。通知失敗不影響訪客送出。
         </p>
         <NotifySettingsForm config={notifyCfg} />
       </section>
