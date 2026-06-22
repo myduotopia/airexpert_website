@@ -11,6 +11,39 @@ import { getAiPrompts } from "./prompts-server";
 export const AI_CONFIG_KEY = "ai_config";
 // gemini-2.0-flash 已於 2026-06-01 停用；預設改用 2.5 Flash。
 const DEFAULT_MODEL = "gemini-2.5-flash";
+// 503 過載時的備援模型（較輕量、較不易過載）。
+export const FALLBACK_MODEL = "gemini-2.5-flash-lite";
+// 單一模型最多嘗試次數（含首次）。
+const MAX_ATTEMPTS = 3;
+
+/** 哪些 HTTP 狀態屬「暫時性」可重試（429 限流 / 500 / 503 過載）。純函式，便於測試。 */
+export function isRetryableStatus(status: number): boolean {
+  return status === 429 || status === 500 || status === 503;
+}
+
+/**
+ * 指數退避毫秒數（base 500 * 2^(attempt-1)）：attempt 1→500、2→1000、3→2000。
+ * 無隨機抖動，方便測試與推理。純函式。
+ */
+export function backoffMs(attempt: number): number {
+  return 500 * 2 ** (attempt - 1);
+}
+
+/** 延遲指定毫秒；可被測試以注入版本取代，避免真的等待。 */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** callGemini 過載（503）丟出的錯誤帶上此旗標，供上層決定是否切備援模型。 */
+class GeminiHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "GeminiHttpError";
+  }
+}
 
 export interface AiConfig {
   apiKey: string | null;
@@ -135,35 +168,86 @@ const NO_KEY_ERROR =
   "尚未設定 Gemini API key（請至 後台 ▸ 網站設定 貼上，或設定 GEMINI_API_KEY 環境變數）";
 
 /**
+ * 帶自動重試 / 指數退避的 Gemini generateContent fetch（不解析文字，回傳 data）。
+ * - 暫時性狀態（429/500/503）退避後重試，最多 MAX_ATTEMPTS 次。
+ * - 非暫時性狀態（如 400/401/403）立即丟錯。
+ * - 退避時間用 backoffMs()；sleep 可注入，方便測試不真的等待。
+ * - 錯誤訊息不含 key / url（沿用既有風格）。
+ *
+ * 抽成可注入 sleep 的（近）純函式，方便單元測試重試迴圈。SERVER ONLY 由呼叫端保證。
+ */
+export async function fetchGeminiWithRetry(
+  url: string,
+  body: unknown,
+  deps: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<unknown> {
+  const doSleep = deps.sleep ?? sleep;
+  let lastError: Error = new Error("Gemini API 失敗（未知錯誤）");
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return res.json();
+
+    const text = await res.text();
+    lastError = new GeminiHttpError(
+      `Gemini API 失敗（${res.status}）：${text.slice(0, 200)}`,
+      res.status,
+    );
+    // 非暫時性錯誤 → 立即失敗，不重試。
+    if (!isRetryableStatus(res.status)) throw lastError;
+    // 還有下一次嘗試才退避；最後一次失敗直接落到迴圈外丟出。
+    if (attempt < MAX_ATTEMPTS) await doSleep(backoffMs(attempt));
+  }
+  throw lastError;
+}
+
+/**
  * 共用：呼叫 Gemini generateContent，回傳合併後的文字輸出。SERVER ONLY。
  * 與 generateNewsDraft 同 fetch / 錯誤處理風格（不回傳含 key 的 url）。
+ *
+ * 內含重試（fetchGeminiWithRetry）；若用盡重試仍為 503（過載）且非備援模型，
+ * 自動以 FALLBACK_MODEL 再試一輪。回傳實際產出結果的 model，供上層回報。
  */
 async function callGemini(
   apiKey: string,
   model: string,
   prompt: string,
   opts: { json?: boolean; temperature?: number } = {},
-): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+): Promise<{ text: string; model: string }> {
   const generationConfig: Record<string, unknown> = {
     temperature: opts.temperature ?? 0.4,
   };
   if (opts.json) generationConfig.responseMimeType = "application/json";
+  const reqBody = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig,
+  };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Gemini API 失敗（${res.status}）：${body.slice(0, 200)}`);
+  const buildUrl = (m: string) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  try {
+    const data = await fetchGeminiWithRetry(buildUrl(model), reqBody);
+    return { text: extractGeminiText(data), model };
+  } catch (err) {
+    // 用盡重試仍 503（過載）且尚未用備援模型 → 以 flash-lite 再試一輪。
+    if (
+      err instanceof GeminiHttpError &&
+      err.status === 503 &&
+      model !== FALLBACK_MODEL
+    ) {
+      const data = await fetchGeminiWithRetry(
+        buildUrl(FALLBACK_MODEL),
+        reqBody,
+      );
+      return { text: extractGeminiText(data), model: FALLBACK_MODEL };
+    }
+    throw err;
   }
-  const data = await res.json();
-  return extractGeminiText(data);
 }
 
 /** 從 Gemini 回應抽出合併文字（純函式，便於測試）。 */
@@ -211,10 +295,12 @@ export async function refineArticleHtml(
   const { fix_article } = await getAiPrompts();
   const prompt = `${fix_article}\n\n---\n以下是要修潤的文章 HTML：\n${source}`;
 
-  const text = await callGemini(apiKey, model, prompt, { temperature: 0.4 });
+  const { text, model: usedModel } = await callGemini(apiKey, model, prompt, {
+    temperature: 0.4,
+  });
   const clean = postProcessRefinedHtml(text);
   if (!clean) throw new Error("Gemini 未回傳可用的內文");
-  return { html: clean, model };
+  return { html: clean, model: usedModel };
 }
 
 export interface SeoSuggestion {
@@ -294,9 +380,9 @@ export async function fillSeoFromContent(input: {
   const { fill_seo } = await getAiPrompts();
   const prompt = `${fill_seo}\n\n---\n標題：${title || "（無）"}\n\n內文：\n${body || "（無）"}`;
 
-  const text = await callGemini(apiKey, model, prompt, {
+  const { text, model: usedModel } = await callGemini(apiKey, model, prompt, {
     json: true,
     temperature: 0.5,
   });
-  return { seo: shapeSeoResult(text), model };
+  return { seo: shapeSeoResult(text), model: usedModel };
 }

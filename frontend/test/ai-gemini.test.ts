@@ -1,10 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   extractGeminiText,
   stripCodeFence,
   postProcessRefinedHtml,
   normaliseSlug,
   shapeSeoResult,
+  isRetryableStatus,
+  backoffMs,
+  fetchGeminiWithRetry,
 } from "@/lib/ai/gemini";
 
 describe("extractGeminiText（合併回應文字）", () => {
@@ -60,6 +63,107 @@ describe("postProcessRefinedHtml（修文後處理：去圍欄 + 必過 sanitize
     );
     expect(out).toContain("<h2>標題</h2>");
     expect(out).toContain("<strong>");
+  });
+});
+
+describe("isRetryableStatus（暫時性錯誤判斷）", () => {
+  it("429 / 500 / 503 → 可重試", () => {
+    expect(isRetryableStatus(429)).toBe(true);
+    expect(isRetryableStatus(500)).toBe(true);
+    expect(isRetryableStatus(503)).toBe(true);
+  });
+
+  it("400 / 401 / 403 / 200 → 不重試（立即失敗或成功）", () => {
+    expect(isRetryableStatus(400)).toBe(false);
+    expect(isRetryableStatus(401)).toBe(false);
+    expect(isRetryableStatus(403)).toBe(false);
+    expect(isRetryableStatus(200)).toBe(false);
+  });
+});
+
+describe("backoffMs（指數退避）", () => {
+  it("attempt 1→500、2→1000、3→2000（base 500 * 2^(n-1)）", () => {
+    expect(backoffMs(1)).toBe(500);
+    expect(backoffMs(2)).toBe(1000);
+    expect(backoffMs(3)).toBe(2000);
+  });
+
+  it("單調遞增", () => {
+    expect(backoffMs(2)).toBeGreaterThan(backoffMs(1));
+    expect(backoffMs(3)).toBeGreaterThan(backoffMs(2));
+  });
+});
+
+describe("fetchGeminiWithRetry（重試迴圈，注入 sleep 不真的等待）", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const okResponse = () =>
+    ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "ok" }] } }],
+      }),
+    }) as unknown as Response;
+
+  const errResponse = (status: number) =>
+    ({
+      ok: false,
+      status,
+      text: async () => "boom",
+    }) as unknown as Response;
+
+  it("503 後 200 → 重試一次成功", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(errResponse(503))
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    const data = await fetchGeminiWithRetry("https://x", { a: 1 }, { sleep });
+
+    expect(extractGeminiText(data)).toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1); // 退避一次（attempt 1 後）
+    expect(sleep).toHaveBeenCalledWith(500);
+  });
+
+  it("連續三次 503 → 用盡重試後丟錯（含狀態，不含 url/key）", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(errResponse(503));
+    vi.stubGlobal("fetch", fetchMock);
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      fetchGeminiWithRetry("https://x?key=secret", { a: 1 }, { sleep }),
+    ).rejects.toThrow(/Gemini API 失敗（503）/);
+    expect(fetchMock).toHaveBeenCalledTimes(3); // MAX_ATTEMPTS
+    expect(sleep).toHaveBeenCalledTimes(2); // 前兩次失敗後退避，最後一次不退避
+  });
+
+  it("400 → 不重試、立即丟錯", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(errResponse(400));
+    vi.stubGlobal("fetch", fetchMock);
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      fetchGeminiWithRetry("https://x", { a: 1 }, { sleep }),
+    ).rejects.toThrow(/Gemini API 失敗（400）/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("錯誤訊息不洩漏 key / url", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(errResponse(403));
+    vi.stubGlobal("fetch", fetchMock);
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      fetchGeminiWithRetry("https://x?key=SECRET_KEY", { a: 1 }, { sleep }),
+    ).rejects.toThrow(/^(?!.*SECRET_KEY).*$/);
   });
 });
 
