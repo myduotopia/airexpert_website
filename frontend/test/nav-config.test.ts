@@ -18,10 +18,11 @@ describe("navForRole（後台側欄角色 gating）", () => {
     expect(keys).not.toContain("contact");
   });
 
-  it("seo_manager 看得到 6 個內容區 + 總覽", () => {
+  it("seo_manager 看得到 6 個內容區 + 總覽 + SEO 總覽", () => {
     const keys = navForRole("seo_manager").map((i) => i.key);
     for (const k of [
       "dashboard",
+      "seo",
       "home",
       "products",
       "news",
@@ -31,6 +32,15 @@ describe("navForRole（後台側欄角色 gating）", () => {
     ]) {
       expect(keys).toContain(k);
     }
+  });
+
+  it("SEO 總覽（seo）對 admin 與 seo_manager 皆可見，且無 roles 限制", () => {
+    const seo = ADMIN_NAV.find((i) => i.key === "seo");
+    expect(seo).toBeDefined();
+    expect(seo?.href).toBe("/admin/seo");
+    expect(seo?.roles).toBeUndefined();
+    expect(navForRole("admin").some((i) => i.key === "seo")).toBe(true);
+    expect(navForRole("seo_manager").some((i) => i.key === "seo")).toBe(true);
   });
 
   it("admin-only 項目皆以 roles:['admin'] 標記", () => {
