@@ -66,7 +66,10 @@ export function SeoFields({
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className={labelCls}>Canonical URL（選填）</span>
+            <span className={labelCls}>
+              Canonical
+              URL（選填，留空＝自動使用本頁網址；僅參數頁／轉載等特殊情況才填）
+            </span>
             <input
               name="canonical_url"
               defaultValue={values?.canonical_url ?? ""}

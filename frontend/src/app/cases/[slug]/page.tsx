@@ -36,6 +36,7 @@ export async function generateMetadata(
   return buildSeoMetadata(caseItem, {
     title: caseItem.title,
     image: caseItem.images?.[0]?.url,
+    canonicalPath: `/cases/${slug}`,
   });
 }
 

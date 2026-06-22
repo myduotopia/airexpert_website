@@ -38,6 +38,7 @@ export async function generateMetadata(
     title: article.title,
     description: article.excerpt,
     image: article.cover_image,
+    canonicalPath: `/news/${slug}`,
   });
 }
 

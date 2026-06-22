@@ -36,6 +36,7 @@ export async function generateMetadata(
     title: service.title,
     description: service.summary,
     image: service.images?.find((img) => img?.url)?.url,
+    canonicalPath: `/services/${slug}`,
   });
 }
 
