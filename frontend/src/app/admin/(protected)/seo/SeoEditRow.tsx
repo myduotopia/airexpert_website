@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { SeoFields } from "@/components/admin/SeoFields";
 import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import type { AiTargetType } from "@/lib/ai/actions";
@@ -28,6 +29,7 @@ export function SeoEditRow({
   row: SeoRow;
   onSaved?: () => void;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -44,6 +46,8 @@ export function SeoEditRow({
         return;
       }
       setSaved(true);
+      // 重抓 server component 資料，讓總覽表格即時反映新 SEO 值與缺漏標示。
+      router.refresh();
       onSaved?.();
     });
   }
