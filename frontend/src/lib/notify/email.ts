@@ -50,7 +50,8 @@ function line(label: string, value: string | null): string {
 export function buildEmailPayload(
   submission: ContactNotifyPayload,
 ): EmailPayload {
-  const who = (submission.name ?? "").trim() || "訪客";
+  // 去除 CR/LF 再放進 subject（縱深防禦：不依賴 nodemailer 內部對 header 的處理，杜絕標頭注入）。
+  const who = (submission.name ?? "").replace(/[\r\n]+/g, " ").trim() || "訪客";
   const subject = `【官網來信】${who}`;
   const text = [
     "您有一封來自官網聯絡表單的新訊息：",
