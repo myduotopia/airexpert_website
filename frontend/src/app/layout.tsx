@@ -5,7 +5,8 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { FloatingSocial } from "@/components/FloatingSocial";
 import { SiteChrome } from "@/components/SiteChrome";
-import { getBranding } from "@/lib/data/site";
+import { GoogleAnalytics } from "@/components/Analytics";
+import { getBranding, getAnalytics } from "@/lib/data/site";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -30,11 +31,15 @@ const SITE_DESCRIPTION =
 // 未設定時退回內建 /favicon.ico（getBranding 已含 fallback）。
 export async function generateMetadata(): Promise<Metadata> {
   const { favicon_url } = await getBranding();
+  const { gscVerification } = await getAnalytics();
   return {
     // metadataBase resolves relative OG/Twitter image + canonical URLs to absolute.
     metadataBase: new URL(SITE_URL),
     // Browser tab / bookmark icon — admin-configurable via site_settings.branding.
     icons: { icon: favicon_url },
+    // Google Search Console 網站驗證（後台 analytics.gsc_verification）。
+    // 未設定時不輸出（undefined）→ 不渲染 verification meta。
+    verification: gscVerification ? { google: gscVerification } : undefined,
     // Child pages set only their own title; `template` appends the brand suffix.
     // `default` is used by pages without a title (and as the OpenGraph title).
     title: {
@@ -77,6 +82,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const { logo_url } = await getBranding();
+  const { ga4Id } = await getAnalytics();
 
   return (
     <html
@@ -91,6 +97,8 @@ export default async function RootLayout({
         >
           {children}
         </SiteChrome>
+        {/* GA4：僅在後台設定 ga4_id 時注入；未設定時零追蹤腳本。 */}
+        {ga4Id ? <GoogleAnalytics ga4Id={ga4Id} /> : null}
       </body>
     </html>
   );
