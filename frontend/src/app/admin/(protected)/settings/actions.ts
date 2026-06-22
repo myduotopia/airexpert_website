@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { encryptSecret } from "@/lib/crypto";
 import { AI_CONFIG_KEY } from "@/lib/ai/gemini";
+import { AI_PROMPTS_KEY } from "@/lib/ai/prompts";
 import {
   CONTACT_NOTIFY_KEY,
   notifyContactSubmission,
@@ -48,6 +49,37 @@ export async function saveAiConfig(
     .from("site_settings")
     .upsert(
       { key: AI_CONFIG_KEY, value, is_public: false },
+      { onConflict: "key" },
+    );
+  if (error) return { error: error.message };
+
+  revalidateTag("site_settings", "max");
+  return { ok: true };
+}
+
+// ---------- AI Prompt 設定（ai_prompts） ----------
+
+/**
+ * 儲存 AI Prompt（fix_article / fill_seo）。
+ * 語意：欄位留空 → 存空字串，等同「還原預設」（resolveAiPrompts 會退回 DEFAULT_AI_PROMPTS）。
+ * is_public=false；admin only。
+ */
+export async function saveAiPrompts(
+  _prev: SettingsState,
+  fd: FormData,
+): Promise<SettingsState> {
+  await requireAdmin();
+  const fixArticle = String(fd.get("fix_article") ?? "").trim();
+  const fillSeo = String(fd.get("fill_seo") ?? "").trim();
+
+  const { error } = await getAdminSupabase()
+    .from("site_settings")
+    .upsert(
+      {
+        key: AI_PROMPTS_KEY,
+        value: { fix_article: fixArticle, fill_seo: fillSeo },
+        is_public: false,
+      },
       { onConflict: "key" },
     );
   if (error) return { error: error.message };

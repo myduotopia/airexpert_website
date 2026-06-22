@@ -6,6 +6,8 @@ import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { ProductImagesField } from "@/components/admin/ProductImagesField";
 import { SeoFields } from "@/components/admin/SeoFields";
+import { AiRefineButton } from "@/components/admin/ai/AiRefineButton";
+import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import { PRODUCT_CATEGORIES } from "@/components/products/categories";
 import type { Product } from "@/lib/types";
 import type { ProductFormState } from "@/app/admin/(protected)/products/actions";
@@ -164,9 +166,11 @@ export function ProductForm({
           className={`${areaCls} font-mono text-[13px]`}
           placeholder="<p>產品詳細介紹…</p>"
         />
+        <AiRefineButton targetType="product" targetId={product?.id ?? null} />
       </label>
 
       {/* SEO 設定（完整 meta） */}
+      <AiFillSeoButton targetType="product" targetId={product?.id ?? null} />
       <SeoFields values={product} />
 
       <div className="border-border flex items-center gap-3 border-t pt-5">

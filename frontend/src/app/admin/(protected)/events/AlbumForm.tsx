@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { SeoFields } from "@/components/admin/SeoFields";
+import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import type { PhotoAlbum, ContentStatus } from "@/lib/types";
 import { saveAlbum } from "./actions";
 
@@ -137,6 +138,7 @@ export function AlbumForm({ album }: { album?: PhotoAlbum }) {
       </fieldset>
 
       {/* SEO 設定（完整 meta） */}
+      <AiFillSeoButton targetType="album" targetId={album?.id ?? null} />
       <SeoFields values={album} />
 
       {error ? (

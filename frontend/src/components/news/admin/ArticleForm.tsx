@@ -4,6 +4,8 @@ import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { SeoFields } from "@/components/admin/SeoFields";
+import { AiRefineButton } from "@/components/admin/ai/AiRefineButton";
+import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { NEWS_CATEGORIES } from "@/components/news/constants";
@@ -153,6 +155,7 @@ export function ArticleForm({
           placeholder="<p>段落…</p>"
           className={`${textareaCls} font-mono text-[13px]`}
         />
+        <AiRefineButton targetType="article" targetId={article?.id ?? null} />
       </div>
 
       {/* 封面圖：上傳後寫入隱藏欄位；亦可手動貼 URL。 */}
@@ -220,6 +223,7 @@ export function ArticleForm({
       </div>
 
       {/* SEO 設定（完整 meta）。article 為編輯現值；prefill 供建立模式（AI 草稿）帶入 seo_title/description。 */}
+      <AiFillSeoButton targetType="article" targetId={article?.id ?? null} />
       <SeoFields
         values={{
           ...(article ?? {}),
