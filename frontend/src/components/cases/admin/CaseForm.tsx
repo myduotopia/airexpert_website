@@ -4,6 +4,8 @@ import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { SeoFields } from "@/components/admin/SeoFields";
+import { AiRefineButton } from "@/components/admin/ai/AiRefineButton";
+import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { CASE_CATEGORIES } from "@/components/cases/constants";
@@ -147,6 +149,7 @@ export function CaseForm({
           placeholder="<p>段落…</p>"
           className={`${textareaCls} font-mono text-[13px]`}
         />
+        <AiRefineButton targetType="case" targetId={caseItem?.id ?? null} />
       </div>
 
       {/* metrics：逐行 key=value，例如「年省電度數=42 萬度」。對稱於 actions.parseMetrics。 */}
@@ -201,6 +204,7 @@ export function CaseForm({
       </div>
 
       {/* SEO 設定（完整 meta） */}
+      <AiFillSeoButton targetType="case" targetId={caseItem?.id ?? null} />
       <SeoFields values={caseItem} />
 
       <div className="flex items-center gap-3 pt-2">

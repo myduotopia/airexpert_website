@@ -4,6 +4,8 @@ import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { SeoFields } from "@/components/admin/SeoFields";
+import { AiRefineButton } from "@/components/admin/ai/AiRefineButton";
+import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import type { Service, ContentStatus } from "@/lib/types";
@@ -102,6 +104,7 @@ export function ServiceForm({
           placeholder="<p>段落…</p>"
           className={`${textareaCls} font-mono text-[13px]`}
         />
+        <AiRefineButton targetType="service" targetId={service?.id ?? null} />
       </div>
 
       {/* 內文圖：每行一個 URL。第一張作詳情頁主圖。 */}
@@ -141,6 +144,7 @@ export function ServiceForm({
       </div>
 
       {/* SEO 設定（完整 meta） */}
+      <AiFillSeoButton targetType="service" targetId={service?.id ?? null} />
       <SeoFields values={service} />
 
       <div className="flex items-center gap-3 pt-2">

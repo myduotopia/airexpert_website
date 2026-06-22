@@ -1,7 +1,9 @@
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAiConfig } from "@/lib/ai/gemini";
+import { getAiPromptsWithSource } from "@/lib/ai/prompts-server";
 import { getContactNotifyConfig } from "@/lib/notify/contact-notify";
 import { AiSettingsForm } from "./AiSettingsForm";
+import { AiPromptsForm } from "./AiPromptsForm";
 import { NotifySettingsForm } from "./NotifySettingsForm";
 
 export const metadata = { title: "網站設定" };
@@ -9,6 +11,7 @@ export const metadata = { title: "網站設定" };
 export default async function AdminSettingsPage() {
   await requireAdmin();
   const cfg = await getAiConfig();
+  const prompts = await getAiPromptsWithSource();
   const notifyCfg = await getContactNotifyConfig();
 
   return (
@@ -27,6 +30,17 @@ export default async function AdminSettingsPage() {
           model={cfg.model}
           source={cfg.source}
         />
+      </section>
+
+      <section className="border-border mt-6 rounded-xl border bg-white p-6">
+        <h2 className="text-ink mb-1 text-[17px] font-semibold">
+          AI Prompt 設定
+        </h2>
+        <p className="text-text-muted mb-4 text-[14px]">
+          編輯「AI 修文」與「一鍵填 SEO」所用的指示
+          prompt。內建第一版，可隨時調整或清空還原。
+        </p>
+        <AiPromptsForm effective={prompts.effective} source={prompts.source} />
       </section>
 
       <section className="border-border mt-6 rounded-xl border bg-white p-6">
