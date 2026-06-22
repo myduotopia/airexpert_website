@@ -9,7 +9,8 @@ import { sanitizeBodyHtml } from "../sanitize";
 import { getAiPrompts } from "./prompts-server";
 
 export const AI_CONFIG_KEY = "ai_config";
-const DEFAULT_MODEL = "gemini-2.0-flash";
+// gemini-2.0-flash 已於 2026-06-01 停用；預設改用 2.5 Flash。
+const DEFAULT_MODEL = "gemini-2.5-flash";
 
 export interface AiConfig {
   apiKey: string | null;
