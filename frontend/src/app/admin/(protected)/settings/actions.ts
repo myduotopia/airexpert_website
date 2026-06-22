@@ -29,7 +29,7 @@ export async function saveAiConfig(
 ): Promise<SettingsState> {
   await requireAdmin();
   const newKey = String(fd.get("gemini_key") ?? "").trim();
-  const model = String(fd.get("model") ?? "").trim() || "gemini-2.0-flash";
+  const model = String(fd.get("model") ?? "").trim() || "gemini-2.5-flash";
 
   const admin = getAdminSupabase();
   const { data } = await admin
