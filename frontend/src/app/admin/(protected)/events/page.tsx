@@ -3,7 +3,10 @@ import { getAdminSupabase } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
 import type { Event, PhotoAlbum } from "@/lib/types";
 import { DataTable, type Column } from "@/components/admin/DataTable";
-import { ReorderableTable } from "@/components/admin/ReorderableTable";
+import {
+  ReorderableTable,
+  type ReorderColumn,
+} from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { deleteEvent, deleteAlbum, reorderEventsAction } from "./actions";
@@ -39,45 +42,47 @@ export default async function AdminEventsPage() {
   await requireAdmin();
   const [events, albums] = await Promise.all([getAllEvents(), getAllAlbums()]);
 
-  const eventColumns: Column<Event>[] = [
-    {
-      header: "標題",
-      cell: (e) => (
-        <Link
-          href={`/admin/events/videos/${e.id}`}
-          className="text-primary-deep font-medium hover:underline"
-        >
-          {e.title}
-        </Link>
-      ),
-    },
-    {
-      header: "影片",
-      cell: (e) =>
-        e.video_url ? (
-          <span className="text-text-muted font-mono text-[12px]">有</span>
-        ) : (
-          <span className="text-text-muted text-[12px]">—</span>
-        ),
-    },
-    { header: "活動日期", cell: (e) => formatDate(e.event_date) },
-    { header: "狀態", cell: (e) => <StatusBadge status={e.status} /> },
-    {
-      header: "操作",
-      className: "text-right",
-      cell: (e) => (
-        <span className="inline-flex items-center gap-1">
-          <Link
-            href={`/admin/events/videos/${e.id}`}
-            className="hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
-          >
-            編輯
-          </Link>
-          <DeleteButton onDelete={deleteEvent.bind(null, e.id)} />
+  // ReorderableTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode。
+  const eventColumns: ReorderColumn[] = [
+    { header: "標題" },
+    { header: "影片" },
+    { header: "活動日期" },
+    { header: "狀態" },
+    { header: "操作", className: "text-right" },
+  ];
+
+  const eventRows = events.map((e) => ({
+    key: e.id,
+    cells: [
+      <Link
+        href={`/admin/events/videos/${e.id}`}
+        className="text-primary-deep font-medium hover:underline"
+        key="title"
+      >
+        {e.title}
+      </Link>,
+      e.video_url ? (
+        <span className="text-text-muted font-mono text-[12px]" key="video">
+          有
+        </span>
+      ) : (
+        <span className="text-text-muted text-[12px]" key="video">
+          —
         </span>
       ),
-    },
-  ];
+      formatDate(e.event_date),
+      <StatusBadge status={e.status} key="status" />,
+      <span className="inline-flex items-center gap-1" key="ops">
+        <Link
+          href={`/admin/events/videos/${e.id}`}
+          className="hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
+        >
+          編輯
+        </Link>
+        <DeleteButton onDelete={deleteEvent.bind(null, e.id)} />
+      </span>,
+    ],
+  }));
 
   const albumColumns: Column<PhotoAlbum>[] = [
     {
@@ -135,9 +140,8 @@ export default async function AdminEventsPage() {
         </div>
         <div className="mt-4">
           <ReorderableTable
-            rows={events}
+            rows={eventRows}
             columns={eventColumns}
-            getKey={(e) => e.id}
             onReorder={reorderEventsAction}
             empty="尚無影片，點右上角「新增影片」建立。"
           />

@@ -5,26 +5,29 @@ import { useRouter } from "next/navigation";
 import { GripVertical } from "lucide-react";
 import type { ActionResult } from "@/lib/admin/crud";
 
-export type Column<T> = {
-  header: string;
-  cell: (row: T) => ReactNode;
-  className?: string;
-};
+// 注意：本元件是 client component，故 props 必須可序列化——不能傳「函式」
+// （cell renderer / getKey）過界，否則 server→client 會丟
+// 「Functions cannot be passed directly to Client Components」而整頁 500。
+// 因此由 server component 先把每列 cells 渲染成 ReactNode，再傳進來；
+// 只有 onReorder（"use server" action）允許跨界。
+export type ReorderColumn = { header: ReactNode; className?: string };
+export type ReorderRow = { key: string; cells: ReactNode[] };
 
 /**
  * 可拖移排序的後台資料表。拖移後以新順序呼叫 onReorder（server action，會把
  * sort_order 重設為 0,1,2…）；樂觀更新本地順序，失敗則還原。
+ *
+ * columns 只描述表頭與欄位 className（className 同時套用到 th 與對應 td）；
+ * rows 由呼叫端（server component）預先渲染好 cells（與 columns 以索引對齊）。
  */
-export function ReorderableTable<T>({
+export function ReorderableTable({
   rows: initialRows,
   columns,
-  getKey,
   onReorder,
   empty = "尚無資料",
 }: {
-  rows: T[];
-  columns: Column<T>[];
-  getKey: (row: T) => string;
+  rows: ReorderRow[];
+  columns: ReorderColumn[];
   onReorder: (orderedIds: string[]) => Promise<ActionResult>;
   empty?: ReactNode;
 }) {
@@ -36,9 +39,9 @@ export function ReorderableTable<T>({
   const fromIndex = useRef<number | null>(null);
   const router = useRouter();
 
-  // router.refresh() 後 server 重新給 rows；以 id 簽章在 render 期間同步本地狀態
+  // router.refresh() 後 server 重新給 rows；以 key 簽章在 render 期間同步本地狀態
   // （React 官方「prop 變動時調整 state」模式，避免 effect 內 setState）。
-  const signature = initialRows.map(getKey).join("|");
+  const signature = initialRows.map((r) => r.key).join("|");
   const [syncedSig, setSyncedSig] = useState(signature);
   if (syncedSig !== signature) {
     setSyncedSig(signature);
@@ -67,7 +70,7 @@ export function ReorderableTable<T>({
     setError(null);
 
     startTransition(async () => {
-      const res = await onReorder(next.map(getKey));
+      const res = await onReorder(next.map((r) => r.key));
       if (!res.ok) {
         setError(res.error);
         setRows(initialRows);
@@ -102,50 +105,47 @@ export function ReorderableTable<T>({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => {
-              const key = getKey(row);
-              return (
-                <tr
-                  key={key}
-                  onDragEnter={() => setOverKey(key)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleDrop(index)}
-                  className={`border-border border-b last:border-b-0 ${
-                    dragKey === key
-                      ? "opacity-40"
-                      : overKey === key
-                        ? "bg-primary/5"
-                        : "hover:bg-surface-muted"
-                  }`}
+            {rows.map((row, index) => (
+              <tr
+                key={row.key}
+                onDragEnter={() => setOverKey(row.key)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDrop(index)}
+                className={`border-border border-b last:border-b-0 ${
+                  dragKey === row.key
+                    ? "opacity-40"
+                    : overKey === row.key
+                      ? "bg-primary/5"
+                      : "hover:bg-surface-muted"
+                }`}
+              >
+                {/* 只有把手可拖移，避免誤拖整列 / 干擾欄內連結與刪除鈕。 */}
+                <td
+                  draggable
+                  onDragStart={() => {
+                    fromIndex.current = index;
+                    setDragKey(row.key);
+                  }}
+                  onDragEnd={() => {
+                    fromIndex.current = null;
+                    setDragKey(null);
+                    setOverKey(null);
+                  }}
+                  aria-label="拖曳排序"
+                  className="text-text-muted w-10 cursor-grab px-2 py-3 active:cursor-grabbing"
                 >
-                  {/* 只有把手可拖移，避免誤拖整列 / 干擾欄內連結與刪除鈕。 */}
+                  <GripVertical size={16} aria-hidden="true" />
+                </td>
+                {row.cells.map((cell, i) => (
                   <td
-                    draggable
-                    onDragStart={() => {
-                      fromIndex.current = index;
-                      setDragKey(key);
-                    }}
-                    onDragEnd={() => {
-                      fromIndex.current = null;
-                      setDragKey(null);
-                      setOverKey(null);
-                    }}
-                    aria-label="拖曳排序"
-                    className="text-text-muted w-10 cursor-grab px-2 py-3 active:cursor-grabbing"
+                    key={i}
+                    className={`text-ink px-4 py-3 ${columns[i]?.className ?? ""}`}
                   >
-                    <GripVertical size={16} aria-hidden="true" />
+                    {cell}
                   </td>
-                  {columns.map((c, i) => (
-                    <td
-                      key={i}
-                      className={`text-ink px-4 py-3 ${c.className ?? ""}`}
-                    >
-                      {c.cell(row)}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
+                ))}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

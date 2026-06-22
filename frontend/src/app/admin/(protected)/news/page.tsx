@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
-import { ReorderableTable } from "@/components/admin/ReorderableTable";
+import {
+  ReorderableTable,
+  type ReorderColumn,
+} from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { formatNewsDate } from "@/components/news/format";
@@ -22,6 +25,42 @@ async function getAllArticles(): Promise<Article[]> {
 
 export default async function AdminNewsPage() {
   const articles = await getAllArticles();
+
+  // ReorderableTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode。
+  const columns: ReorderColumn[] = [
+    { header: "標題" },
+    { header: "分類" },
+    { header: "發佈時間" },
+    { header: "狀態" },
+    { header: "", className: "text-right" },
+  ];
+
+  const rows = articles.map((a) => ({
+    key: a.id,
+    cells: [
+      <Link
+        href={`/admin/news/${a.id}/edit`}
+        className="text-ink hover:text-primary-deep font-medium"
+        key="title"
+      >
+        {a.title}
+      </Link>,
+      a.category,
+      <span className="font-mono text-[13px]" key="date">
+        {formatNewsDate(a.published_at) || "—"}
+      </span>,
+      <StatusBadge status={a.status} key="status" />,
+      <span className="inline-flex items-center gap-1" key="ops">
+        <Link
+          href={`/admin/news/${a.id}/edit`}
+          className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
+        >
+          編輯
+        </Link>
+        <DeleteButton onDelete={deleteArticle.bind(null, a.id)} />
+      </span>,
+    ],
+  }));
 
   return (
     <div className="mx-auto max-w-[1000px]">
@@ -50,48 +89,10 @@ export default async function AdminNewsPage() {
 
       <div className="mt-6">
         <ReorderableTable
-          rows={articles}
-          getKey={(a) => a.id}
+          rows={rows}
+          columns={columns}
           onReorder={reorderNewsAction}
           empty="尚無文章，點右上角「新增文章」開始建立。"
-          columns={[
-            {
-              header: "標題",
-              cell: (a) => (
-                <Link
-                  href={`/admin/news/${a.id}/edit`}
-                  className="text-ink hover:text-primary-deep font-medium"
-                >
-                  {a.title}
-                </Link>
-              ),
-            },
-            { header: "分類", cell: (a) => a.category },
-            {
-              header: "發佈時間",
-              cell: (a) => (
-                <span className="font-mono text-[13px]">
-                  {formatNewsDate(a.published_at) || "—"}
-                </span>
-              ),
-            },
-            { header: "狀態", cell: (a) => <StatusBadge status={a.status} /> },
-            {
-              header: "",
-              className: "text-right",
-              cell: (a) => (
-                <span className="inline-flex items-center gap-1">
-                  <Link
-                    href={`/admin/news/${a.id}/edit`}
-                    className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
-                  >
-                    編輯
-                  </Link>
-                  <DeleteButton onDelete={deleteArticle.bind(null, a.id)} />
-                </span>
-              ),
-            },
-          ]}
         />
       </div>
     </div>

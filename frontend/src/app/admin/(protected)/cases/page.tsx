@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
-import { ReorderableTable } from "@/components/admin/ReorderableTable";
+import {
+  ReorderableTable,
+  type ReorderColumn,
+} from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { deleteCase, reorderCasesAction } from "./actions";
@@ -22,6 +25,42 @@ async function getAllCases(): Promise<Case[]> {
 export default async function AdminCasesPage() {
   const cases = await getAllCases();
 
+  // ReorderableTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode。
+  const columns: ReorderColumn[] = [
+    { header: "標題" },
+    { header: "分類" },
+    { header: "地區" },
+    { header: "產業" },
+    { header: "狀態" },
+    { header: "", className: "text-right" },
+  ];
+
+  const rows = cases.map((c) => ({
+    key: c.id,
+    cells: [
+      <Link
+        href={`/admin/cases/${c.id}/edit`}
+        className="text-ink hover:text-primary-deep font-medium"
+        key="title"
+      >
+        {c.title}
+      </Link>,
+      c.category,
+      c.region || "—",
+      c.industry || "—",
+      <StatusBadge status={c.status} key="status" />,
+      <span className="inline-flex items-center gap-1" key="ops">
+        <Link
+          href={`/admin/cases/${c.id}/edit`}
+          className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
+        >
+          編輯
+        </Link>
+        <DeleteButton onDelete={deleteCase.bind(null, c.id)} />
+      </span>,
+    ],
+  }));
+
   return (
     <div className="mx-auto max-w-[1000px]">
       <div className="flex items-center justify-between">
@@ -41,42 +80,10 @@ export default async function AdminCasesPage() {
 
       <div className="mt-6">
         <ReorderableTable
-          rows={cases}
-          getKey={(c) => c.id}
+          rows={rows}
+          columns={columns}
           onReorder={reorderCasesAction}
           empty="尚無實績，點右上角「新增實績」開始建立。"
-          columns={[
-            {
-              header: "標題",
-              cell: (c) => (
-                <Link
-                  href={`/admin/cases/${c.id}/edit`}
-                  className="text-ink hover:text-primary-deep font-medium"
-                >
-                  {c.title}
-                </Link>
-              ),
-            },
-            { header: "分類", cell: (c) => c.category },
-            { header: "地區", cell: (c) => c.region || "—" },
-            { header: "產業", cell: (c) => c.industry || "—" },
-            { header: "狀態", cell: (c) => <StatusBadge status={c.status} /> },
-            {
-              header: "",
-              className: "text-right",
-              cell: (c) => (
-                <span className="inline-flex items-center gap-1">
-                  <Link
-                    href={`/admin/cases/${c.id}/edit`}
-                    className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
-                  >
-                    編輯
-                  </Link>
-                  <DeleteButton onDelete={deleteCase.bind(null, c.id)} />
-                </span>
-              ),
-            },
-          ]}
         />
       </div>
     </div>

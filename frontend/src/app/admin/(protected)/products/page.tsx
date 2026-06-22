@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   ReorderableTable,
-  type Column,
+  type ReorderColumn,
 } from "@/components/admin/ReorderableTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
@@ -18,46 +18,41 @@ export const metadata = { title: "商品介紹 · 後台" };
 export default async function AdminProductsPage() {
   const products = (await listAllProductsForAdmin()) as Product[];
 
-  const columns: Column<Product>[] = [
-    {
-      header: "名稱",
-      cell: (p) => (
-        <div className="flex flex-col">
-          <Link
-            href={`/admin/products/${p.id}`}
-            className="text-ink hover:text-primary-deep font-medium"
-          >
-            {p.name}
-          </Link>
-          <span className="text-text-muted font-mono text-[12px]">
-            {p.slug}
-          </span>
-        </div>
-      ),
-    },
-    { header: "分類", cell: (p) => p.category },
-    {
-      header: "圖片",
-      cell: (p) => `${p.images?.length ?? 0} 張`,
-      className: "whitespace-nowrap",
-    },
-    { header: "狀態", cell: (p) => <StatusBadge status={p.status} /> },
-    {
-      header: "操作",
-      className: "text-right whitespace-nowrap",
-      cell: (p) => (
-        <div className="flex items-center justify-end gap-1">
-          <Link
-            href={`/admin/products/${p.id}`}
-            className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
-          >
-            編輯
-          </Link>
-          <DeleteButton onDelete={deleteProductAction.bind(null, p.id)} />
-        </div>
-      ),
-    },
+  // ReorderableTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode。
+  const columns: ReorderColumn[] = [
+    { header: "名稱" },
+    { header: "分類" },
+    { header: "圖片", className: "whitespace-nowrap" },
+    { header: "狀態" },
+    { header: "操作", className: "text-right whitespace-nowrap" },
   ];
+
+  const rows = products.map((p) => ({
+    key: p.id,
+    cells: [
+      <div className="flex flex-col" key="name">
+        <Link
+          href={`/admin/products/${p.id}`}
+          className="text-ink hover:text-primary-deep font-medium"
+        >
+          {p.name}
+        </Link>
+        <span className="text-text-muted font-mono text-[12px]">{p.slug}</span>
+      </div>,
+      p.category,
+      `${p.images?.length ?? 0} 張`,
+      <StatusBadge status={p.status} key="status" />,
+      <div className="flex items-center justify-end gap-1" key="ops">
+        <Link
+          href={`/admin/products/${p.id}`}
+          className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
+        >
+          編輯
+        </Link>
+        <DeleteButton onDelete={deleteProductAction.bind(null, p.id)} />
+      </div>,
+    ],
+  }));
 
   return (
     <div className="mx-auto max-w-[1040px]">
@@ -77,9 +72,8 @@ export default async function AdminProductsPage() {
       </div>
 
       <ReorderableTable
-        rows={products}
+        rows={rows}
         columns={columns}
-        getKey={(p) => p.id}
         onReorder={reorderProductsAction}
         empty="尚無商品，點右上角「新增商品」建立第一筆。"
       />
