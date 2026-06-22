@@ -6,6 +6,11 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { getSupabaseClient } from "../supabase";
 import { CACHE_TAGS, REVALIDATE_SECONDS, throwOnError } from "./cache";
+import {
+  parseAnalyticsConfig,
+  type AnalyticsConfig,
+  type AnalyticsValue,
+} from "../analytics/config";
 
 // 內部快取函式回傳 unknown —— 泛型若直接包進 cache()/unstable_cache() 會在包裝邊界
 // 被實例化掉（callers 無法 narrow）。故以「具體 unknown 快取函式 + 薄泛型包裝」保留型別。
@@ -78,4 +83,21 @@ export async function getBranding(): Promise<Branding> {
     logo_url: strOr(value?.logo_url, BRANDING_DEFAULTS.logo_url),
     favicon_url: strOr(value?.favicon_url, BRANDING_DEFAULTS.favicon_url),
   };
+}
+
+// ---------- 分析與索引（GA4 / Google Search Console） ----------
+// 存於 site_settings.analytics（is_public=true，layout 公開可讀）。
+// value 形狀：{ ga4_id?: string, gsc_verification?: string }。皆選填，
+// 未設定時 layout 不注入 gtag、不輸出 GSC verification meta（零追蹤）。
+
+/** site_settings 中分析設定的 key。 */
+export const ANALYTICS_KEY = "analytics";
+
+/**
+ * 取得分析與索引設定（正規化）。任一欄位缺漏 / 為空 / 型別不符時退回 null，
+ * 由 layout 決定是否注入（見 parseAnalyticsConfig）。
+ */
+export async function getAnalytics(): Promise<AnalyticsConfig> {
+  const value = await getSiteSetting<AnalyticsValue>(ANALYTICS_KEY);
+  return parseAnalyticsConfig(value);
 }

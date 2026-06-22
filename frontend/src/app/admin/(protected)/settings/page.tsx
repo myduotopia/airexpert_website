@@ -2,9 +2,11 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { getAiConfig } from "@/lib/ai/gemini";
 import { getAiPromptsWithSource } from "@/lib/ai/prompts-server";
 import { getContactNotifyConfig } from "@/lib/notify/contact-notify";
+import { getAnalytics } from "@/lib/data/site";
 import { AiSettingsForm } from "./AiSettingsForm";
 import { AiPromptsForm } from "./AiPromptsForm";
 import { NotifySettingsForm } from "./NotifySettingsForm";
+import { AnalyticsSettingsForm } from "./AnalyticsSettingsForm";
 
 export const metadata = { title: "網站設定" };
 
@@ -13,6 +15,7 @@ export default async function AdminSettingsPage() {
   const cfg = await getAiConfig();
   const prompts = await getAiPromptsWithSource();
   const notifyCfg = await getContactNotifyConfig();
+  const analytics = await getAnalytics();
 
   return (
     <div className="mx-auto max-w-[720px]">
@@ -52,6 +55,20 @@ export default async function AdminSettingsPage() {
           給以下設定的收件人。通知失敗不影響訪客送出。
         </p>
         <NotifySettingsForm config={notifyCfg} />
+      </section>
+
+      <section className="border-border mt-6 rounded-xl border bg-white p-6">
+        <h2 className="text-ink mb-1 text-[17px] font-semibold">
+          分析與索引（GA4 / Search Console）
+        </h2>
+        <p className="text-text-muted mb-4 text-[14px]">
+          設定 Google Analytics 4 與 Google Search Console
+          網站驗證。值為公開設定，留空即停用對應功能。
+        </p>
+        <AnalyticsSettingsForm
+          ga4Id={analytics.ga4Id ?? ""}
+          gscVerification={analytics.gscVerification ?? ""}
+        />
       </section>
     </div>
   );

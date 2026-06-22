@@ -12,6 +12,12 @@ import {
 } from "@/lib/notify/contact-notify";
 import { parseRecipients, type ContactNotifyValue } from "@/lib/notify/config";
 import type { NotifyResult } from "@/lib/notify/types";
+import { ANALYTICS_KEY } from "@/lib/data/site";
+import {
+  parseAnalyticsConfig,
+  isLikelyGa4Id,
+  type AnalyticsValue,
+} from "@/lib/analytics/config";
 
 export type SettingsState = { ok?: boolean; error?: string };
 
@@ -141,6 +147,47 @@ export async function saveContactNotifyConfig(
     .from("site_settings")
     .upsert(
       { key: CONTACT_NOTIFY_KEY, value, is_public: false },
+      { onConflict: "key" },
+    );
+  if (error) return { error: error.message };
+
+  revalidateTag("site_settings", "max");
+  return { ok: true };
+}
+
+// ---------- 分析與索引設定（analytics：GA4 / GSC） ----------
+
+/**
+ * 儲存 GA4 measurement id 與 GSC 驗證碼。皆為公開值（is_public=true），
+ * 不加密。留空 → 視為未設定（前台不注入對應功能）。
+ */
+export async function saveAnalyticsConfig(
+  _prev: SettingsState,
+  fd: FormData,
+): Promise<SettingsState> {
+  await requireAdmin();
+
+  // 經純解析正規化（trim + 空值→null），再寫回為字串或省略。
+  const parsed = parseAnalyticsConfig({
+    ga4_id: String(fd.get("ga4_id") ?? ""),
+    gsc_verification: String(fd.get("gsc_verification") ?? ""),
+  });
+
+  // 強制 GA4 id 格式（G-XXXX…）：ga4_id 會以原樣插入 layout 的 inline gtag script，
+  // 嚴格限制字元集即可杜絕字串跳脫 / inline-script 注入。
+  if (parsed.ga4Id && !isLikelyGa4Id(parsed.ga4Id)) {
+    return { error: "GA4 測量 ID 格式不正確（應為 G- 開頭的英數字）。" };
+  }
+
+  const value: AnalyticsValue = {};
+  if (parsed.ga4Id) value.ga4_id = parsed.ga4Id;
+  if (parsed.gscVerification) value.gsc_verification = parsed.gscVerification;
+
+  const admin = getAdminSupabase();
+  const { error } = await admin
+    .from("site_settings")
+    .upsert(
+      { key: ANALYTICS_KEY, value, is_public: true },
       { onConflict: "key" },
     );
   if (error) return { error: error.message };
