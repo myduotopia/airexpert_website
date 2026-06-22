@@ -1,9 +1,21 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import {
-  buildEmailPayload,
-  sendEmail,
-  RESEND_ENDPOINT,
-} from "@/lib/notify/email";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+
+// 以 mock 取代 nodemailer，避免測試真的開 SMTP 連線。
+// vi.mock 會被提升到檔首，故 mock fn 須以 vi.hoisted 建立才能在 factory 內引用。
+// 參數型別讓 TS 推得 calls[0][0]（否則無參數實作會被推成空 tuple，索引報錯）。
+const { createTransportMock, sendMailMock } = vi.hoisted(() => {
+  const sendMailMock = vi.fn();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 參數僅供 TS 推導 calls 型別
+  const createTransportMock = vi.fn((_opts: Record<string, unknown>) => ({
+    sendMail: sendMailMock,
+  }));
+  return { createTransportMock, sendMailMock };
+});
+vi.mock("nodemailer", () => ({
+  default: { createTransport: createTransportMock },
+}));
+
+import { buildEmailPayload, sendEmail } from "@/lib/notify/email";
 import {
   buildLineText,
   buildLineBody,
@@ -21,18 +33,19 @@ const submission: ContactNotifyPayload = {
   source_page: "/contact",
 };
 
+beforeEach(() => {
+  createTransportMock.mockClear();
+  sendMailMock.mockReset();
+  sendMailMock.mockResolvedValue({ messageId: "test" });
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe("email payload 組裝", () => {
-  it("含 姓名/公司/電話/Email/留言/來源頁，且帶上 from / to", () => {
-    const body = buildEmailPayload(submission, {
-      from: "no-reply@x.com",
-      to: ["a@x.com", "b@x.com"],
-    });
-    expect(body.from).toBe("no-reply@x.com");
-    expect(body.to).toEqual(["a@x.com", "b@x.com"]);
+  it("含 姓名/公司/電話/Email/留言/來源頁", () => {
+    const body = buildEmailPayload(submission);
     expect(body.subject).toContain("王小明");
     for (const v of [
       "王小明",
@@ -47,62 +60,75 @@ describe("email payload 組裝", () => {
   });
 
   it("空欄位以「—」呈現，無姓名時主旨用「訪客」", () => {
-    const body = buildEmailPayload(
-      {
-        name: null,
-        company: null,
-        phone: null,
-        email: null,
-        message: null,
-        source_page: null,
-      },
-      { from: "f@x.com", to: ["t@x.com"] },
-    );
+    const body = buildEmailPayload({
+      name: null,
+      company: null,
+      phone: null,
+      email: null,
+      message: null,
+      source_page: null,
+    });
     expect(body.subject).toContain("訪客");
     expect(body.text).toContain("—");
   });
 });
 
-describe("sendEmail（mock fetch）", () => {
-  it("POST 到 Resend endpoint，帶 Bearer key 與 JSON body", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+describe("sendEmail（mock nodemailer）", () => {
+  it("用設定的 host/port/secure/auth 建立 transport，並以 from/to/subject 寄送", async () => {
+    await sendEmail(
+      {
+        smtp_host: "smtp.x.com",
+        smtp_port: 465,
+        smtp_secure: true,
+        smtp_user: "user@x.com",
+        smtp_pass: "secret_pass_xyz",
+        from_email: "no-reply@x.com",
+        to: ["a@x.com", "b@x.com"],
+      },
+      submission,
+    );
 
-    await sendEmail(submission, {
-      apiKey: "re_test_key",
-      from: "no-reply@x.com",
-      to: ["a@x.com"],
+    expect(createTransportMock).toHaveBeenCalledTimes(1);
+    const transportOpts = createTransportMock.mock.calls[0][0];
+    expect(transportOpts).toMatchObject({
+      host: "smtp.x.com",
+      port: 465,
+      secure: true,
+      auth: { user: "user@x.com", pass: "secret_pass_xyz" },
     });
+    // 確認有設逾時（避免壞主機卡住 serverless）。
+    expect(transportOpts.connectionTimeout).toBeGreaterThan(0);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(RESEND_ENDPOINT);
-    const headers = init?.headers as Record<string, string>;
-    expect(headers.authorization).toBe("Bearer re_test_key");
-    expect(headers["content-type"]).toBe("application/json");
-    const parsed = JSON.parse(init?.body as string);
-    expect(parsed.to).toEqual(["a@x.com"]);
-    expect(parsed.subject).toContain("王小明");
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+    const mail = sendMailMock.mock.calls[0][0];
+    expect(mail.from).toBe("no-reply@x.com");
+    expect(mail.to).toEqual(["a@x.com", "b@x.com"]);
+    expect(mail.subject).toContain("王小明");
+    expect(mail.text).toContain("ming@example.com");
   });
 
-  it("非 2xx → 丟錯，且錯誤訊息不含 API key", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("forbidden", { status: 403 }),
-    );
+  it("寄送失敗 → 丟錯，且錯誤訊息不含密碼", async () => {
+    sendMailMock.mockRejectedValue(new Error("connection refused"));
     let caught: Error | null = null;
     try {
-      await sendEmail(submission, {
-        apiKey: "re_secret_xyz",
-        from: "f@x.com",
-        to: ["t@x.com"],
-      });
+      await sendEmail(
+        {
+          smtp_host: "smtp.x.com",
+          smtp_port: 587,
+          smtp_secure: false,
+          smtp_user: "user@x.com",
+          smtp_pass: "secret_pass_xyz",
+          from_email: "f@x.com",
+          to: ["t@x.com"],
+        },
+        submission,
+      );
     } catch (e) {
       caught = e as Error;
     }
     expect(caught).not.toBeNull();
-    expect(caught?.message).toMatch(/403/);
-    expect(caught?.message).not.toContain("re_secret_xyz");
+    expect(caught?.message).toMatch(/SMTP/);
+    expect(caught?.message).not.toContain("secret_pass_xyz");
   });
 });
 

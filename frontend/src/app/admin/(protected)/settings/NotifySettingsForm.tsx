@@ -86,33 +86,99 @@ export function NotifySettingsForm({
             type="email"
             autoComplete="off"
             defaultValue={config.fromEmail}
-            placeholder="no-reply@airexpert.com.tw（須為 Resend 已驗證網域）"
+            placeholder="no-reply@airexpert.com.tw"
             className={inputClass}
           />
         </div>
 
-        {/* Resend key（遮罩，留空沿用） */}
+        {/* SMTP 主機 */}
         <div className="flex flex-col gap-1.5">
           <label
-            htmlFor="resend_key"
+            htmlFor="smtp_host"
             className="text-ink text-[14px] font-medium"
           >
-            Resend API key
+            SMTP 主機（host）
           </label>
           <input
-            id="resend_key"
-            name="resend_key"
+            id="smtp_host"
+            name="smtp_host"
+            autoComplete="off"
+            defaultValue={config.smtpHost}
+            placeholder="smtp.gmail.com"
+            className={inputClass}
+          />
+        </div>
+
+        {/* SMTP 連接埠 + 加密方式 */}
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="smtp_port"
+            className="text-ink text-[14px] font-medium"
+          >
+            SMTP 連接埠（port）
+          </label>
+          <input
+            id="smtp_port"
+            name="smtp_port"
+            type="number"
+            inputMode="numeric"
+            autoComplete="off"
+            defaultValue={config.smtpPort}
+            placeholder="587"
+            className={inputClass}
+          />
+          <label className="text-ink flex items-center gap-2 text-[14px]">
+            <input
+              type="checkbox"
+              name="smtp_secure"
+              value="1"
+              defaultChecked={config.smtpSecure}
+              className="h-4 w-4"
+            />
+            使用 SSL（勾選＝465/SSL；取消＝587/STARTTLS）
+          </label>
+        </div>
+
+        {/* SMTP 帳號 */}
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="smtp_user"
+            className="text-ink text-[14px] font-medium"
+          >
+            SMTP 帳號（user）
+          </label>
+          <input
+            id="smtp_user"
+            name="smtp_user"
+            autoComplete="off"
+            defaultValue={config.smtpUser}
+            placeholder="no-reply@airexpert.com.tw"
+            className={inputClass}
+          />
+        </div>
+
+        {/* SMTP 密碼（遮罩，留空沿用） */}
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="smtp_pass"
+            className="text-ink text-[14px] font-medium"
+          >
+            SMTP 密碼
+          </label>
+          <input
+            id="smtp_pass"
+            name="smtp_pass"
             type="password"
             autoComplete="off"
             placeholder={
-              config.hasResendKey
+              config.hasSmtpPass
                 ? "已設定（••••）— 留空則沿用現有"
-                : "貼上 Resend API key"
+                : "貼上 SMTP 密碼 / 應用程式密碼"
             }
             className={inputClass}
           />
           <p className="text-text-muted text-[12px]">
-            Email 通知透過 Resend 寄送；金鑰加密儲存，只在 server 端使用。
+            Email 通知透過 SMTP 寄送；密碼加密儲存，只在 server 端使用。
           </p>
         </div>
 

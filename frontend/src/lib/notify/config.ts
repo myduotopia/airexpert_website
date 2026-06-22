@@ -5,6 +5,14 @@
 export interface ContactNotifyValue {
   email_recipients?: string[];
   from_email?: string;
+  // SMTP（email 管道）— 取代原 Resend。密碼加密存 smtp_pass_enc。
+  smtp_host?: string;
+  smtp_port?: number;
+  /** true=465/SSL；false=587/STARTTLS。 */
+  smtp_secure?: boolean;
+  smtp_user?: string;
+  smtp_pass_enc?: string;
+  /** @deprecated 已改用 SMTP；保留欄位僅供向後相容，不再讀取。 */
   resend_key_enc?: string;
   line_token_enc?: string;
   line_target_id?: string;
@@ -17,8 +25,12 @@ export interface ContactNotifyValue {
 export interface ContactNotifyPublic {
   emailRecipients: string[];
   fromEmail: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string;
+  hasSmtpPass: boolean;
   lineTargetId: string;
-  hasResendKey: boolean;
   hasLineToken: boolean;
 }
 
@@ -46,8 +58,12 @@ export function toPublicConfig(value: ContactNotifyValue): ContactNotifyPublic {
       ? value.email_recipients
       : [],
     fromEmail: value.from_email ?? "",
+    smtpHost: value.smtp_host ?? "",
+    smtpPort: typeof value.smtp_port === "number" ? value.smtp_port : 587,
+    smtpSecure: Boolean(value.smtp_secure),
+    smtpUser: value.smtp_user ?? "",
+    hasSmtpPass: Boolean(value.smtp_pass_enc),
     lineTargetId: value.line_target_id ?? "",
-    hasResendKey: Boolean(value.resend_key_enc),
     hasLineToken: Boolean(value.line_token_enc),
   };
 }
