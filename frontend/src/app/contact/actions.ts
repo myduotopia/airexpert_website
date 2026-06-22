@@ -3,7 +3,7 @@
 // 聯絡表單送出（server action）— 寫入 contact_submissions 後，觸發 Email + LINE 通知。
 //
 // 為何改用 server action（原 lib/contact.ts 為 client anon insert）：
-// 通知需讀取加密機密（Resend key / LINE token），只能在 server 端進行；
+// 通知需讀取加密機密（SMTP 密碼 / LINE token），只能在 server 端進行；
 // 故把「insert + 通知」收斂到 server action，機密絕不外送瀏覽器。
 //
 // 失敗隔離（issue #59 要求）：通知失敗「不得」讓使用者看到送出失敗。

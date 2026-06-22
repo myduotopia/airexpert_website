@@ -32,11 +32,15 @@ describe("notify config — parseRecipients", () => {
 });
 
 describe("notify config — toPublicConfig（遮罩機密）", () => {
-  it("不外洩明文機密，只給 has* 布林", () => {
+  it("不外洩明文機密，只給 has* 布林（SMTP 密碼遮罩）", () => {
     const value: ContactNotifyValue = {
       email_recipients: ["a@x.com"],
       from_email: "no-reply@x.com",
-      resend_key_enc: "iv.tag.cipher",
+      smtp_host: "smtp.x.com",
+      smtp_port: 465,
+      smtp_secure: true,
+      smtp_user: "user@x.com",
+      smtp_pass_enc: "iv.tag.cipher",
       line_token_enc: "iv.tag.cipher2",
       line_target_id: "U123",
     };
@@ -44,21 +48,29 @@ describe("notify config — toPublicConfig（遮罩機密）", () => {
     expect(pub).toEqual({
       emailRecipients: ["a@x.com"],
       fromEmail: "no-reply@x.com",
+      smtpHost: "smtp.x.com",
+      smtpPort: 465,
+      smtpSecure: true,
+      smtpUser: "user@x.com",
+      hasSmtpPass: true,
       lineTargetId: "U123",
-      hasResendKey: true,
       hasLineToken: true,
     });
     // 確認沒有任何加密字串外洩
     expect(JSON.stringify(pub)).not.toContain("cipher");
   });
 
-  it("空 value → 安全預設（has* 皆 false）", () => {
+  it("空 value → 安全預設（has* 皆 false，port 預設 587）", () => {
     const pub = toPublicConfig({});
     expect(pub).toEqual({
       emailRecipients: [],
       fromEmail: "",
+      smtpHost: "",
+      smtpPort: 587,
+      smtpSecure: false,
+      smtpUser: "",
+      hasSmtpPass: false,
       lineTargetId: "",
-      hasResendKey: false,
       hasLineToken: false,
     });
   });

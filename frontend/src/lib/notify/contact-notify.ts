@@ -1,5 +1,5 @@
 // 聯絡通知協調器 — SERVER ONLY。讀 + 解密 site_settings.contact_notify，
-// 並行觸發 Email（Resend）+ LINE（Messaging API）通知。
+// 並行觸發 Email（SMTP / nodemailer）+ LINE（Messaging API）通知。
 //
 // 設計重點：
 // - 任一管道失敗都「不得」中斷另一管道、也不得讓呼叫端（表單送出）失敗 → 各自 try/catch。
@@ -70,11 +70,27 @@ async function runEmail(
   const recipients = Array.isArray(value.email_recipients)
     ? value.email_recipients
     : [];
-  const apiKey = tryDecrypt(value.resend_key_enc);
+  const host = (value.smtp_host ?? "").trim();
+  const user = (value.smtp_user ?? "").trim();
+  const pass = tryDecrypt(value.smtp_pass_enc);
   const from = (value.from_email ?? "").trim();
-  if (recipients.length === 0 || !apiKey || !from) return skipped();
+  // SMTP 未完整設定（缺 host/user/pass）或無收件人 → 視為略過（非錯誤）。
+  if (recipients.length === 0 || !host || !user || !pass || !from) {
+    return skipped();
+  }
   try {
-    await sendEmail(submission, { apiKey, from, to: recipients });
+    await sendEmail(
+      {
+        smtp_host: host,
+        smtp_port: typeof value.smtp_port === "number" ? value.smtp_port : 587,
+        smtp_secure: Boolean(value.smtp_secure),
+        smtp_user: user,
+        smtp_pass: pass,
+        from_email: from,
+        to: recipients,
+      },
+      submission,
+    );
     return ok();
   } catch (e) {
     return fail(e);

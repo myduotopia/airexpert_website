@@ -97,7 +97,7 @@ export async function saveAiPrompts(
 // ---------- 聯絡通知設定（contact_notify） ----------
 
 /**
- * 儲存聯絡通知設定。機密（Resend key / LINE token）採「留空沿用」語意，
+ * 儲存聯絡通知設定。機密（SMTP 密碼 / LINE token）採「留空沿用」語意，
  * 與 saveAiConfig 一致：只有重新輸入才覆寫，否則保留既有加密值。
  */
 export async function saveContactNotifyConfig(
@@ -110,8 +110,13 @@ export async function saveContactNotifyConfig(
     String(fd.get("email_recipients") ?? ""),
   );
   const fromEmail = String(fd.get("from_email") ?? "").trim();
+  const smtpHost = String(fd.get("smtp_host") ?? "").trim();
+  const smtpPortRaw = String(fd.get("smtp_port") ?? "").trim();
+  const smtpPort = Number.parseInt(smtpPortRaw, 10);
+  const smtpSecure = fd.get("smtp_secure") != null;
+  const smtpUser = String(fd.get("smtp_user") ?? "").trim();
+  const newSmtpPass = String(fd.get("smtp_pass") ?? "").trim();
   const lineTargetId = String(fd.get("line_target_id") ?? "").trim();
-  const newResendKey = String(fd.get("resend_key") ?? "").trim();
   const newLineToken = String(fd.get("line_token") ?? "").trim();
 
   const admin = getAdminSupabase();
@@ -125,14 +130,18 @@ export async function saveContactNotifyConfig(
   const value: ContactNotifyValue = {
     email_recipients: emailRecipients,
     from_email: fromEmail || undefined,
+    smtp_host: smtpHost || undefined,
+    smtp_port: Number.isFinite(smtpPort) ? smtpPort : undefined,
+    smtp_secure: smtpSecure,
+    smtp_user: smtpUser || undefined,
     line_target_id: lineTargetId || undefined,
   };
 
   try {
-    if (newResendKey) {
-      value.resend_key_enc = encryptSecret(newResendKey);
-    } else if (cur.resend_key_enc) {
-      value.resend_key_enc = cur.resend_key_enc;
+    if (newSmtpPass) {
+      value.smtp_pass_enc = encryptSecret(newSmtpPass);
+    } else if (cur.smtp_pass_enc) {
+      value.smtp_pass_enc = cur.smtp_pass_enc;
     }
     if (newLineToken) {
       value.line_token_enc = encryptSecret(newLineToken);
