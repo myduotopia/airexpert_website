@@ -84,11 +84,13 @@ export function AiFillSeoButton({
       setNamedValue(form, "og_description", seo.og_description);
       if (seo.slug)
         setNamedValue(form, "slug", seo.slug, { onlyIfEmpty: true });
+      // JSON-LD 常為人工微調，僅在空白時填入，避免覆蓋既有結構化資料。
       if (seo.jsonld)
         setNamedValue(
           form,
           "schema_jsonld",
           JSON.stringify(seo.jsonld, null, 2),
+          { onlyIfEmpty: true },
         );
       setDone(true);
     });

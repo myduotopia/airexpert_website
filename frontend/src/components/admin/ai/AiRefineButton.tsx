@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { refineBodyHtmlAction, type AiTargetType } from "@/lib/ai/actions";
 
 // 「AI 修文」按鈕：讀取同表單內 name="body_html" 的 textarea 現值，
@@ -37,11 +37,13 @@ export function AiRefineButton({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  // 以自身節點定位所屬 form / 內文欄位，避免依賴 document.activeElement（焦點移動會失準）。
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  function onRefine(e: React.MouseEvent<HTMLButtonElement>) {
+  function onRefine() {
     setError(null);
     setPreview(null);
-    const field = findBodyField(e.currentTarget);
+    const field = findBodyField(rootRef.current);
     const current = field?.value ?? "";
     if (!current.trim()) {
       setError("請先輸入內文，再使用 AI 修文。");
@@ -55,14 +57,20 @@ export function AiRefineButton({
   }
 
   function onAccept() {
-    const btn = document.activeElement as HTMLElement | null;
-    const field = findBodyField(btn);
-    if (field && preview != null) setFieldValue(field, preview);
+    const field = findBodyField(rootRef.current);
+    if (!field) {
+      setError("找不到內文欄位，無法填入。");
+      return;
+    }
+    if (preview != null) setFieldValue(field, preview);
     setPreview(null);
   }
 
   return (
-    <div className="border-border bg-surface-muted/40 flex flex-col gap-2 rounded-lg border border-dashed p-3">
+    <div
+      ref={rootRef}
+      className="border-border bg-surface-muted/40 flex flex-col gap-2 rounded-lg border border-dashed p-3"
+    >
       <div className="flex items-center gap-3">
         <button
           type="button"
