@@ -5,7 +5,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getRedirectMap } from "@/lib/redirects/load";
-import { matchRedirect, shouldCheckRedirect } from "@/lib/redirects/match";
+import {
+  matchRedirect,
+  shouldCheckRedirect,
+  classifyRedirectTarget,
+} from "@/lib/redirects/match";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -16,11 +20,14 @@ export async function proxy(request: NextRequest) {
     const map = await getRedirectMap();
     const hit = matchRedirect(pathname, map);
     if (hit) {
-      // 站內路徑解析為絕對 URL（保留 host）；完整 URL 直接採用。
-      const destination = hit.to.startsWith("http")
-        ? hit.to
-        : new URL(hit.to, request.url);
-      return NextResponse.redirect(destination, hit.status);
+      // 防 open-redirect：external 直接採用完整 URL；internal 以 host 解析；
+      // unsafe（如協定相對 //evil.com）則不轉址，照常往下處理。
+      const kind = classifyRedirectTarget(hit.to);
+      if (kind !== "unsafe") {
+        const destination =
+          kind === "external" ? hit.to : new URL(hit.to, request.url);
+        return NextResponse.redirect(destination, hit.status);
+      }
     }
   }
 

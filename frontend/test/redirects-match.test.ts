@@ -4,8 +4,26 @@ import {
   matchRedirect,
   normalizePath,
   shouldCheckRedirect,
+  classifyRedirectTarget,
   type RedirectRule,
 } from "@/lib/redirects/match";
+
+describe("redirects — classifyRedirectTarget（防 open-redirect）", () => {
+  it("完整 http(s) URL → external", () => {
+    expect(classifyRedirectTarget("https://example.com/x")).toBe("external");
+    expect(classifyRedirectTarget("http://example.com")).toBe("external");
+  });
+  it("單一斜線站內路徑 → internal", () => {
+    expect(classifyRedirectTarget("/products")).toBe("internal");
+    expect(classifyRedirectTarget("/a/b?c=1")).toBe("internal");
+  });
+  it("協定相對 / 反斜線 / 其他 → unsafe", () => {
+    expect(classifyRedirectTarget("//evil.com")).toBe("unsafe");
+    expect(classifyRedirectTarget("/\\evil.com")).toBe("unsafe");
+    expect(classifyRedirectTarget("javascript:alert(1)")).toBe("unsafe");
+    expect(classifyRedirectTarget("evil.com")).toBe("unsafe");
+  });
+});
 
 const RULES: RedirectRule[] = [
   { from_path: "/index.html", to_path: "/", status: 301 },

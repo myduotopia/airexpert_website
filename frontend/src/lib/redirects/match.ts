@@ -56,6 +56,19 @@ export function matchRedirect(
  * proxy 效能護欄：判斷此路徑是否「需要」查轉址表。
  * 跳過 Next 內部資產、API、以及帶副檔名的靜態檔（.html 例外 —— 舊站正是 .html）。
  */
+export function classifyRedirectTarget(
+  to: string,
+): "external" | "internal" | "unsafe" {
+  // 防 open-redirect：完整 http(s) URL = 站外（刻意允許）；單一斜線開頭 = 站內；
+  // 其餘（//evil.com 協定相對、/\evil.com、javascript: 等）= unsafe，不轉址。
+  // 注意：new URL("//evil.com", base) 會解析為站外，故不能僅以 startsWith("http") 判斷。
+  if (/^https?:\/\//i.test(to)) return "external";
+  if (to.startsWith("/") && !to.startsWith("//") && !to.includes("\\")) {
+    return "internal";
+  }
+  return "unsafe";
+}
+
 export function shouldCheckRedirect(pathname: string): boolean {
   if (
     pathname.startsWith("/_next/") ||

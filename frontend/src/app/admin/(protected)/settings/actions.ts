@@ -14,6 +14,7 @@ import type { NotifyResult } from "@/lib/notify/types";
 import { ANALYTICS_KEY } from "@/lib/data/site";
 import {
   parseAnalyticsConfig,
+  isLikelyGa4Id,
   type AnalyticsValue,
 } from "@/lib/analytics/config";
 
@@ -139,6 +140,12 @@ export async function saveAnalyticsConfig(
     ga4_id: String(fd.get("ga4_id") ?? ""),
     gsc_verification: String(fd.get("gsc_verification") ?? ""),
   });
+
+  // 強制 GA4 id 格式（G-XXXX…）：ga4_id 會以原樣插入 layout 的 inline gtag script，
+  // 嚴格限制字元集即可杜絕字串跳脫 / inline-script 注入。
+  if (parsed.ga4Id && !isLikelyGa4Id(parsed.ga4Id)) {
+    return { error: "GA4 測量 ID 格式不正確（應為 G- 開頭的英數字）。" };
+  }
 
   const value: AnalyticsValue = {};
   if (parsed.ga4Id) value.ga4_id = parsed.ga4Id;
