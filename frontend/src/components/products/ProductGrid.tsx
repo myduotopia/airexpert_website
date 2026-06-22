@@ -11,6 +11,8 @@ import {
 
 type ProductGridProps = {
   products: Product[];
+  /** 初始選取的分類（例如首頁產品圖以 ?category= 帶入）；非合法分類則為「全部」。 */
+  initial?: string;
 };
 
 type Filter = ProductCategory | typeof ALL_CATEGORY;
@@ -28,8 +30,13 @@ type Filter = ProductCategory | typeof ALL_CATEGORY;
  * category has products. Empty categories render a per-category empty state
  * rather than disappearing.
  */
-export function ProductGrid({ products }: ProductGridProps) {
-  const [active, setActive] = useState<Filter>(ALL_CATEGORY);
+export function ProductGrid({ products, initial }: ProductGridProps) {
+  const initialFilter: Filter = (
+    PRODUCT_CATEGORIES as readonly string[]
+  ).includes(initial ?? "")
+    ? (initial as ProductCategory)
+    : ALL_CATEGORY;
+  const [active, setActive] = useState<Filter>(initialFilter);
 
   const counts = useMemo(() => {
     const map = new Map<string, number>();
