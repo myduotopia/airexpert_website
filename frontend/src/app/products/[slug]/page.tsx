@@ -49,6 +49,7 @@ export async function generateMetadata(
     title: product.name,
     description: product.summary,
     image: product.images?.[0]?.url,
+    canonicalPath: `/products/${slug}`,
   });
 }
 

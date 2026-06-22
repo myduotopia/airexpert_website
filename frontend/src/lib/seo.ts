@@ -29,6 +29,11 @@ export interface SeoFallback {
   description?: string | null;
   /** og_image_url 缺時的圖片（封面 / 首圖）。 */
   image?: string | null;
+  /**
+   * canonical_url 留空時自動使用的「本頁自身路徑」（self-referencing），
+   * 例如 `/news/foo`。維持相對路徑即可——layout 的 metadataBase 會解析為絕對網址。
+   */
+  canonicalPath?: string | null;
 }
 
 function clean(value: string | null | undefined): string | undefined {
@@ -41,7 +46,8 @@ function clean(value: string | null | undefined): string | undefined {
  * 依 SEO 欄位 + fallback 組出 Next 16 Metadata：
  *   title       = seo_title ?? fallback.title
  *   description = seo_description ?? fallback.description
- *   alternates.canonical = canonical_url（有設定才輸出）
+ *   alternates.canonical = canonical_url ?? fallback.canonicalPath
+ *     （手動填值優先；否則自動指向本頁自身路徑 self-referencing；兩者皆空才不輸出）
  *   openGraph   = { title: og_title ?? title, description: og_description ?? description,
  *                   images: og_image_url ?? fallback.image }
  *   robots      = { index: !noindex, follow: !nofollow }
@@ -56,7 +62,8 @@ export function buildSeoMetadata(
   const ogTitle = clean(seo.og_title) ?? title;
   const ogDescription = clean(seo.og_description) ?? description;
   const ogImage = clean(seo.og_image_url) ?? clean(fallback.image);
-  const canonical = clean(seo.canonical_url);
+  // 手動填的 canonical_url 優先；留空則自動指向本頁自身路徑（self-referencing）。
+  const canonical = clean(seo.canonical_url) ?? clean(fallback.canonicalPath);
 
   const metadata: Metadata = {
     title,

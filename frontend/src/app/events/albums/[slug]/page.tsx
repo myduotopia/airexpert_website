@@ -22,6 +22,7 @@ export async function generateMetadata({
     title: `${album.title} | 公司活動`,
     description: album.description,
     image: album.cover_image,
+    canonicalPath: `/events/albums/${slug}`,
   });
 }
 

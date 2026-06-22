@@ -44,7 +44,7 @@ describe("buildSeoMetadata（detail 頁 metadata 組裝）", () => {
     expect(m.description).toBe("自訂 SEO 描述");
   });
 
-  it("canonical_url 有設定才輸出 alternates.canonical", () => {
+  it("canonical_url 有填 → 覆寫；留空 → 自動指向本頁路徑（self-referencing）；兩者皆空 → 不輸出", () => {
     const base = {
       seo_title: null,
       seo_description: null,
@@ -54,14 +54,24 @@ describe("buildSeoMetadata（detail 頁 metadata 組裝）", () => {
       noindex: false,
       nofollow: false,
     };
+
+    // 手動填的 canonical_url 優先，即使有 canonicalPath 也覆寫。
     const withCanonical = buildSeoMetadata(
       { ...base, canonical_url: "https://airexpert.com.tw/products/x" },
-      { title: "T" },
+      { title: "T", canonicalPath: "/products/foo" },
     );
     expect(withCanonical.alternates?.canonical).toBe(
       "https://airexpert.com.tw/products/x",
     );
 
+    // canonical_url 留空 + 有 canonicalPath → 自動輸出本頁自身路徑。
+    const selfReferencing = buildSeoMetadata(
+      { ...base, canonical_url: null },
+      { title: "T", canonicalPath: "/news/foo" },
+    );
+    expect(selfReferencing.alternates?.canonical).toBe("/news/foo");
+
+    // 兩者皆空 → 不輸出 alternates。
     const without = buildSeoMetadata(
       { ...base, canonical_url: null },
       { title: "T" },
