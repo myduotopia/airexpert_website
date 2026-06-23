@@ -55,6 +55,7 @@ export interface Product extends SeoColumns {
   body_html: string | null;
   spec: ProductSpec;
   images: MediaImage[];
+  manual_url: string | null;
   sort_order: number;
   status: ContentStatus;
   legacy_path: string | null;

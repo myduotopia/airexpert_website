@@ -9,13 +9,14 @@ export type UploadResult =
   | { ok: true; url: string; path: string }
   | { ok: false; error: string };
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_BYTES = 25 * 1024 * 1024; // 25MB（技術手冊 PDF 可能較大，#84）
 const ALLOWED = [
   "image/jpeg",
   "image/png",
   "image/webp",
   "image/gif",
   "image/svg+xml",
+  "application/pdf",
 ];
 
 export async function uploadMedia(formData: FormData): Promise<UploadResult> {
@@ -26,7 +27,7 @@ export async function uploadMedia(formData: FormData): Promise<UploadResult> {
     return { ok: false, error: "請選擇檔案" };
   }
   if (file.size > MAX_BYTES) {
-    return { ok: false, error: "檔案過大（上限 10MB）" };
+    return { ok: false, error: "檔案過大（上限 25MB）" };
   }
   if (file.type && !ALLOWED.includes(file.type)) {
     return { ok: false, error: `不支援的檔案類型：${file.type}` };

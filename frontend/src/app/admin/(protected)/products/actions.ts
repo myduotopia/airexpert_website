@@ -90,6 +90,7 @@ function buildValues(
     body_html: nullableStr(formData, "body_html"),
     spec: parseSpec(str(formData, "spec")),
     images: parseImages(str(formData, "images")),
+    manual_url: nullableStr(formData, "manual_url"),
     ...seo,
     status: STATUSES.includes(status) ? status : "draft",
   };
