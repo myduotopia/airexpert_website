@@ -18,6 +18,7 @@ import {
   isLikelyGa4Id,
   type AnalyticsValue,
 } from "@/lib/analytics/config";
+import { AI_MODEL_OPTIONS, DEFAULT_AI_MODEL } from "./ai-models";
 
 export type SettingsState = { ok?: boolean; error?: string };
 
@@ -29,7 +30,11 @@ export async function saveAiConfig(
 ): Promise<SettingsState> {
   await requireAdmin();
   const newKey = String(fd.get("gemini_key") ?? "").trim();
-  const model = String(fd.get("model") ?? "").trim() || "gemini-2.5-flash";
+  // 只接受白名單內的模型；其餘（含空值）一律退回預設。
+  const rawModel = String(fd.get("model") ?? "").trim();
+  const model = (AI_MODEL_OPTIONS as readonly string[]).includes(rawModel)
+    ? rawModel
+    : DEFAULT_AI_MODEL;
 
   const admin = getAdminSupabase();
   const { data } = await admin

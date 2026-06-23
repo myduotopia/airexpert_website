@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { saveAiConfig, type SettingsState } from "./actions";
+import { AI_MODEL_OPTIONS, DEFAULT_AI_MODEL } from "./ai-models";
 
 export function AiSettingsForm({
   hasKey,
@@ -55,12 +56,27 @@ export function AiSettingsForm({
         <label htmlFor="model" className="text-ink text-[14px] font-medium">
           模型
         </label>
-        <input
+        <select
           id="model"
           name="model"
-          defaultValue={model}
-          className="border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none"
-        />
+          defaultValue={
+            AI_MODEL_OPTIONS.includes(
+              model as (typeof AI_MODEL_OPTIONS)[number],
+            )
+              ? model
+              : DEFAULT_AI_MODEL
+          }
+          className="border-border focus:border-primary h-11 rounded-lg border bg-white px-3 text-[15px] outline-none"
+        >
+          {AI_MODEL_OPTIONS.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+        <p className="text-text-muted text-[12px]">
+          gemini-2.5-flash：品質較佳；gemini-2.5-flash-lite：較省、較不易遇到尖峰過載。
+        </p>
       </div>
 
       {state.error ? (
