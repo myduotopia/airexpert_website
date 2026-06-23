@@ -21,39 +21,44 @@ export function ProductShowcase({ content }: { content: HomeProducts }) {
         </div>
 
         <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {content.categories.map((c) => (
-            <Link
-              key={c.name}
-              href={`/products?category=${encodeURIComponent(c.name)}`}
-              aria-label={`查看${c.name}系列`}
-              className="border-border bg-surface group hover:border-primary focus-visible:ring-primary flex flex-col overflow-hidden rounded-2xl border transition-shadow hover:shadow-[0_6px_28px_rgba(22,32,26,0.07)] focus-visible:ring-2 focus-visible:outline-none"
-            >
-              <div className="bg-surface flex aspect-[4/3] items-center justify-center p-6">
-                <Image
-                  src={c.image_url}
-                  alt={c.name}
-                  width={800}
-                  height={800}
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  className="h-full w-auto object-contain transition-transform duration-300 group-hover:scale-105"
-                />
-              </div>
-              <div className="border-border flex flex-col gap-2 border-t p-6">
-                <h3 className="text-ink text-[20px] font-semibold">{c.name}</h3>
-                <p className="text-text-muted text-[16px] leading-[1.6]">
-                  {c.desc}
-                </p>
-                <span className="text-primary-deep mt-1 inline-flex items-center gap-1 text-[15px] font-medium">
-                  查看系列
-                  <ArrowRight
-                    size={16}
-                    className="transition-transform group-hover:translate-x-0.5"
-                    aria-hidden="true"
+          {/* 防呆：跳過沒有圖片的分類（空 src 會讓 next/image 崩潰）。 */}
+          {content.categories
+            .filter((c) => c.image_url)
+            .map((c, idx) => (
+              <Link
+                key={`${c.name}-${idx}`}
+                href={`/products?category=${encodeURIComponent(c.name)}`}
+                aria-label={`查看${c.name}系列`}
+                className="border-border bg-surface group hover:border-primary focus-visible:ring-primary flex flex-col overflow-hidden rounded-2xl border transition-shadow hover:shadow-[0_6px_28px_rgba(22,32,26,0.07)] focus-visible:ring-2 focus-visible:outline-none"
+              >
+                <div className="bg-surface flex aspect-[4/3] items-center justify-center p-6">
+                  <Image
+                    src={c.image_url}
+                    alt={c.name}
+                    width={800}
+                    height={800}
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className="h-full w-auto object-contain transition-transform duration-300 group-hover:scale-105"
                   />
-                </span>
-              </div>
-            </Link>
-          ))}
+                </div>
+                <div className="border-border flex flex-col gap-2 border-t p-6">
+                  <h3 className="text-ink text-[20px] font-semibold">
+                    {c.name}
+                  </h3>
+                  <p className="text-text-muted text-[16px] leading-[1.6]">
+                    {c.desc}
+                  </p>
+                  <span className="text-primary-deep mt-1 inline-flex items-center gap-1 text-[15px] font-medium">
+                    查看系列
+                    <ArrowRight
+                      size={16}
+                      className="transition-transform group-hover:translate-x-0.5"
+                      aria-hidden="true"
+                    />
+                  </span>
+                </div>
+              </Link>
+            ))}
         </div>
       </div>
     </section>

@@ -12,10 +12,16 @@ function painNumber(index: number): string {
   return String(index + 1).padStart(2, "0");
 }
 
-export function PainCarousel({ slides }: { slides: HomeCarousel["slides"] }) {
+export function PainCarousel({
+  slides: rawSlides,
+}: {
+  slides: HomeCarousel["slides"];
+}) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
+  // 防呆：跳過沒有圖片的投影片（空 src 會讓 next/image 崩潰）。
+  const slides = rawSlides.filter((s) => s.image_url);
   const count = slides.length;
 
   const goTo = useCallback(
@@ -44,7 +50,7 @@ export function PainCarousel({ slides }: { slides: HomeCarousel["slides"] }) {
           const n = painNumber(idx);
           return (
             <div
-              key={s.image_url}
+              key={idx}
               role="group"
               aria-roledescription="slide"
               aria-label={`痛點 ${n}：${s.category}`}
@@ -102,7 +108,7 @@ export function PainCarousel({ slides }: { slides: HomeCarousel["slides"] }) {
         <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2">
           {slides.map((s, idx) => (
             <button
-              key={s.image_url}
+              key={idx}
               type="button"
               onClick={() => goTo(idx)}
               aria-label={`切換到痛點 ${painNumber(idx)}`}

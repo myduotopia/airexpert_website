@@ -95,13 +95,8 @@ export function parseCarousel(fd: FormData): HomeCarousel {
       headline: str(fd, `slides[${i}].headline`),
       tagline: str(fd, `slides[${i}].tagline`),
     }),
-    // 只要有圖片或任一文案就保留。
-    (r) =>
-      r.image_url !== "" ||
-      r.alt !== "" ||
-      r.category !== "" ||
-      r.headline !== "" ||
-      r.tagline !== "",
+    // 必須有圖片才保留：投影片以 next/image 全幅渲染，空 src 會讓首頁 render 崩潰。
+    (r) => r.image_url !== "",
   );
   return { slides };
 }
@@ -154,7 +149,8 @@ export function parseProducts(fd: FormData): HomeProducts {
       name: str(fd, `categories[${i}].name`),
       desc: str(fd, `categories[${i}].desc`),
     }),
-    (r) => r.image_url !== "" || r.name !== "" || r.desc !== "",
+    // 必須有圖片才保留：分類卡以 next/image 渲染，空 src 會讓首頁 render 崩潰。
+    (r) => r.image_url !== "",
   );
   return {
     eyebrow: str(fd, "eyebrow"),

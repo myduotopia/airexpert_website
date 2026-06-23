@@ -56,16 +56,20 @@ describe("parseCarousel（可重複列 → JSON）", () => {
     });
   });
 
-  it("整列全空者跳過（中間空列不會留洞）", () => {
+  it("無圖片的列跳過（中間空列不會留洞）", () => {
     const result = parseCarousel(
       fd({
         "slides.count": "3",
+        "slides[0].image_url": "/a.png",
         "slides[0].headline": "H0",
-        // 第 1 列全空 → 跳過
+        // 第 1 列只有文案、無圖片 → 跳過（空 src 會讓 next/image 崩潰）
+        "slides[1].headline": "H1",
+        "slides[2].image_url": "/c.png",
         "slides[2].headline": "H2",
       }),
     );
     expect(result.slides.map((s) => s.headline)).toEqual(["H0", "H2"]);
+    expect(result.slides.map((s) => s.image_url)).toEqual(["/a.png", "/c.png"]);
   });
 
   it("count 為 0 / 缺漏 → 空陣列", () => {
