@@ -122,14 +122,17 @@ export default async function ProductDetailPage(props: DetailPageProps) {
               >
                 申請報價
               </Link>
-              {/* TODO(#8): point at the product's real technical manual PDF. */}
-              <a
-                href="#"
-                className="border-border text-ink focus-visible:ring-primary hover:border-primary inline-flex items-center justify-center gap-2 rounded-[26px] border px-6 py-3 text-[16px] font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
-              >
-                <Download size={16} aria-hidden="true" />
-                下載技術手冊 PDF
-              </a>
+              {product.manual_url ? (
+                <a
+                  href={product.manual_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="border-border text-ink focus-visible:ring-primary hover:border-primary inline-flex items-center justify-center gap-2 rounded-[26px] border px-6 py-3 text-[16px] font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  <Download size={16} aria-hidden="true" />
+                  下載技術手冊 PDF
+                </a>
+              ) : null}
             </div>
           </div>
 

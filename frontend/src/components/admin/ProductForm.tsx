@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
 import { ProductImagesField } from "@/components/admin/ProductImagesField";
+import { FileUploader } from "@/components/admin/FileUploader";
 import { SeoFields } from "@/components/admin/SeoFields";
 import { AiRefineButton } from "@/components/admin/ai/AiRefineButton";
 import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
@@ -46,6 +47,9 @@ export function ProductForm({
     {},
   );
   useNavigateOnSuccess(state, "/admin/products");
+
+  // manual_url：受控輸入（可手動貼 URL / 清空），上傳後由 FileUploader 寫回。
+  const [manualUrl, setManualUrl] = useState<string>(product?.manual_url ?? "");
 
   return (
     <form action={formAction} className="flex max-w-[760px] flex-col gap-6">
@@ -154,6 +158,27 @@ export function ProductForm({
       <div className="flex flex-col gap-1.5">
         <span className={labelCls}>商品圖片</span>
         <ProductImagesField initial={product?.images ?? []} />
+      </div>
+
+      {/* 技術手冊 PDF manual_url */}
+      <div className="flex flex-col gap-1.5">
+        <span className={labelCls}>技術手冊 PDF（選填）</span>
+        <input
+          name="manual_url"
+          value={manualUrl}
+          onChange={(e) => setManualUrl(e.target.value)}
+          placeholder="https://…（或用下方上傳 PDF）"
+          className={inputCls}
+        />
+        <FileUploader
+          folder="manuals"
+          accept=".pdf,application/pdf"
+          onUploaded={(url) => setManualUrl(url)}
+        />
+        <span className="text-text-muted text-[12px]">
+          上傳或貼入技術手冊 PDF 網址；有值時前台商品內頁才會顯示「下載技術手冊
+          PDF」按鈕。
+        </span>
       </div>
 
       {/* 內文 */}

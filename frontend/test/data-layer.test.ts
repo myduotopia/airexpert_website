@@ -106,6 +106,7 @@ describe("V3 SEO 欄位（資料層 select * 帶回新欄位 + 型別包含新�
       body_html: null,
       spec: {},
       images: [],
+      manual_url: null,
       seo_title: "t",
       seo_description: "d",
       canonical_url: "https://airexpert.com.tw/products/x",
@@ -124,6 +125,13 @@ describe("V3 SEO 欄位（資料層 select * 帶回新欄位 + 型別包含新�
     expect(row.canonical_url).toContain("airexpert");
     expect(row.schema_jsonld).toEqual({ "@type": "Product" });
     expect(row.noindex).toBe(false);
+  });
+
+  it("Product 型別包含 manual_url（技術手冊 PDF，#84）", () => {
+    const withManual: Product["manual_url"] = "https://x/m.pdf";
+    const noManual: Product["manual_url"] = null;
+    expect(withManual).toContain(".pdf");
+    expect(noManual).toBeNull();
   });
 });
 
