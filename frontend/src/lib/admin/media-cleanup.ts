@@ -11,18 +11,21 @@ import "server-only";
 import { getAdminSupabase } from "../supabase-admin";
 import { HOME_KEYS } from "../data/home-keys";
 
-// media bucket 公開 URL 的固定片段；只要 URL 含此片段即視為本站 media 檔。
-const MEDIA_PUBLIC_MARKER = "/storage/v1/object/public/media/";
+// 僅認 Supabase（*.supabase.co）的 media bucket 公開 URL，並取出 bucket 內路徑。
+// 錨定 host 可避免有人手填「外部網址剛好含相同路徑片段」而被誤判為本站 media 檔
+// （即使被誤判也只會對「本站 media bucket」下無此檔的 key 做無害 no-op，仍加此防線）。
+const MEDIA_PUBLIC_RE =
+  /^https?:\/\/[^/]+\.supabase\.co\/storage\/v1\/object\/public\/media\/(.+)$/;
 
 /**
  * 由公開 URL 取出 media bucket 內的相對路徑（供 storage.remove 用）。
- * 非 media 公開 URL（內建預設 / 外部連結 / 空值）→ null（代表不可刪）。
+ * 非本站 media 公開 URL（內建預設 / 外部連結 / 空值）→ null（代表不可刪）。
  */
 export function mediaPathFromUrl(url: unknown): string | null {
   if (typeof url !== "string" || url === "") return null;
-  const i = url.indexOf(MEDIA_PUBLIC_MARKER);
-  if (i === -1) return null;
-  const path = url.slice(i + MEDIA_PUBLIC_MARKER.length);
+  const m = MEDIA_PUBLIC_RE.exec(url);
+  if (!m) return null;
+  const path = m[1];
   if (!path) return null;
   try {
     return decodeURIComponent(path);

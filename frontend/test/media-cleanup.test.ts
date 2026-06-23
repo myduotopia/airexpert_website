@@ -21,6 +21,12 @@ describe("mediaPathFromUrl — 只認 media bucket 公開 URL", () => {
     expect(mediaPathFromUrl("/favicon.ico")).toBeNull();
     expect(mediaPathFromUrl("/hero/pain-01-cost.png")).toBeNull();
     expect(mediaPathFromUrl("https://example.com/x.png")).toBeNull();
+    // 外部網址即使含相同路徑片段，host 非 *.supabase.co → 不視為本站 media 檔
+    expect(
+      mediaPathFromUrl(
+        "https://attacker.example/storage/v1/object/public/media/foo.png",
+      ),
+    ).toBeNull();
     expect(mediaPathFromUrl("")).toBeNull();
     expect(mediaPathFromUrl(null)).toBeNull();
     expect(mediaPathFromUrl(undefined)).toBeNull();
