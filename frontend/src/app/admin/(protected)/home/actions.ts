@@ -10,6 +10,10 @@ import { CACHE_TAGS } from "@/lib/data/cache";
 import { BRANDING_KEY } from "@/lib/data/site";
 import { parseBrandingFields } from "@/lib/admin/branding";
 import { HOME_SECTION_KEYS, parseHomeSection } from "@/lib/admin/home-sections";
+import {
+  cleanupRemovedMedia,
+  sectionImageUrls,
+} from "@/lib/admin/media-cleanup";
 
 export type SaveResult = { ok: true } | { ok: false; error: string };
 
@@ -32,11 +36,25 @@ export async function saveHomeSection(
     return { ok: false, error: `無法解析區段內容：${key}` };
   }
 
-  const { error } = await getAdminSupabase()
+  const admin = getAdminSupabase();
+  // 取舊值，供存檔成功後清理「已被換掉」的舊上傳圖（僅輪播 / 產品分類有圖）。
+  const { data: prev } = await admin
+    .from("site_settings")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+
+  const { error } = await admin
     .from("site_settings")
     .upsert({ key, value, is_public: true }, { onConflict: "key" });
 
   if (error) return { ok: false, error: error.message };
+
+  // 清理孤兒圖（best-effort，不影響存檔）：只刪 media bucket 內、且新值不再引用的檔。
+  await cleanupRemovedMedia(
+    sectionImageUrls(key, prev?.value),
+    sectionImageUrls(key, value),
+  );
 
   // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
   revalidateTag(CACHE_TAGS.siteSettings, "max");
@@ -54,7 +72,18 @@ export async function saveBranding(
 
   const value = parseBrandingFields(formData);
 
-  const { error } = await getAdminSupabase()
+  const admin = getAdminSupabase();
+  const { data: prev } = await admin
+    .from("site_settings")
+    .select("value")
+    .eq("key", BRANDING_KEY)
+    .maybeSingle();
+  const old = (prev?.value ?? {}) as {
+    logo_url?: string;
+    favicon_url?: string;
+  };
+
+  const { error } = await admin
     .from("site_settings")
     .upsert(
       { key: BRANDING_KEY, value, is_public: true },
@@ -62,6 +91,13 @@ export async function saveBranding(
     );
 
   if (error) return { ok: false, error: error.message };
+
+  // 清理被換掉的舊 LOGO / favicon（只刪 media bucket 內、新值不再引用者；
+  // 內建預設 /brand/* 、/favicon.ico 不含 media 前綴 → 永不刪）。
+  await cleanupRemovedMedia(
+    [old.logo_url, old.favicon_url],
+    [value.logo_url, value.favicon_url],
+  );
 
   revalidateTag(CACHE_TAGS.siteSettings, "max");
   return { ok: true };
