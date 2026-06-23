@@ -3,78 +3,33 @@
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-
-type Slide = {
-  img: string;
-  alt: string;
-  n: string;
-  cat: string;
-  headline: string;
-  tagline: string;
-};
-
-const SLIDES: Slide[] = [
-  {
-    img: "/hero/pain-01-cost.png",
-    alt: "壓縮機房中能源被漩渦吸走，象徵電費成本",
-    n: "01",
-    cat: "電費過高",
-    headline: "空壓機最貴的不是買，是用",
-    tagline: "設備不貴，電費才是成本黑洞",
-  },
-  {
-    img: "/hero/pain-02-pressure.png",
-    alt: "壓力錶指針劇烈擺動，產線亮起警示燈",
-    n: "02",
-    cat: "壓力不穩",
-    headline: "氣壓忽高忽低，產線最怕這個",
-    tagline: "壓力不穩，良率就在流失",
-  },
-  {
-    img: "/hero/pain-03-downtime.png",
-    alt: "工廠紅色警示燈亮起，機台停擺、員工等待",
-    n: "03",
-    cat: "故障停機",
-    headline: "一停機，全廠都在等",
-    tagline: "停機一分鐘，損失持續放大",
-  },
-  {
-    img: "/hero/pain-04-repair.png",
-    alt: "拆開維修中的空壓機，零件與工具散落",
-    n: "04",
-    cat: "維修頻繁",
-    headline: "一直修，一直花錢",
-    tagline: "維修不是成本，是無底洞",
-  },
-  {
-    img: "/hero/pain-05-mismatch.png",
-    alt: "雜亂的壓縮空氣管路多處漏氣",
-    n: "05",
-    cat: "系統不匹配",
-    headline: "買了機器，卻不適合現場",
-    tagline: "選錯規格，比沒買還貴",
-  },
-];
+import type { HomeCarousel } from "@/lib/data/home";
 
 const INTERVAL_MS = 6000;
 
-export function PainCarousel() {
+// 痛點編號依索引自動產生（補零至兩位）：第 0 張 → 「01」。
+function painNumber(index: number): string {
+  return String(index + 1).padStart(2, "0");
+}
+
+export function PainCarousel({ slides }: { slides: HomeCarousel["slides"] }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
+  const count = slides.length;
+
   const goTo = useCallback(
-    (n: number) => setIndex((n + SLIDES.length) % SLIDES.length),
-    [],
+    (n: number) => setIndex(count > 0 ? (n + count) % count : 0),
+    [count],
   );
 
   useEffect(() => {
-    if (paused) return;
-    const t = setInterval(
-      () => setIndex((p) => (p + 1) % SLIDES.length),
-      INTERVAL_MS,
-    );
+    if (paused || count <= 1) return;
+    const t = setInterval(() => setIndex((p) => (p + 1) % count), INTERVAL_MS);
     return () => clearInterval(t);
-  }, [paused]);
+  }, [paused, count]);
+
+  if (count === 0) return null;
 
   return (
     <section
@@ -85,42 +40,45 @@ export function PainCarousel() {
       onMouseLeave={() => setPaused(false)}
     >
       <div className="relative h-[440px] sm:h-[520px] lg:h-[600px]">
-        {SLIDES.map((s, idx) => (
-          <div
-            key={s.n}
-            role="group"
-            aria-roledescription="slide"
-            aria-label={`痛點 ${s.n}：${s.cat}`}
-            aria-hidden={idx !== index}
-            className={`absolute inset-0 transition-opacity duration-700 ${
-              idx === index ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          >
-            <Image
-              src={s.img}
-              alt={s.alt}
-              fill
-              priority={idx === 0}
-              sizes="100vw"
-              className="object-cover"
-            />
-            {/* Dark scrim for text legibility */}
-            <div className="from-surface-dark/95 via-surface-dark/45 to-surface-dark/10 absolute inset-0 bg-gradient-to-t" />
-            <div className="absolute inset-0">
-              <div className="mx-auto flex h-full max-w-[1440px] flex-col justify-end px-6 pb-16 md:px-12 md:pb-20">
-                <p className="text-primary-soft font-mono text-[15px] tracking-[1px]">
-                  痛點 {s.n} · {s.cat}
-                </p>
-                <h2 className="mt-3 max-w-[20ch] text-[30px] leading-[1.2] font-bold text-white sm:text-[42px] lg:text-[54px]">
-                  {s.headline}
-                </h2>
-                <p className="mt-3 text-[18px] text-white/85 sm:text-[22px]">
-                  {s.tagline}
-                </p>
+        {slides.map((s, idx) => {
+          const n = painNumber(idx);
+          return (
+            <div
+              key={s.image_url}
+              role="group"
+              aria-roledescription="slide"
+              aria-label={`痛點 ${n}：${s.category}`}
+              aria-hidden={idx !== index}
+              className={`absolute inset-0 transition-opacity duration-700 ${
+                idx === index ? "opacity-100" : "pointer-events-none opacity-0"
+              }`}
+            >
+              <Image
+                src={s.image_url}
+                alt={s.alt}
+                fill
+                priority={idx === 0}
+                sizes="100vw"
+                className="object-cover"
+              />
+              {/* Dark scrim for text legibility */}
+              <div className="from-surface-dark/95 via-surface-dark/45 to-surface-dark/10 absolute inset-0 bg-gradient-to-t" />
+              <div className="absolute inset-0">
+                <div className="mx-auto flex h-full max-w-[1440px] flex-col justify-end px-6 pb-16 md:px-12 md:pb-20">
+                  <p className="text-primary-soft font-mono text-[15px] tracking-[1px]">
+                    痛點 {n} · {s.category}
+                  </p>
+                  <h2 className="mt-3 max-w-[20ch] text-[30px] leading-[1.2] font-bold text-white sm:text-[42px] lg:text-[54px]">
+                    {s.headline}
+                  </h2>
+                  <p className="mt-3 text-[18px] text-white/85 sm:text-[22px]">
+                    {s.tagline}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Arrows */}
         <button
@@ -142,12 +100,12 @@ export function PainCarousel() {
 
         {/* Dots */}
         <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2">
-          {SLIDES.map((s, idx) => (
+          {slides.map((s, idx) => (
             <button
-              key={s.n}
+              key={s.image_url}
               type="button"
               onClick={() => goTo(idx)}
-              aria-label={`切換到痛點 ${s.n}`}
+              aria-label={`切換到痛點 ${painNumber(idx)}`}
               aria-current={idx === index}
               className={`h-2 rounded-full transition-all focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none ${
                 idx === index ? "bg-primary-soft w-6" : "w-2 bg-white/40"

@@ -46,6 +46,9 @@ export { getPublishedServices, getServiceBySlug } from "./data/services";
 // 全域內容 / 設定（V2 新表）
 export { getSiteSetting, getAnalytics, ANALYTICS_KEY } from "./data/site";
 
+// 首頁內容（site_settings home_* 聚合）
+export { getHomeContent, HOME_KEYS, HOME_DEFAULTS } from "./data/home";
+
 // 聯絡資訊（site_settings key=contact_info）
 export {
   getContactInfo,
