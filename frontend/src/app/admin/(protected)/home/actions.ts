@@ -1,39 +1,35 @@
 "use server";
 
-// 首頁設定 server action：upsert 單一 site_settings key。
-// site_settings PK 是 `key`（非 id），故不能用 @/lib/admin/crud 的 updateRow（.eq("id")）；
-// 此處以 service_role 直接 upsert by key。安全邊界：先 requireAdmin() 驗證身分。
+// 首頁設定 server action：以「友善表單欄位」逐欄組出 value，再 upsert 單一
+// site_settings key。site_settings PK 是 `key`（非 id），故以 service_role
+// 直接 upsert by key。安全邊界：先 requireAdmin() 驗證身分。
 import { revalidateTag } from "next/cache";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
 import { CACHE_TAGS } from "@/lib/data/cache";
-import { HOME_KEYS } from "@/lib/data/home";
 import { BRANDING_KEY } from "@/lib/data/site";
 import { parseBrandingFields } from "@/lib/admin/branding";
-
-const ALLOWED_KEYS = new Set<string>(Object.values(HOME_KEYS));
+import { HOME_SECTION_KEYS, parseHomeSection } from "@/lib/admin/home-sections";
 
 export type SaveResult = { ok: true } | { ok: false; error: string };
 
-// 表單送出（useActionState）：欄位 key=設定鍵、value=JSON 字串。
-// value 解析失敗或 key 不在白名單一律拒絕，避免寫入非法內容。
-export async function saveHomeSetting(
+// 首頁區段表單送出（useActionState）：欄位 key=設定鍵、其餘為各區段友善欄位。
+// 不接受任何 raw JSON——value 一律由 parseHomeSection 在伺服器端逐欄組出，
+// key 不在白名單一律拒絕，避免寫入非法內容。
+export async function saveHomeSection(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
   await requireAdmin();
 
   const key = String(formData.get("key") ?? "");
-  if (!ALLOWED_KEYS.has(key)) {
+  if (!HOME_SECTION_KEYS.has(key)) {
     return { ok: false, error: `不允許的設定鍵：${key}` };
   }
 
-  const raw = String(formData.get("value") ?? "");
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return { ok: false, error: "JSON 格式錯誤，請檢查內容後再儲存。" };
+  const value = parseHomeSection(key, formData);
+  if (value == null) {
+    return { ok: false, error: `無法解析區段內容：${key}` };
   }
 
   const { error } = await getAdminSupabase()

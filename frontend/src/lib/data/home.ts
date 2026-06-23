@@ -2,22 +2,28 @@
 // 首頁各區段文案存於 site_settings（key→jsonb，公開讀只看 is_public=true）。
 // 本檔集中定義各 key 的 value 形狀、預設值（DB 尚未 seed 時的 fallback）與一個
 // 聚合 loader（getHomeContent），讓 page.tsx 一次取得整頁內容並型別安全。
+//
+// 首頁（改版後）共 7 個區段，依序：
+//   輪播圖(carousel) → 數據列(stats) → 永續節能(tech) → 最新消息(news)
+//   → 產品系列(products) → 產品特色(features) → 追蹤我們(social)
 import "server-only";
 
 import { getSiteSetting } from "./site";
+import { HOME_KEYS } from "./home-keys";
 
 // ---------- value 形狀 ----------
-export interface CtaLink {
-  label: string;
-  href: string;
+
+/** 輪播圖單張。痛點編號由前台依索引自動產生，不存於資料。 */
+export interface HomeCarouselSlide {
+  image_url: string;
+  alt: string;
+  category: string;
+  headline: string;
+  tagline: string;
 }
 
-export interface HomeHero {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  cta_primary: CtaLink;
-  cta_secondary: CtaLink;
+export interface HomeCarousel {
+  slides: HomeCarouselSlide[];
 }
 
 export interface HomeStat {
@@ -29,36 +35,8 @@ export interface HomeStats {
   items: HomeStat[];
 }
 
-export interface HomePartners {
-  label: string;
-  logos: string[];
-}
-
-export interface OverviewProduct {
-  /** lucide 圖示名稱（對應 ICON_MAP），未對應時退回預設圖示。 */
-  icon: string;
-  title: string;
-  description: string;
-}
-
-export interface AirSenseStat {
-  value: string;
-  label: string;
-}
-
-export interface HomeOverview {
-  eyebrow: string;
-  title: string;
-  products: OverviewProduct[];
-  airsense: {
-    badge: string;
-    title: string;
-    description: string;
-    stats: AirSenseStat[];
-  };
-}
-
 export interface TechFeature {
+  /** lucide 圖示名稱（對應 resolveIcon），未對應時退回預設圖示。 */
   icon: string;
   title: string;
   description: string;
@@ -76,42 +54,103 @@ export interface HomeNews {
   title: string;
 }
 
-export interface HomeCta {
+export interface HomeProductCategory {
+  image_url: string;
+  name: string;
+  desc: string;
+}
+
+export interface HomeProducts {
+  eyebrow: string;
   title: string;
-  subtitle: string;
-  cta: CtaLink;
+  description: string;
+  categories: HomeProductCategory[];
+}
+
+export interface HomeFeature {
+  /** lucide 圖示名稱（對應 ProductFeatures 的 ICON_MAP），未對應時退回預設圖示。 */
+  icon: string;
+  title: string;
+  desc: string;
+}
+
+export interface HomeFeatures {
+  eyebrow: string;
+  title: string;
+  features: HomeFeature[];
+}
+
+export interface HomeSocialCompany {
+  region: string;
+  name: string;
+  line: string;
+  fb: string;
+}
+
+export interface HomeSocial {
+  eyebrow: string;
+  title: string;
+  description: string;
+  companies: HomeSocialCompany[];
 }
 
 export interface HomeContent {
-  hero: HomeHero;
+  carousel: HomeCarousel;
   stats: HomeStats;
-  partners: HomePartners;
-  overview: HomeOverview;
   tech: HomeTech;
   news: HomeNews;
-  cta: HomeCta;
+  products: HomeProducts;
+  features: HomeFeatures;
+  social: HomeSocial;
 }
 
 // ---------- site_settings key 常數 ----------
-export const HOME_KEYS = {
-  hero: "home_hero",
-  stats: "home_stats",
-  partners: "home_partners",
-  overview: "home_overview",
-  tech: "home_tech",
-  news: "home_news",
-  cta: "home_cta",
-} as const;
+// 改版後前台首頁實際 render 的 7 個區段，皆可於後台逐欄編輯。
+// HOME_KEYS 定義移至 client-safe 的 ./home-keys（避免 client 表單連帶載入本檔的
+// "server-only"）；此處 import 供本檔內部使用、並 re-export 維持既有
+// `from "@/lib/data/home"` 匯入相容。
+export { HOME_KEYS };
 
-// ---------- 預設值（DB 未 seed 時的 fallback；與 supabase/seeds/home.sql 一致） ----------
+// ---------- 預設值（DB 未 seed 時的 fallback；與目前硬編內容一致，確保視覺不變） ----------
 export const HOME_DEFAULTS: HomeContent = {
-  hero: {
-    eyebrow: "創立於 1997 · 台灣製造",
-    title: "節能氣源，邁向淨零的製造未來",
-    subtitle:
-      "無油空壓、真空與乾燥系統結合智慧能源管理，協助台灣製造業降低能耗、減少碳排，落實 ESG 永續承諾。",
-    cta_primary: { label: "探索產品系列", href: "/products" },
-    cta_secondary: { label: "預約專人談話", href: "/contact" },
+  carousel: {
+    slides: [
+      {
+        image_url: "/hero/pain-01-cost.png",
+        alt: "壓縮機房中能源被漩渦吸走，象徵電費成本",
+        category: "電費過高",
+        headline: "空壓機最貴的不是買，是用",
+        tagline: "設備不貴，電費才是成本黑洞",
+      },
+      {
+        image_url: "/hero/pain-02-pressure.png",
+        alt: "壓力錶指針劇烈擺動，產線亮起警示燈",
+        category: "壓力不穩",
+        headline: "氣壓忽高忽低，產線最怕這個",
+        tagline: "壓力不穩，良率就在流失",
+      },
+      {
+        image_url: "/hero/pain-03-downtime.png",
+        alt: "工廠紅色警示燈亮起，機台停擺、員工等待",
+        category: "故障停機",
+        headline: "一停機，全廠都在等",
+        tagline: "停機一分鐘，損失持續放大",
+      },
+      {
+        image_url: "/hero/pain-04-repair.png",
+        alt: "拆開維修中的空壓機，零件與工具散落",
+        category: "維修頻繁",
+        headline: "一直修，一直花錢",
+        tagline: "維修不是成本，是無底洞",
+      },
+      {
+        image_url: "/hero/pain-05-mismatch.png",
+        alt: "雜亂的壓縮空氣管路多處漏氣",
+        category: "系統不匹配",
+        headline: "買了機器，卻不適合現場",
+        tagline: "選錯規格，比沒買還貴",
+      },
+    ],
   },
   stats: {
     items: [
@@ -120,47 +159,6 @@ export const HOME_DEFAULTS: HomeContent = {
       { value: "35%", label: "平均節能效益" },
       { value: "12k", label: "年減碳 tCO₂e" },
     ],
-  },
-  partners: {
-    label: "台灣 800+ 製造廠信賴 · TRUSTED ACROSS TAIWAN",
-    logos: ["TSMC", "UMC", "ASE", "Delta", "FoxConn", "Merida"],
-  },
-  overview: {
-    eyebrow: "PRODUCT SYSTEMS · 產品系列",
-    title: "完整節能氣源系統，單一窗口整合",
-    products: [
-      {
-        icon: "wind",
-        title: "空氣壓縮機",
-        description: "無油與噴油螺旋、離心式機種，7.5–250 kW。",
-      },
-      {
-        icon: "gauge",
-        title: "真空泵浦",
-        description: "乾式與水環式真空系統，穩定深真空表現。",
-      },
-      {
-        icon: "fan",
-        title: "鼓風機",
-        description: "三葉羅茨與渦輪式，污水與氣力輸送應用。",
-      },
-      {
-        icon: "droplets",
-        title: "乾燥機",
-        description: "冷凍式與吸附式乾燥，達 ISO 8573 露點。",
-      },
-    ],
-    airsense: {
-      badge: "AIRSENSE CLOUD",
-      title: "智慧監控雲端平台",
-      description:
-        "即時監測壓力、流量與耗能，結合 ISO 50001 能源管理框架，量化每一度節能成效。",
-      stats: [
-        { value: "−35%", label: "能耗" },
-        { value: "24/7", label: "遠端監控" },
-        { value: "−60%", label: "停機" },
-      ],
-    },
   },
   tech: {
     eyebrow: "SUSTAINABILITY · 永續節能",
@@ -189,11 +187,99 @@ export const HOME_DEFAULTS: HomeContent = {
     eyebrow: "NEWS · 最新消息",
     title: "永續動態與技術觀點",
   },
-  cta: {
-    title: "準備好讓氣源系統更節能了嗎？",
-    subtitle:
-      "預約能源診斷，我們將協助評估節能與減碳潛力，量身規劃最合適的氣源配置。",
-    cta: { label: "預約能源診斷", href: "/contact" },
+  products: {
+    eyebrow: "PRODUCT SYSTEMS · 產品系列",
+    title: "完整節能氣源系統",
+    description:
+      "從空壓、真空、鼓風到乾燥，單一窗口整合最適合廠務設備的節能配置。",
+    categories: [
+      {
+        image_url: "/categories/cat-air-compressor.jpg",
+        name: "變頻空壓機",
+        desc: "永磁變頻螺旋、無油與微油機種，7.5–600 HP 完整涵蓋。",
+      },
+      {
+        image_url: "/categories/cat-vacuum-pump.jpg",
+        name: "變頻真空泵",
+        desc: "乾式與微油變頻真空系統，穩定深真空表現。",
+      },
+      {
+        image_url: "/categories/cat-blower.jpg",
+        name: "變頻鼓風機",
+        desc: "氣懸浮／磁懸浮離心式，污水與氣力輸送應用。",
+      },
+      {
+        image_url: "/categories/cat-centrifugal.jpg",
+        name: "離心式空壓機",
+        desc: "大型離心機種，300–4500 kW 高流量需求。",
+      },
+      {
+        image_url: "/categories/cat-refrigerated-dryer.jpg",
+        name: "冷凍式乾燥機",
+        desc: "相變儲能與冷凍式乾燥，穩定露點控制。",
+      },
+      {
+        image_url: "/categories/cat-adsorption-dryer.jpg",
+        name: "吸附式乾燥機",
+        desc: "壓縮熱回收與雙塔吸附，達 −70°C 低露點。",
+      },
+    ],
+  },
+  features: {
+    eyebrow: "KEY FEATURES · 產品特色",
+    title: "為潔淨與節能而生",
+    features: [
+      {
+        icon: "zap",
+        title: "高效節能",
+        desc: "永磁變頻隨需供氣，平均節能達 35%。",
+      },
+      {
+        icon: "shield-check",
+        title: "Class 0 無油",
+        desc: "符合 ISO 8573-1 最高潔淨等級，零油氣污染。",
+      },
+      {
+        icon: "activity",
+        title: "智慧監控",
+        desc: "感測聯網，遠端即時掌握壓力、流量與耗能。",
+      },
+      {
+        icon: "thermometer",
+        title: "穩定溫控",
+        desc: "多級冷卻設計，確保長時間穩定輸出。",
+      },
+      {
+        icon: "volume-x",
+        title: "低噪音運轉",
+        desc: "隔音機罩設計，運轉噪音低至 67 dB(A)。",
+      },
+      {
+        icon: "leaf",
+        title: "永續減碳",
+        desc: "導入 ISO 50001 能源管理，落實淨零承諾。",
+      },
+    ],
+  },
+  social: {
+    eyebrow: "FOLLOW US · 追蹤我們",
+    title: "與我們保持聯繫",
+    description:
+      "關注勁賀・超賀空壓官方帳號，掌握最新消息，或透過 LINE 與專人即時諮詢。",
+    companies: [
+      {
+        region: "北區服務中心",
+        name: "勁賀空壓科技",
+        line: "https://page.line.me/189njhgy?openQrModal=true",
+        fb: "https://www.facebook.com/kaitain0120/",
+      },
+      {
+        region: "南區服務中心",
+        name: "超賀空壓科技",
+        line: "https://page.line.me/427hiucm?openQrModal=true",
+        fb: "https://www.facebook.com/people/%E8%B6%85%E8%B3%80%E7%A9%BA%E5%A3%93%E7%A7%91%E6%8A%80%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8/100079963752126/",
+      },
+    ],
   },
 };
 
@@ -234,15 +320,16 @@ async function settingOr<T>(key: string, fallback: T): Promise<T> {
  * 任一 key 缺漏不影響其他區段。回傳值供 page.tsx 直接 render。
  */
 export async function getHomeContent(): Promise<HomeContent> {
-  const [hero, stats, partners, overview, tech, news, cta] = await Promise.all([
-    settingOr(HOME_KEYS.hero, HOME_DEFAULTS.hero),
-    settingOr(HOME_KEYS.stats, HOME_DEFAULTS.stats),
-    settingOr(HOME_KEYS.partners, HOME_DEFAULTS.partners),
-    settingOr(HOME_KEYS.overview, HOME_DEFAULTS.overview),
-    settingOr(HOME_KEYS.tech, HOME_DEFAULTS.tech),
-    settingOr(HOME_KEYS.news, HOME_DEFAULTS.news),
-    settingOr(HOME_KEYS.cta, HOME_DEFAULTS.cta),
-  ]);
+  const [carousel, stats, tech, news, products, features, social] =
+    await Promise.all([
+      settingOr(HOME_KEYS.carousel, HOME_DEFAULTS.carousel),
+      settingOr(HOME_KEYS.stats, HOME_DEFAULTS.stats),
+      settingOr(HOME_KEYS.tech, HOME_DEFAULTS.tech),
+      settingOr(HOME_KEYS.news, HOME_DEFAULTS.news),
+      settingOr(HOME_KEYS.products, HOME_DEFAULTS.products),
+      settingOr(HOME_KEYS.features, HOME_DEFAULTS.features),
+      settingOr(HOME_KEYS.social, HOME_DEFAULTS.social),
+    ]);
 
-  return { hero, stats, partners, overview, tech, news, cta };
+  return { carousel, stats, tech, news, products, features, social };
 }
