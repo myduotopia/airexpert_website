@@ -21,6 +21,7 @@ function articleToNewsCard(article: Article): NewsCardProps {
     title: article.title,
     excerpt: article.excerpt ?? "",
     href: `/news/${article.slug}`,
+    image: article.cover_image ?? article.images?.[0]?.url ?? null,
   };
 }
 
