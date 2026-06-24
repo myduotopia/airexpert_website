@@ -107,31 +107,10 @@ export default async function ArticleDetailPage(props: DetailPageProps) {
           <h1 className="text-ink text-[32px] leading-[1.25] font-bold sm:text-[40px]">
             {article.title}
           </h1>
-          {article.excerpt ? (
-            <p className="text-text-muted text-[18px] leading-[1.7]">
-              {article.excerpt}
-            </p>
-          ) : null}
+          {/* 摘要與封面圖刻意不在內頁顯示：匯入的 body_html 開頭已含相同摘要與圖片，
+              重複且封面以 object-cover 會裁切顯示不全。cover_image 仍用於卡片縮圖與 OG 分享。 */}
         </div>
       </section>
-
-      {/* Cover image */}
-      {article.cover_image ? (
-        <section className="bg-surface">
-          <div className="mx-auto max-w-[820px] px-6 md:px-0">
-            <div className="border-border relative aspect-[820/440] w-full overflow-hidden rounded-[16px] border">
-              <Image
-                src={article.cover_image}
-                alt={article.title}
-                fill
-                sizes="(max-width: 820px) 100vw, 820px"
-                priority
-                className="object-cover"
-              />
-            </div>
-          </div>
-        </section>
-      ) : null}
 
       {/* Body */}
       <section className="bg-surface">
