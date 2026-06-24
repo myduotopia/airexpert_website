@@ -16,7 +16,12 @@ type FormField = HTMLTextAreaElement | HTMLInputElement;
 
 function findField(root: HTMLElement | null, name: string): FormField | null {
   const form = root?.closest("form");
-  return (form?.querySelector(`[name="${name}"]`) as FormField | null) ?? null;
+  // 只取表單控制項（與 AiRefineButton 的嚴格選擇器一致），避免誤抓同名非欄位節點。
+  return (
+    (form?.querySelector(
+      `input[name="${name}"], textarea[name="${name}"], select[name="${name}"]`,
+    ) as FormField | null) ?? null
+  );
 }
 
 /** 以原生 setter 寫值並派發 input 事件，確保受控元件也能同步。 */
@@ -64,6 +69,10 @@ export function AiGenerateBodyButton({
     const field = findField(rootRef.current, "body_html");
     if (!field) {
       setError("找不到內文欄位，無法填入。");
+      return;
+    }
+    // 生成內文常會在已有內文時誤觸，覆蓋前先確認，避免不可逆的內容遺失。
+    if (field.value.trim() && !window.confirm("內文已有內容，確定要覆蓋嗎？")) {
       return;
     }
     if (preview != null) setFieldValue(field, preview);
