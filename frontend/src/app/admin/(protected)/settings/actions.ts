@@ -71,7 +71,7 @@ export async function saveAiConfig(
 // ---------- AI Prompt 設定（ai_prompts） ----------
 
 /**
- * 儲存 AI Prompt（fix_article / fill_seo）。
+ * 儲存 AI Prompt（fix_article / fill_seo / gen_body）。
  * 語意：欄位留空 → 存空字串，等同「還原預設」（resolveAiPrompts 會退回 DEFAULT_AI_PROMPTS）。
  * is_public=false；admin only。
  */
@@ -82,13 +82,18 @@ export async function saveAiPrompts(
   await requireAdmin();
   const fixArticle = String(fd.get("fix_article") ?? "").trim();
   const fillSeo = String(fd.get("fill_seo") ?? "").trim();
+  const genBody = String(fd.get("gen_body") ?? "").trim();
 
   const { error } = await getAdminSupabase()
     .from("site_settings")
     .upsert(
       {
         key: AI_PROMPTS_KEY,
-        value: { fix_article: fixArticle, fill_seo: fillSeo },
+        value: {
+          fix_article: fixArticle,
+          fill_seo: fillSeo,
+          gen_body: genBody,
+        },
         is_public: false,
       },
       { onConflict: "key" },

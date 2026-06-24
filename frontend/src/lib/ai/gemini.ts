@@ -303,6 +303,34 @@ export async function refineArticleHtml(
   return { html: clean, model: usedModel };
 }
 
+/**
+ * 依摘要生成內文：把摘要（excerpt，必要時參考標題）擴寫成完整內文 HTML。
+ * 回傳前一律經 postProcessRefinedHtml()（去 code fence + sanitizeBodyHtml allowlist 消毒，
+ * 防 stored XSS，不信任模型輸出）。
+ * SERVER ONLY；使用後台可編輯的 gen_body prompt。
+ */
+export async function generateBodyFromExcerpt(input: {
+  excerpt: string;
+  title?: string;
+}): Promise<{ html: string; model: string }> {
+  const { apiKey, model } = await getAiConfig();
+  if (!apiKey) throw new Error(NO_KEY_ERROR);
+
+  const excerpt = (input.excerpt ?? "").trim();
+  if (!excerpt) throw new Error("沒有可生成的摘要");
+  const title = (input.title ?? "").trim();
+
+  const { gen_body } = await getAiPrompts();
+  const prompt = `${gen_body}\n\n---\n標題：${title || "（無）"}\n\n摘要：\n${excerpt}`;
+
+  const { text, model: usedModel } = await callGemini(apiKey, model, prompt, {
+    temperature: 0.6,
+  });
+  const clean = postProcessRefinedHtml(text);
+  if (!clean) throw new Error("Gemini 未回傳可用的內文");
+  return { html: clean, model: usedModel };
+}
+
 export interface SeoSuggestion {
   seo_title: string;
   seo_description: string;

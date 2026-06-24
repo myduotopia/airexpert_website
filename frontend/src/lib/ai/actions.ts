@@ -8,6 +8,7 @@ import { requireAdmin, requireRole } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import {
   refineArticleHtml,
+  generateBodyFromExcerpt,
   fillSeoFromContent,
   type SeoSuggestion,
 } from "@/lib/ai/gemini";
@@ -61,6 +62,35 @@ export async function refineBodyHtmlAction(
       output: clean,
     });
     return { ok: true, html: clean };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export type GenerateBodyResult =
+  | { ok: true; html: string }
+  | { ok: false; error: string };
+
+/**
+ * 依摘要生成內文 — 編輯文章內文 → ADMIN ONLY（與 AI 修文同權限）。
+ * 回傳消毒後 HTML 供編輯者審核後填回內文欄位（不直接寫 DB）。
+ */
+export async function generateBodyFromExcerptAction(
+  input: { excerpt: string; title?: string },
+  meta: { targetType?: AiTargetType; targetId?: string | null } = {},
+): Promise<GenerateBodyResult> {
+  await requireAdmin();
+  try {
+    const { html, model } = await generateBodyFromExcerpt(input);
+    await recordDraft({
+      targetType: meta.targetType ?? "article",
+      targetId: meta.targetId ?? null,
+      kind: "body",
+      prompt: "gen_body",
+      model,
+      output: html,
+    });
+    return { ok: true, html };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

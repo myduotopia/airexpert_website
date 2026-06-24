@@ -15,7 +15,11 @@ export function AiPromptsForm({
   /** 目前生效中的 prompt 內容（自訂或預設）。 */
   effective: AiPrompts;
   /** 各欄位來源：default = 使用內建預設；custom = 後台自訂。 */
-  source: { fix_article: "default" | "custom"; fill_seo: "default" | "custom" };
+  source: {
+    fix_article: "default" | "custom";
+    fill_seo: "default" | "custom";
+    gen_body: "default" | "custom";
+  };
 }) {
   const [state, formAction] = useActionState<SettingsState, FormData>(
     saveAiPrompts,
@@ -61,6 +65,22 @@ export function AiPromptsForm({
           name="fill_seo"
           rows={10}
           defaultValue={effective.fill_seo}
+          className={areaCls}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="gen_body" className="text-ink text-[14px] font-medium">
+          依摘要生成內文 prompt（gen_body）
+          <span className="text-text-muted ml-2 text-[12px] font-normal">
+            目前：{source.gen_body === "custom" ? "自訂" : "內建預設"}
+          </span>
+        </label>
+        <textarea
+          id="gen_body"
+          name="gen_body"
+          rows={10}
+          defaultValue={effective.gen_body}
           className={areaCls}
         />
       </div>

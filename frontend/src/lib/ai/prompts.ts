@@ -1,8 +1,9 @@
 // AI Prompt 管理 — 內建第一版 prompt + 後台可覆寫（site_settings.ai_prompts）。
 //
-// 兩段可編輯 prompt：
+// 三段可編輯 prompt：
 //   * fix_article：AI 修文（修正錯字 / 語法、補完內容，輸出乾淨 HTML）。
 //   * fill_seo：依內文一鍵產生 SEO meta。
+//   * gen_body：依摘要生成完整內文 HTML。
 //
 // 解析規則（resolveAiPrompts，純函式以利測試）：
 //   後台存的值若為「非空白字串」→ 採用；否則（缺欄位 / 空字串 / 空白）→ 退回 DEFAULTS。
@@ -17,6 +18,8 @@ export interface AiPrompts {
   fix_article: string;
   /** 一鍵填 SEO prompt：要求回傳 JSON 形式的 SEO meta。 */
   fill_seo: string;
+  /** 依摘要生成內文 prompt：把摘要擴寫成完整內文 HTML（僅 sanitize allowlist 標籤）。 */
+  gen_body: string;
 }
 
 /**
@@ -49,9 +52,22 @@ export const DEFAULT_AI_PROMPTS: AiPrompts = {
 - og_description：社群分享描述（可同 seo_description）
 - slug：建議網址代稱
 - jsonld：schema.org 結構化資料物件，或 null`,
+  gen_body: `你是「超勁賀空壓科技」官網的中文內容編輯。請依據下方提供的「文章摘要」（必要時參考標題），擴寫成一篇完整、專業的繁體中文官網內文：
+1. 忠於摘要的重點與方向，不偏題、不杜撰規格數據或誇大不實。
+2. 結構清楚，適度分段、可用小標與條列，內容具體、利於 SEO。
+3. 維持繁體中文（台灣用語），語氣專業而平實。
+
+輸出格式要求（務必遵守）：
+- 只輸出「內文 HTML」本身，不要加上任何說明、前言、結語或 Markdown 標記（不要用 \`\`\`html 包起來）。
+- HTML 僅能使用這些標籤：<h2> <h3> <h4> <p> <ul> <ol> <li> <strong> <em> <blockquote> <a> <br>。
+- 不可輸出 <script> <style> <iframe>、行內 style、onclick 等事件屬性，或 <html>/<body> 等外層標籤。`,
 };
 
-type AiPromptsValue = { fix_article?: unknown; fill_seo?: unknown };
+type AiPromptsValue = {
+  fix_article?: unknown;
+  fill_seo?: unknown;
+  gen_body?: unknown;
+};
 
 /**
  * 把後台儲存值（可能缺欄位 / 空字串）解析成「有效 prompt」：
@@ -60,7 +76,11 @@ type AiPromptsValue = { fix_article?: unknown; fill_seo?: unknown };
 export function resolveAiPrompts(stored: AiPromptsValue | null | undefined): {
   effective: AiPrompts;
   /** 各欄位實際來源，供 UI 標示「目前為預設 / 自訂」。 */
-  source: { fix_article: "default" | "custom"; fill_seo: "default" | "custom" };
+  source: {
+    fix_article: "default" | "custom";
+    fill_seo: "default" | "custom";
+    gen_body: "default" | "custom";
+  };
 } {
   const pick = (
     raw: unknown,
@@ -78,9 +98,13 @@ export function resolveAiPrompts(stored: AiPromptsValue | null | undefined): {
     stored?.fill_seo,
     DEFAULT_AI_PROMPTS.fill_seo,
   );
+  const [gen_body, genSrc] = pick(
+    stored?.gen_body,
+    DEFAULT_AI_PROMPTS.gen_body,
+  );
 
   return {
-    effective: { fix_article, fill_seo },
-    source: { fix_article: fixSrc, fill_seo: seoSrc },
+    effective: { fix_article, fill_seo, gen_body },
+    source: { fix_article: fixSrc, fill_seo: seoSrc, gen_body: genSrc },
   };
 }

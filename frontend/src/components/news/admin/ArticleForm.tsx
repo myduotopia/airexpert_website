@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 import { SeoFields } from "@/components/admin/SeoFields";
 import { AiRefineButton } from "@/components/admin/ai/AiRefineButton";
+import { AiGenerateBodyButton } from "@/components/admin/ai/AiGenerateBodyButton";
 import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { useNavigateOnSuccess } from "@/components/admin/useNavigateOnSuccess";
@@ -154,6 +155,10 @@ export function ArticleForm({
           defaultValue={article?.body_html ?? prefill?.body_html ?? ""}
           placeholder="<p>段落…</p>"
           className={`${textareaCls} font-mono text-[13px]`}
+        />
+        <AiGenerateBodyButton
+          targetType="article"
+          targetId={article?.id ?? null}
         />
         <AiRefineButton targetType="article" targetId={article?.id ?? null} />
       </div>
