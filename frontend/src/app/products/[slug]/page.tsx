@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProductBySlug, getPublishedProducts } from "@/lib/data";
+import {
+  getProductBySlug,
+  getProductBySlugPreview,
+  getPublishedProducts,
+} from "@/lib/data";
+import { getCurrentAdmin } from "@/lib/admin/auth";
 import { sanitizeBodyHtml } from "@/lib/sanitize";
-import { buildSeoMetadata } from "@/lib/seo";
+import { buildSeoMetadata, buildPreviewMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { PreviewBanner } from "@/components/admin/PreviewBanner";
 import type { Product } from "@/lib/types";
 import { Breadcrumb } from "@/components/products/Breadcrumb";
 import { ProductImage } from "@/components/products/ProductImage";
@@ -39,9 +45,18 @@ export async function generateMetadata(
   props: DetailPageProps,
 ): Promise<Metadata> {
   const { slug } = await props.params;
-  const product = await getProductBySlug(slug);
+  let product = await getProductBySlug(slug);
 
   if (!product) {
+    // 已發佈查無 → 若為登入 admin，改以預覽（不限 status）查；找得到代表是隱藏內容。
+    const admin = await getCurrentAdmin();
+    if (admin) {
+      product = await getProductBySlugPreview(slug);
+      if (product) {
+        // 隱藏內容的預覽一律強制 noindex / nofollow（不連動 DB 欄位）。
+        return buildPreviewMetadata(product.name);
+      }
+    }
     return { title: "找不到產品" };
   }
 
@@ -65,7 +80,17 @@ function deriveMetrics(product: Product) {
 
 export default async function ProductDetailPage(props: DetailPageProps) {
   const { slug } = await props.params;
-  const product = await getProductBySlug(slug);
+  let product = await getProductBySlug(slug);
+  let isPreview = false;
+
+  if (!product) {
+    // 已發佈查無 → 若為登入 admin，以預覽（不限 status）查隱藏內容。
+    const admin = await getCurrentAdmin();
+    if (admin) {
+      product = await getProductBySlugPreview(slug);
+      isPreview = Boolean(product);
+    }
+  }
 
   if (!product) {
     notFound();
@@ -82,6 +107,7 @@ export default async function ProductDetailPage(props: DetailPageProps) {
 
   return (
     <>
+      {isPreview ? <PreviewBanner /> : null}
       <JsonLd data={product.schema_jsonld} />
       <Breadcrumb
         items={[

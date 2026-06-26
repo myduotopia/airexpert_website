@@ -3,10 +3,16 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, MapPin, Factory } from "lucide-react";
-import { getCaseBySlug, getPublishedCases } from "@/lib/data";
+import {
+  getCaseBySlug,
+  getCaseBySlugPreview,
+  getPublishedCases,
+} from "@/lib/data";
+import { getCurrentAdmin } from "@/lib/admin/auth";
 import { sanitizeBodyHtml } from "@/lib/sanitize";
-import { buildSeoMetadata } from "@/lib/seo";
+import { buildSeoMetadata, buildPreviewMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { PreviewBanner } from "@/components/admin/PreviewBanner";
 import { MetricsCards } from "@/components/cases/MetricsCards";
 import { CaseCard } from "@/components/cases/CaseCard";
 
@@ -27,9 +33,18 @@ export async function generateMetadata(
   props: DetailPageProps,
 ): Promise<Metadata> {
   const { slug } = await props.params;
-  const caseItem = await getCaseBySlug(slug);
+  let caseItem = await getCaseBySlug(slug);
 
   if (!caseItem) {
+    // 已發佈查無 → 若為登入 admin，改以預覽（不限 status）查；找得到代表是隱藏內容。
+    const admin = await getCurrentAdmin();
+    if (admin) {
+      caseItem = await getCaseBySlugPreview(slug);
+      if (caseItem) {
+        // 隱藏內容的預覽一律強制 noindex / nofollow（不連動 DB 欄位）。
+        return buildPreviewMetadata(caseItem.title);
+      }
+    }
     return { title: "找不到實績案例" };
   }
 
@@ -42,7 +57,17 @@ export async function generateMetadata(
 
 export default async function CaseDetailPage(props: DetailPageProps) {
   const { slug } = await props.params;
-  const caseItem = await getCaseBySlug(slug);
+  let caseItem = await getCaseBySlug(slug);
+  let isPreview = false;
+
+  if (!caseItem) {
+    // 已發佈查無 → 若為登入 admin，以預覽（不限 status）查隱藏內容。
+    const admin = await getCurrentAdmin();
+    if (admin) {
+      caseItem = await getCaseBySlugPreview(slug);
+      isPreview = Boolean(caseItem);
+    }
+  }
 
   if (!caseItem) {
     notFound();
@@ -71,6 +96,7 @@ export default async function CaseDetailPage(props: DetailPageProps) {
 
   return (
     <>
+      {isPreview ? <PreviewBanner /> : null}
       <JsonLd data={caseItem.schema_jsonld} />
       {/* Breadcrumb */}
       <section className="bg-surface-muted border-border border-b">

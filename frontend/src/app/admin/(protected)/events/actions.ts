@@ -24,10 +24,8 @@ const ALBUM_TAGS = [CACHE_TAGS.photoAlbums];
 const STATUSES: ContentStatus[] = ["draft", "published", "archived"];
 
 function normalizeStatus(raw: FormDataEntryValue | null): ContentStatus {
-  const s = String(raw ?? "published");
-  return STATUSES.includes(s as ContentStatus)
-    ? (s as ContentStatus)
-    : "published";
+  const s = String(raw ?? "draft");
+  return STATUSES.includes(s as ContentStatus) ? (s as ContentStatus) : "draft";
 }
 
 function str(formData: FormData, key: string): string | null {

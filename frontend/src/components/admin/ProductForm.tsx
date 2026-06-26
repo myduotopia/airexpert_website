@@ -114,14 +114,16 @@ export function ProductForm({
 
         <label className="flex flex-col gap-1.5">
           <span className={labelCls}>狀態</span>
+          {/* #89：狀態 UI 簡化為「公開 / 隱藏」（DB enum 仍保留 archived；archived 視為隱藏）。 */}
           <select
             name="status"
-            defaultValue={product?.status ?? "draft"}
+            defaultValue={
+              product?.status === "published" ? "published" : "draft"
+            }
             className={inputCls}
           >
-            <option value="draft">草稿</option>
-            <option value="published">已發佈</option>
-            <option value="archived">已封存</option>
+            <option value="published">公開</option>
+            <option value="draft">隱藏</option>
           </select>
         </label>
       </div>

@@ -4,6 +4,7 @@ import "server-only";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { getSupabaseClient } from "../supabase";
+import { getServerSupabase } from "../supabase-server";
 import type { Event, Photo, PhotoAlbum, PhotoAlbumWithPhotos } from "../types";
 import { CACHE_TAGS, REVALIDATE_SECONDS, throwOnError } from "./cache";
 
@@ -78,3 +79,37 @@ export const getPhotoAlbumBySlug = cache(
     { revalidate: REVALIDATE_SECONDS, tags: [CACHE_TAGS.photoAlbums] },
   ),
 );
+
+/**
+ * 管理者預覽用：依 slug 取單一相簿及其照片，「不限 status」（含隱藏 draft / archived）。
+ * 鏡像 getPhotoAlbumBySlug，但走 getServerSupabase()（per-request、尊重 RLS、讀登入
+ * session）且「不快取」—— 預覽必須即時反映後台最新狀態，不可走 anon 公開快取。
+ * 對 admin：RLS「admin all photo_albums / photos」放行任何 status；對 anon：RLS 僅回
+ * published（但本函式僅在確認為 admin 後才呼叫）。
+ */
+export const getPhotoAlbumBySlugPreview = async (
+  slug: string,
+): Promise<PhotoAlbumWithPhotos | null> => {
+  const supabase = await getServerSupabase();
+
+  const { data: album, error: albumError } = await supabase
+    .from("photo_albums")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  throwOnError("getPhotoAlbumBySlugPreview.album", albumError);
+  if (!album) return null;
+
+  const typedAlbum = album as PhotoAlbum;
+
+  const { data: photos, error: photosError } = await supabase
+    .from("photos")
+    .select("*")
+    .eq("album_id", typedAlbum.id)
+    .order("sort_order", { ascending: true });
+
+  throwOnError("getPhotoAlbumBySlugPreview.photos", photosError);
+
+  return { ...typedAlbum, photos: (photos ?? []) as Photo[] };
+};

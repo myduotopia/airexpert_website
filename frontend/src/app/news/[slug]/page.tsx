@@ -3,10 +3,16 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { getArticleBySlug, getPublishedArticles } from "@/lib/data";
+import {
+  getArticleBySlug,
+  getArticleBySlugPreview,
+  getPublishedArticles,
+} from "@/lib/data";
+import { getCurrentAdmin } from "@/lib/admin/auth";
 import { sanitizeBodyHtml } from "@/lib/sanitize";
-import { buildSeoMetadata } from "@/lib/seo";
+import { buildSeoMetadata, buildPreviewMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { PreviewBanner } from "@/components/admin/PreviewBanner";
 import { ArticleCard } from "@/components/news/ArticleCard";
 import { formatNewsDate } from "@/components/news/format";
 
@@ -28,9 +34,18 @@ export async function generateMetadata(
   props: DetailPageProps,
 ): Promise<Metadata> {
   const { slug } = await props.params;
-  const article = await getArticleBySlug(slug);
+  let article = await getArticleBySlug(slug);
 
   if (!article) {
+    // 已發佈查無 → 若為登入 admin，改以預覽（不限 status）查；找得到代表是隱藏內容。
+    const admin = await getCurrentAdmin();
+    if (admin) {
+      article = await getArticleBySlugPreview(slug);
+      if (article) {
+        // 隱藏內容的預覽一律強制 noindex / nofollow（不連動 DB 欄位）。
+        return buildPreviewMetadata(article.title);
+      }
+    }
     return { title: "找不到文章" };
   }
 
@@ -44,7 +59,17 @@ export async function generateMetadata(
 
 export default async function ArticleDetailPage(props: DetailPageProps) {
   const { slug } = await props.params;
-  const article = await getArticleBySlug(slug);
+  let article = await getArticleBySlug(slug);
+  let isPreview = false;
+
+  if (!article) {
+    // 已發佈查無 → 若為登入 admin，以預覽（不限 status）查隱藏內容。
+    const admin = await getCurrentAdmin();
+    if (admin) {
+      article = await getArticleBySlugPreview(slug);
+      isPreview = Boolean(article);
+    }
+  }
 
   if (!article) {
     notFound();
@@ -71,6 +96,7 @@ export default async function ArticleDetailPage(props: DetailPageProps) {
 
   return (
     <>
+      {isPreview ? <PreviewBanner /> : null}
       <JsonLd data={article.schema_jsonld} />
       {/* Breadcrumb */}
       <section className="bg-surface-muted border-border border-b">

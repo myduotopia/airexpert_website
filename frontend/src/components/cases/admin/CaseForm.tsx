@@ -14,10 +14,10 @@ import type { FormState } from "@/app/admin/(protected)/cases/actions";
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
+// #89：狀態 UI 簡化為「公開 / 隱藏」（DB enum 仍保留 archived）。
 const STATUS_OPTIONS: { value: ContentStatus; label: string }[] = [
-  { value: "draft", label: "草稿" },
-  { value: "published", label: "已發佈" },
-  { value: "archived", label: "已封存" },
+  { value: "published", label: "公開" },
+  { value: "draft", label: "隱藏" },
 ];
 
 function imagesToText(images: Case["images"]): string {
@@ -192,7 +192,9 @@ export function CaseForm({
         <select
           id={`${uid}-status`}
           name="status"
-          defaultValue={caseItem?.status ?? "draft"}
+          defaultValue={
+            caseItem?.status === "published" ? "published" : "draft"
+          }
           className={inputCls}
         >
           {STATUS_OPTIONS.map((s) => (
