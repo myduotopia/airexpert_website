@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildSeoMetadata, jsonLdScriptHtml } from "@/lib/seo";
+import {
+  buildSeoMetadata,
+  buildPreviewMetadata,
+  jsonLdScriptHtml,
+} from "@/lib/seo";
 import { parseSeoFields } from "@/lib/admin/seo-fields";
 
 describe("buildSeoMetadata（detail 頁 metadata 組裝）", () => {
@@ -128,6 +132,20 @@ describe("buildSeoMetadata（detail 頁 metadata 組裝）", () => {
   it("noindex / nofollow 皆 false → 不輸出 robots（避免冗餘標籤）", () => {
     const m = buildSeoMetadata({}, { title: "T" });
     expect(m.robots).toBeUndefined();
+  });
+});
+
+describe("buildPreviewMetadata（管理者預覽隱藏內容）", () => {
+  it("一律強制 robots noindex / nofollow，並帶入標題", () => {
+    const m = buildPreviewMetadata("尚未公開的商品");
+    expect(m.title).toBe("尚未公開的商品");
+    expect(m.robots).toEqual({ index: false, follow: false });
+  });
+
+  it("不輸出 canonical / openGraph（隱藏內容不應被分享 / 索引）", () => {
+    const m = buildPreviewMetadata("草稿文章");
+    expect(m.alternates).toBeUndefined();
+    expect(m.openGraph).toBeUndefined();
   });
 });
 

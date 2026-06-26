@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { getPhotoAlbumBySlug } from "@/lib/data";
-import { buildSeoMetadata } from "@/lib/seo";
+import { getPhotoAlbumBySlug, getPhotoAlbumBySlugPreview } from "@/lib/data";
+import { getCurrentAdmin } from "@/lib/admin/auth";
+import { buildSeoMetadata, buildPreviewMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { PreviewBanner } from "@/components/admin/PreviewBanner";
 import { PhotoGrid } from "@/components/events/PhotoGrid";
 
 type PageProps = {
@@ -16,8 +18,19 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const album = await getPhotoAlbumBySlug(slug);
-  if (!album) return { title: "相簿不存在" };
+  let album = await getPhotoAlbumBySlug(slug);
+  if (!album) {
+    // 已發佈查無 → 若為登入 admin，改以預覽（不限 status）查；找得到代表是隱藏內容。
+    const admin = await getCurrentAdmin();
+    if (admin) {
+      album = await getPhotoAlbumBySlugPreview(slug);
+      if (album) {
+        // 隱藏內容的預覽一律強制 noindex / nofollow（不連動 DB 欄位）。
+        return buildPreviewMetadata(`${album.title} | 公司活動`);
+      }
+    }
+    return { title: "相簿不存在" };
+  }
   return buildSeoMetadata(album, {
     title: `${album.title} | 公司活動`,
     description: album.description,
@@ -28,7 +41,17 @@ export async function generateMetadata({
 
 export default async function AlbumDetailPage({ params }: PageProps) {
   const { slug } = await params;
-  const album = await getPhotoAlbumBySlug(slug);
+  let album = await getPhotoAlbumBySlug(slug);
+  let isPreview = false;
+
+  if (!album) {
+    // 已發佈查無 → 若為登入 admin，以預覽（不限 status）查隱藏內容。
+    const admin = await getCurrentAdmin();
+    if (admin) {
+      album = await getPhotoAlbumBySlugPreview(slug);
+      isPreview = Boolean(album);
+    }
+  }
 
   if (!album) {
     notFound();
@@ -36,6 +59,7 @@ export default async function AlbumDetailPage({ params }: PageProps) {
 
   return (
     <>
+      {isPreview ? <PreviewBanner /> : null}
       <JsonLd data={album.schema_jsonld} />
       {/* Header band */}
       <section className="bg-surface-muted border-border border-b">

@@ -9,10 +9,10 @@ import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import type { PhotoAlbum, ContentStatus } from "@/lib/types";
 import { saveAlbum } from "./actions";
 
+// #89：狀態 UI 簡化為「公開 / 隱藏」（DB enum 仍保留 archived）。
 const STATUS_OPTIONS: { value: ContentStatus; label: string }[] = [
-  { value: "draft", label: "草稿" },
-  { value: "published", label: "已發佈" },
-  { value: "archived", label: "已封存" },
+  { value: "published", label: "公開" },
+  { value: "draft", label: "隱藏" },
 ];
 
 const inputClass =
@@ -95,7 +95,7 @@ export function AlbumForm({ album }: { album?: PhotoAlbum }) {
           <select
             id="status"
             name="status"
-            defaultValue={album?.status ?? "published"}
+            defaultValue={album?.status === "published" ? "published" : "draft"}
             className={inputClass}
           >
             {STATUS_OPTIONS.map((o) => (

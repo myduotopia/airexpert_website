@@ -88,6 +88,18 @@ export function buildSeoMetadata(
 }
 
 /**
+ * 管理者預覽（隱藏內容）專用 Metadata：強制 noindex / nofollow，避免未公開內容被索引。
+ * 不論 DB 上的 noindex / nofollow 欄位為何（#89：狀態不連動 noindex），預覽渲染一律 noindex。
+ * 純函式，便於測試。
+ */
+export function buildPreviewMetadata(title: string): Metadata {
+  return {
+    title,
+    robots: { index: false, follow: false },
+  };
+}
+
+/**
  * 把 JSON-LD 物件序列化成可安全放進 `<script type="application/ld+json">` 的字串。
  * 重點：跳脫 `<` → `<`，避免內容含 `</script>` 提前關閉標籤造成 XSS。
  * 回傳 null 表示無可輸出（空值 / 空物件）。

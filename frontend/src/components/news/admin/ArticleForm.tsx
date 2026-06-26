@@ -15,10 +15,10 @@ import type { FormState } from "@/app/admin/(protected)/news/actions";
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
+// #89：狀態 UI 簡化為「公開 / 隱藏」（DB enum 仍保留 archived）。
 const STATUS_OPTIONS: { value: ContentStatus; label: string }[] = [
-  { value: "draft", label: "草稿" },
-  { value: "published", label: "已發佈" },
-  { value: "archived", label: "已封存" },
+  { value: "published", label: "公開" },
+  { value: "draft", label: "隱藏" },
 ];
 
 // published_at（ISO 字串）→ <input type="datetime-local"> 需要的 yyyy-MM-ddThh:mm（本地時間）。
@@ -215,7 +215,9 @@ export function ArticleForm({
           <select
             id={`${uid}-status`}
             name="status"
-            defaultValue={article?.status ?? "draft"}
+            defaultValue={
+              article?.status === "published" ? "published" : "draft"
+            }
             className={inputCls}
           >
             {STATUS_OPTIONS.map((s) => (

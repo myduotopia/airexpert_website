@@ -14,6 +14,7 @@ export {
   getPublishedProducts,
   getProductsByCategory,
   getProductBySlug,
+  getProductBySlugPreview,
 } from "./data/products";
 
 // 最新消息
@@ -21,6 +22,7 @@ export {
   getPublishedArticles,
   getArticlesByCategory,
   getArticleBySlug,
+  getArticleBySlugPreview,
 } from "./data/articles";
 
 // 節能實績
@@ -28,6 +30,7 @@ export {
   getPublishedCases,
   getCasesByCategory,
   getCaseBySlug,
+  getCaseBySlugPreview,
 } from "./data/cases";
 
 // 公司活動（影片 + 相簿）
@@ -35,6 +38,7 @@ export {
   getPublishedEvents,
   getPublishedPhotoAlbums,
   getPhotoAlbumBySlug,
+  getPhotoAlbumBySlugPreview,
 } from "./data/events";
 
 // 品牌介紹（V2 新表）
