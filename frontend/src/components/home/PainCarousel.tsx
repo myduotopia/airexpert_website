@@ -5,7 +5,7 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { HomeCarousel } from "@/lib/data/home";
 
-const INTERVAL_MS = 6000;
+const INTERVAL_MS = 7000;
 
 // 痛點編號依索引自動產生（補零至兩位）：第 0 張 → 「01」。
 function painNumber(index: number): string {
@@ -19,6 +19,8 @@ export function PainCarousel({
 }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  // 首次掛載後才啟動動畫，讓第一張也能播放 Ken Burns 緩慢推近與文字浮現。
+  const [ready, setReady] = useState(false);
 
   // 防呆：跳過沒有圖片的投影片（空 src 會讓 next/image 崩潰）。
   const slides = rawSlides.filter((s) => s.image_url);
@@ -35,6 +37,11 @@ export function PainCarousel({
     return () => clearInterval(t);
   }, [paused, count]);
 
+  useEffect(() => {
+    const r = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(r);
+  }, []);
+
   if (count === 0) return null;
 
   return (
@@ -48,6 +55,7 @@ export function PainCarousel({
       <div className="relative h-[440px] sm:h-[520px] lg:h-[600px]">
         {slides.map((s, idx) => {
           const n = painNumber(idx);
+          const active = idx === index && ready;
           return (
             <div
               key={idx}
@@ -55,29 +63,60 @@ export function PainCarousel({
               aria-roledescription="slide"
               aria-label={`痛點 ${n}：${s.category}`}
               aria-hidden={idx !== index}
-              className={`absolute inset-0 transition-opacity duration-700 ${
+              className={`absolute inset-0 transition-opacity duration-1000 ease-out ${
                 idx === index ? "opacity-100" : "pointer-events-none opacity-0"
               }`}
             >
-              <Image
-                src={s.image_url}
-                alt={s.alt}
-                fill
-                priority={idx === 0}
-                sizes="100vw"
-                className="object-cover"
-              />
+              {/* Ken Burns：當前投影片影像於展示期間緩慢推近（scale 1 → 1.1）。 */}
+              <div
+                className={`absolute inset-0 transition-transform ease-out will-change-transform ${
+                  active
+                    ? "scale-110 duration-[7000ms]"
+                    : "scale-100 duration-700"
+                }`}
+              >
+                <Image
+                  src={s.image_url}
+                  alt={s.alt}
+                  fill
+                  priority={idx === 0}
+                  sizes="100vw"
+                  className="object-cover"
+                />
+              </div>
               {/* Dark scrim for text legibility */}
               <div className="from-surface-dark/95 via-surface-dark/45 to-surface-dark/10 absolute inset-0 bg-gradient-to-t" />
               <div className="absolute inset-0">
                 <div className="mx-auto flex h-full max-w-[1440px] flex-col justify-end px-6 pb-16 md:px-12 md:pb-20">
-                  <p className="text-primary-soft font-mono text-[15px] tracking-[1px]">
+                  {/* 文字逐項浮現（淡入 + 上移），依序：分類 → 標題 → 副標。 */}
+                  <p
+                    className={`text-primary-soft font-mono text-[15px] tracking-[1px] transition-all duration-700 ease-out ${
+                      active
+                        ? "translate-y-0 opacity-100"
+                        : "translate-y-6 opacity-0"
+                    }`}
+                    style={{ transitionDelay: active ? "150ms" : "0ms" }}
+                  >
                     痛點 {n} · {s.category}
                   </p>
-                  <h2 className="mt-3 max-w-[20ch] text-[30px] leading-[1.2] font-bold text-white sm:text-[42px] lg:text-[54px]">
+                  <h2
+                    className={`mt-3 max-w-[20ch] text-[30px] leading-[1.2] font-bold text-white transition-all duration-700 ease-out sm:text-[42px] lg:text-[54px] ${
+                      active
+                        ? "translate-y-0 opacity-100"
+                        : "translate-y-6 opacity-0"
+                    }`}
+                    style={{ transitionDelay: active ? "300ms" : "0ms" }}
+                  >
                     {s.headline}
                   </h2>
-                  <p className="mt-3 text-[18px] text-white/85 sm:text-[22px]">
+                  <p
+                    className={`mt-3 text-[18px] text-white/85 transition-all duration-700 ease-out sm:text-[22px] ${
+                      active
+                        ? "translate-y-0 opacity-100"
+                        : "translate-y-6 opacity-0"
+                    }`}
+                    style={{ transitionDelay: active ? "450ms" : "0ms" }}
+                  >
                     {s.tagline}
                   </p>
                 </div>
