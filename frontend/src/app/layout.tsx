@@ -7,6 +7,7 @@ import { FloatingSocial } from "@/components/FloatingSocial";
 import { SiteChrome } from "@/components/SiteChrome";
 import { GoogleAnalytics } from "@/components/Analytics";
 import { getBranding, getAnalytics } from "@/lib/data/site";
+import { DEFAULT_OG_IMAGE } from "@/lib/seo";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -56,11 +57,9 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: SITE_NAME,
       title: SITE_NAME,
       description: SITE_DESCRIPTION,
-      // TODO(seo): replace with final brand artwork; /og-default.png is a
-      // simple brand-colour 1200×630 placeholder.
       images: [
         {
-          url: "/og-default.png",
+          url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
           alt: SITE_NAME,
@@ -71,7 +70,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title: SITE_NAME,
       description: SITE_DESCRIPTION,
-      images: ["/og-default.png"],
+      images: [DEFAULT_OG_IMAGE],
     },
   };
 }
