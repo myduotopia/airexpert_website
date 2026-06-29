@@ -7,6 +7,13 @@
 import type { Metadata } from "next";
 
 /**
+ * 全站預設 OG 分享圖（1200×630），相對路徑由 layout 的 metadataBase 解析為絕對網址。
+ * 作為每頁 OG 圖的最後一層 fallback：自訂 og_image_url > 封面/首圖 > 此預設圖，
+ * 確保「沒有封面的頁面」分享出去仍有縮圖（Next 的 openGraph 整塊覆蓋、不會繼承 layout 預設）。
+ */
+export const DEFAULT_OG_IMAGE = "/og-default.png";
+
+/**
  * 五個內容表共有的 SEO 欄位形狀（0003_v3_seo.sql）。
  * 個別內容型別（Product / Article…）已包含這些欄位，可直接傳入。
  */
@@ -61,7 +68,8 @@ export function buildSeoMetadata(
 
   const ogTitle = clean(seo.og_title) ?? title;
   const ogDescription = clean(seo.og_description) ?? description;
-  const ogImage = clean(seo.og_image_url) ?? clean(fallback.image);
+  const ogImage =
+    clean(seo.og_image_url) ?? clean(fallback.image) ?? DEFAULT_OG_IMAGE;
   // 手動填的 canonical_url 優先；留空則自動指向本頁自身路徑（self-referencing）。
   const canonical = clean(seo.canonical_url) ?? clean(fallback.canonicalPath);
 

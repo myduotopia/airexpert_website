@@ -3,6 +3,7 @@ import {
   buildSeoMetadata,
   buildPreviewMetadata,
   jsonLdScriptHtml,
+  DEFAULT_OG_IMAGE,
 } from "@/lib/seo";
 import { parseSeoFields } from "@/lib/admin/seo-fields";
 
@@ -83,7 +84,7 @@ describe("buildSeoMetadata（detail 頁 metadata 組裝）", () => {
     expect(without.alternates).toBeUndefined();
   });
 
-  it("og_image_url 優先於 fallback.image，皆無則 images 為 undefined", () => {
+  it("og_image_url 優先於 fallback.image，皆無則退回全站預設 OG 圖", () => {
     const base = {
       seo_title: null,
       seo_description: null,
@@ -109,7 +110,7 @@ describe("buildSeoMetadata（detail 頁 metadata 組裝）", () => {
       { ...base, og_image_url: null },
       { title: "T" },
     );
-    expect(none.openGraph?.images).toBeUndefined();
+    expect(none.openGraph?.images).toEqual([DEFAULT_OG_IMAGE]);
   });
 
   it("noindex / nofollow 反轉為 robots.index / robots.follow", () => {
