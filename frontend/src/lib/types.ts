@@ -39,6 +39,16 @@ export interface MediaImage {
 export type ProductSpec = Record<string, string | number | null>;
 
 /**
+ * products.hp_output jsonb：變頻空壓機「馬力數 ↔ 造氣量」對照的單筆。
+ * hp / output 皆為數字字串；單位（HP / m³/min）由前台固定標題承載。
+ * 其餘分類此欄位為空陣列。
+ */
+export interface HpOutputRow {
+  hp: string;
+  output: string;
+}
+
+/**
  * cases.metrics jsonb：節能數據 {能耗節省, 投資回收期, 年省電度數...}。
  * 開放鍵值對，值為字串或數字。
  */
@@ -54,6 +64,7 @@ export interface Product extends SeoColumns {
   summary: string | null;
   body_html: string | null;
   spec: ProductSpec;
+  hp_output: HpOutputRow[];
   images: MediaImage[];
   manual_url: string | null;
   sort_order: number;

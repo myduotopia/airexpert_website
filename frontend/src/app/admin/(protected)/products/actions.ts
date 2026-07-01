@@ -12,6 +12,7 @@ import { getAdminSupabase } from "@/lib/supabase-admin";
 import { parseSeoFields, type SeoValues } from "@/lib/admin/seo-fields";
 import type { ContentStatus, MediaImage, ProductSpec } from "@/lib/types";
 import { PRODUCT_CATEGORIES } from "@/components/products/categories";
+import { parseHpOutput } from "@/lib/products/hp-output";
 
 const TAGS = [CACHE_TAGS.products];
 
@@ -89,6 +90,8 @@ function buildValues(
     summary: nullableStr(formData, "summary"),
     body_html: nullableStr(formData, "body_html"),
     spec: parseSpec(str(formData, "spec")),
+    // hp_output 僅變頻空壓機表單會送出；其他分類無此欄位 → parseHpOutput("") → []。
+    hp_output: parseHpOutput(str(formData, "hp_output")),
     images: parseImages(str(formData, "images")),
     manual_url: nullableStr(formData, "manual_url"),
     ...seo,

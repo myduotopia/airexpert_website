@@ -10,8 +10,12 @@ import { SeoFields } from "@/components/admin/SeoFields";
 import { AiRefineButton } from "@/components/admin/ai/AiRefineButton";
 import { AiFillSeoButton } from "@/components/admin/ai/AiFillSeoButton";
 import { PRODUCT_CATEGORIES } from "@/components/products/categories";
+import { hpOutputToText } from "@/lib/products/hp-output";
 import type { Product } from "@/lib/types";
 import type { ProductFormState } from "@/app/admin/(protected)/products/actions";
+
+// 變頻空壓機才顯示「馬力數 ↔ 造氣量」對照欄位（與 categories.ts 的第一項一致）。
+const VFD_COMPRESSOR = "變頻空壓機";
 
 type FormAction = (
   state: ProductFormState,
@@ -50,6 +54,15 @@ export function ProductForm({
 
   // manual_url：受控輸入（可手動貼 URL / 清空），上傳後由 FileUploader 寫回。
   const [manualUrl, setManualUrl] = useState<string>(product?.manual_url ?? "");
+
+  // 分類受控：切到「變頻空壓機」時才顯示 hp_output 對照欄位、並調整規格表提示。
+  const [category, setCategory] = useState<string>(
+    product?.category ?? PRODUCT_CATEGORIES[0],
+  );
+  const isVfdCompressor = category === VFD_COMPRESSOR;
+  const specPlaceholder = isVfdCompressor
+    ? "壓力範圍=5~8 kg/cm²G\n冷卻方式=氣冷、水冷\n潤滑方式=微油"
+    : "排氣量=7.5 m³/min\n工作壓力=8 bar\n馬達功率=55 kW\n噪音值=68 dB(A)";
 
   return (
     <form action={formAction} className="flex max-w-[760px] flex-col gap-6">
@@ -91,7 +104,8 @@ export function ProductForm({
           <span className={labelCls}>分類 *</span>
           <select
             name="category"
-            defaultValue={product?.category ?? PRODUCT_CATEGORIES[0]}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
             className={inputCls}
           >
             {PRODUCT_CATEGORIES.map((c) => (
@@ -147,14 +161,34 @@ export function ProductForm({
           rows={8}
           defaultValue={specToText(product?.spec)}
           className={`${areaCls} font-mono text-[13px]`}
-          placeholder={
-            "排氣量=7.5 m³/min\n工作壓力=8 bar\n馬達功率=55 kW\n噪音值=68 dB(A)"
-          }
+          placeholder={specPlaceholder}
         />
         <span className="text-text-muted text-[12px]">
-          每行一個項目，以等號（=）分隔名稱與數值，例如「排氣量=7.5 m³/min」。
+          {isVfdCompressor
+            ? "變頻空壓機建議填壓力範圍 / 冷卻方式 / 潤滑方式；馬力數與造氣量請填在下方對照表。"
+            : "每行一個項目，以等號（=）分隔名稱與數值，例如「排氣量=7.5 m³/min」。"}
         </span>
       </label>
+
+      {/* hp_output(jsonb)：僅變頻空壓機顯示；馬力數 ↔ 造氣量 一對多對照 */}
+      {isVfdCompressor ? (
+        <label className="flex flex-col gap-1.5">
+          <span className={labelCls}>
+            馬力數 ↔ 造氣量 對照表（每行一筆，格式：馬力數=造氣量）
+          </span>
+          <textarea
+            name="hp_output"
+            rows={7}
+            defaultValue={hpOutputToText(product?.hp_output)}
+            className={`${areaCls} font-mono text-[13px]`}
+            placeholder={"10=1.094\n20=2.372\n30=3.905"}
+          />
+          <span className="text-text-muted text-[12px]">
+            每行一筆，馬力數=造氣量（僅填數字），例如「10=1.094」。前台會顯示為下拉選單，選馬力數即顯示對應造氣量（單位固定
+            HP / m³/min）。
+          </span>
+        </label>
+      ) : null}
 
       {/* 圖片 images(jsonb) */}
       <div className="flex flex-col gap-1.5">
