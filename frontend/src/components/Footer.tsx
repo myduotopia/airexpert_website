@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Leaf } from "lucide-react";
 import { BRAND_NAME_CN, BRAND_NAME_EN } from "@/lib/brand";
-import { MAINTENANCE_HREF } from "@/lib/nav-config";
 
 // Footer — sitemap 樣式（依 wholenewhome 2.pen frame HeGjg）：品牌 + ISO 徽章 +
 // 產品 / 公司 / 永續 三欄連結 + 版權列。聯絡資訊已移至首頁 Contact 區與 /contact，
@@ -22,19 +21,19 @@ const COLUMNS: FooterColumn[] = [
   {
     title: "公司",
     links: [
-      { label: "關於我們", href: MAINTENANCE_HREF },
+      { label: "商品介紹", href: "/products" },
       { label: "最新消息", href: "/news" },
-      { label: "技術文獻", href: MAINTENANCE_HREF },
+      { label: "節能實績", href: "/cases" },
       { label: "聯絡我們", href: "/contact" },
     ],
   },
   {
     title: "永續",
     links: [
-      { label: "ESG 報告", href: MAINTENANCE_HREF },
+      { label: "ESG 報告", href: "/" },
       { label: "能源管理", href: "/services" },
-      { label: "碳足跡", href: MAINTENANCE_HREF },
-      { label: "循環經濟", href: MAINTENANCE_HREF },
+      { label: "碳足跡", href: "/" },
+      { label: "循環經濟", href: "/" },
     ],
   },
 ];
