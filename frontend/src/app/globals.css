@@ -22,6 +22,16 @@
   --color-text-muted: #5c6b61;
   --color-text-on-dark-muted: #8fa697;
 
+  /* Metallic accents (home redesign, issue #97) — 綠色仍為主色，金屬僅克制點綴：
+   * brass 暖金屬用於數據細線 / 徽章 / icon；steel/graphite 冷金屬用於深色卡與邊框。 */
+  --color-brass: #b9a06a;
+  --color-brass-deep: #9a8250;
+  --color-brass-soft: #e7dcc4;
+  --color-steel: #9aa7a0;
+  --color-steel-soft: #c8d2cc;
+  --color-graphite: #2e3b34;
+  --color-accent: #37b89b;
+
   /* Fonts (wired to next/font CSS vars from layout.tsx) */
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
