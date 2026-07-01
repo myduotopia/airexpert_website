@@ -105,6 +105,7 @@ describe("V3 SEO 欄位（資料層 select * 帶回新欄位 + 型別包含新�
       summary: null,
       body_html: null,
       spec: {},
+      hp_output: [],
       images: [],
       manual_url: null,
       seo_title: "t",

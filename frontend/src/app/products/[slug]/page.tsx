@@ -16,6 +16,8 @@ import { Breadcrumb } from "@/components/products/Breadcrumb";
 import { ProductImage } from "@/components/products/ProductImage";
 import { MetricsBox } from "@/components/products/MetricsBox";
 import { SpecTable } from "@/components/products/SpecTable";
+import { CompressorSpecTable } from "@/components/products/CompressorSpecTable";
+import { rangeLabel } from "@/lib/products/hp-output";
 import { FeatureGrid } from "@/components/products/FeatureGrid";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ArrowRight, Check, Download } from "lucide-react";
@@ -68,8 +70,30 @@ export async function generateMetadata(
   });
 }
 
+// 變頻空壓機分類（與 categories.ts 第一項一致）。
+const VFD_COMPRESSOR = "變頻空壓機";
+
 /** Up to 4 hero metric highlights pulled from the product's spec jsonb. */
 function deriveMetrics(product: Product) {
+  const variants = product.hp_output ?? [];
+
+  // 變頻空壓機：以馬力數 / 造氣量「範圍」開頭，再補 spec 固定項（湊滿至多 4 格）。
+  if (product.category === VFD_COMPRESSOR && variants.length > 0) {
+    const metrics: { label: string; value: string }[] = [];
+    const hpRange = rangeLabel(variants.map((r) => r.hp));
+    const outRange = rangeLabel(variants.map((r) => r.output));
+    if (hpRange) metrics.push({ label: "馬力數", value: `${hpRange} HP` });
+    if (outRange)
+      metrics.push({ label: "造氣量", value: `${outRange} m³/min` });
+    for (const [label, value] of Object.entries(product.spec ?? {})) {
+      if (metrics.length >= 4) break;
+      if (label.trim() !== "" && value !== null && value !== "") {
+        metrics.push({ label, value: String(value) });
+      }
+    }
+    return metrics;
+  }
+
   return Object.entries(product.spec ?? {})
     .filter(
       ([key, value]) => key.trim() !== "" && value !== null && value !== "",
@@ -208,7 +232,13 @@ export default async function ProductDetailPage(props: DetailPageProps) {
               完整機種規格比較
             </h2>
           </div>
-          {Object.keys(product.spec ?? {}).length > 0 ? (
+          {product.category === VFD_COMPRESSOR &&
+          (product.hp_output ?? []).length > 0 ? (
+            <CompressorSpecTable
+              spec={product.spec}
+              variants={product.hp_output}
+            />
+          ) : Object.keys(product.spec ?? {}).length > 0 ? (
             <SpecTable spec={product.spec} />
           ) : (
             <p className="text-text-muted text-[16px]">規格資料建置中。</p>

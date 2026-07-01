@@ -29,7 +29,7 @@ def load_env() -> dict[str, str]:
 PRODUCTS = [
     # ---- 變頻空壓機 ----
     ("變頻空壓機", "Hanbell 漢鐘", "am3", "AM3 永磁式螺旋變頻空壓機",
-     {"設計馬力": "30~215 HP", "排氣量範圍": "3.9~30.6 m³/min", "壓力範圍": "5~8 kg/cm²G", "冷卻方式": "氣冷、水冷", "潤滑方式": "微油"}),
+     {"壓力範圍": "5~8 kg/cm²G", "冷卻方式": "氣冷、水冷", "潤滑方式": "微油"}),
     ("變頻空壓機", "Kaishan 台灣開山", "appm", "APPM 永磁式螺旋變頻空壓機",
      {"設計馬力": "10~20 HP", "排氣量範圍": "1.04~2.23 m³/min", "冷卻方式": "氣冷"}),
     ("變頻空壓機", "Kaishan 台灣開山", "pmv", "PMV 永磁式螺旋變頻空壓機",
@@ -79,12 +79,35 @@ LEGACY = {
     "冷凍式乾燥機": "products-9.html", "吸附式乾燥機": "products-10.html",
 }
 
+# slug -> 馬力數↔造氣量 對照（變頻空壓機專用，hp_output jsonb）。
+# 目前僅 AM3 有資料（來源：old_website_data/upload/網站商品AM3 馬力數對應造氣量.xlsx）；
+# 其餘變頻空壓機留空，前台有資料才顯示連動下拉。
+HP_OUTPUT = {
+    "am3": [
+        {"hp": "10", "output": "1.094"},
+        {"hp": "20", "output": "2.372"},
+        {"hp": "30", "output": "3.905"},
+        {"hp": "50", "output": "6.58"},
+        {"hp": "75", "output": "11.39"},
+        {"hp": "100", "output": "15.18"},
+        {"hp": "215", "output": "32.66"},
+    ],
+}
+
 
 def build_rows() -> list[dict]:
     rows = []
     for i, (category, brand, slug, name, spec) in enumerate(PRODUCTS):
-        first_two = "、".join(f"{k} {v}" for k, v in list(spec.items())[:2])
-        summary = f"{brand}，{first_two}。"
+        hp_output = HP_OUTPUT.get(slug, [])
+        if hp_output:
+            # 有對照表者，摘要以馬力數 / 造氣量範圍呈現（比 spec 前兩項更有代表性）。
+            hps = [r["hp"] for r in hp_output]
+            outs = [r["output"] for r in hp_output]
+            summary = (f"{brand}，馬力數 {hps[0]}~{hps[-1]} HP、"
+                       f"造氣量 {outs[0]}~{outs[-1]} m³/min。")
+        else:
+            first_two = "、".join(f"{k} {v}" for k, v in list(spec.items())[:2])
+            summary = f"{brand}，{first_two}。"
         rows.append({
             "slug": slug,
             "category": category,
@@ -92,6 +115,7 @@ def build_rows() -> list[dict]:
             "name": name,
             "summary": summary,
             "spec": spec,
+            "hp_output": hp_output,
             "images": [],
             "seo_title": f"{name}｜{brand}",
             "seo_description": summary,
