@@ -36,7 +36,12 @@ export function CompressorSpecTable({
 
   return (
     <div className="border-border overflow-x-auto rounded-[12px] border">
-      <table className="w-full border-collapse text-left">
+      {/* table-fixed + 固定欄寬：欄寬不隨當前選取的造氣量字數重算，避免切換馬力數時整欄橫移。 */}
+      <table className="w-full min-w-[420px] table-fixed border-collapse text-left">
+        <colgroup>
+          <col className="w-[160px]" />
+          <col />
+        </colgroup>
         <thead>
           <tr className="bg-primary-deep text-white">
             <th scope="col" className={thHeadCls}>
