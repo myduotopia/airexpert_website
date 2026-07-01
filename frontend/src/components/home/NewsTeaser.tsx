@@ -1,12 +1,44 @@
+import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
-import { NewsCard, type NewsCardProps } from "@/components/NewsCard";
+import type { NewsCardProps } from "@/components/NewsCard";
 import type { HomeNews } from "@/lib/data/home";
+import { RailSection } from "@/components/home/RailSection";
 
-// Section 7 — NewsTeaser (bg white). 3-up news card grid → 1-up on mobile.
-// Heading from site_settings `home_news`; cards from published articles
-// (page.tsx maps them). When there are no published articles the grid is
-// omitted so the section degrades gracefully.
+// 最新消息 — 白底橫向 rail。標題來自 site_settings `home_news`；卡片來自已發佈文章
+// （page.tsx 映射）。無文章時退回精簡提示，優雅降級。
+function NewsRailCard({ item }: { item: NewsCardProps }) {
+  return (
+    <Link
+      href={item.href}
+      className="group border-border bg-surface hover:border-primary flex w-[280px] shrink-0 snap-start flex-col overflow-hidden rounded-2xl border transition-colors sm:w-[360px]"
+    >
+      <div className="bg-surface-muted relative h-[200px] w-full overflow-hidden">
+        {item.image ? (
+          <Image
+            src={item.image}
+            alt={item.title}
+            fill
+            sizes="360px"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-3 p-5">
+        <div className="flex items-center gap-2.5 text-[12px]">
+          <span className="text-primary-deep font-semibold">
+            {item.category}
+          </span>
+          <span className="text-border">·</span>
+          <span className="text-text-muted font-mono">{item.date}</span>
+        </div>
+        <h3 className="text-ink line-clamp-2 text-[18px] leading-[1.4] font-semibold">
+          {item.title}
+        </h3>
+      </div>
+    </Link>
+  );
+}
+
 export function NewsTeaser({
   content,
   items,
@@ -14,41 +46,36 @@ export function NewsTeaser({
   content: HomeNews;
   items: NewsCardProps[];
 }) {
-  return (
-    <section className="bg-surface">
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-7 px-6 py-20 md:px-20">
-        {/* Head row */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex flex-col gap-2">
-            <p className="text-primary-deep font-mono text-[14px] tracking-[1px]">
+  if (items.length === 0) {
+    return (
+      <section className="border-border bg-surface border-b">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-6 py-16 md:px-20 md:py-[72px]">
+          <div className="flex flex-col gap-2.5">
+            <p className="text-primary-deep font-mono text-[12px] tracking-[1px] uppercase">
               {content.eyebrow}
             </p>
-            <h2 className="text-ink text-[30px] leading-tight font-bold md:text-[36px]">
+            <h2 className="text-ink text-[26px] font-bold sm:text-[32px]">
               {content.title}
             </h2>
           </div>
-          <Link
-            href="/news"
-            className="text-primary-deep inline-flex items-center gap-1 text-[16px] font-semibold transition-opacity hover:opacity-80"
-          >
-            查看全部
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-        </div>
-
-        {/* News cards */}
-        {items.length > 0 ? (
-          <ul className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            {items.map((item) => (
-              <NewsCard key={item.title} {...item} />
-            ))}
-          </ul>
-        ) : (
           <p className="text-text-muted text-[15px]">
             最新消息即將上線，敬請期待。
           </p>
-        )}
-      </div>
-    </section>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <RailSection
+      eyebrow={content.eyebrow}
+      title={content.title}
+      variant="light"
+      bordered
+    >
+      {items.map((item) => (
+        <NewsRailCard key={item.title} item={item} />
+      ))}
+    </RailSection>
   );
 }
