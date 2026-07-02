@@ -49,11 +49,11 @@ export interface HomeServiceStep {
 
 /** 服務流程 5 步驟。 */
 export const HOME_SERVICE_STEPS: HomeServiceStep[] = [
-  { icon: "clipboard-list", title: "諮詢・節能評估", chip: "免費現場勘查" },
-  { icon: "cpu", title: "選型・節能技術", chip: "降耗 15~20%" },
-  { icon: "hard-hat", title: "機房規劃・安裝施工", chip: "ISO 8573-1" },
-  { icon: "calendar-check", title: "定期保養", chip: "定期巡檢" },
-  { icon: "headset", title: "維修支援", chip: "24h 到廠" },
+  { icon: "clipboard-list", title: "需求診斷", chip: "免費能效檢測" },
+  { icon: "cpu", title: "節能規劃", chip: "客製化氣體解決方案" },
+  { icon: "hard-hat", title: "系統建置", chip: "專業安裝・施工驗收" },
+  { icon: "calendar-check", title: "定期保養", chip: "巡檢維護・穩定供氣" },
+  { icon: "headset", title: "售後支援", chip: "24H 線上叫修系統" },
 ];
 
 /** 聯繫卡的補充聯絡資訊（電話 / 地址 / email）。以「服務中心 region」為 key，

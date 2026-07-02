@@ -27,8 +27,8 @@ export function ServiceProcess() {
           <p className="text-primary-deep font-mono text-[12px] tracking-[1px] uppercase">
             SERVICES · 一站式服務
           </p>
-          <h2 className="text-ink text-[30px] font-extrabold sm:text-[36px]">
-            氣壓的事，交給勁賀
+          <h2 className="text-ink max-w-[820px] text-[26px] font-extrabold sm:text-[34px]">
+            節能升級，從第一步開始，打造一站式氣體解決方案
           </h2>
           <p className="text-text-muted max-w-[640px] text-[16px]">
             設備買了之後，安裝、施工、定期保養到維修，全部我們負責。
