@@ -1,40 +1,46 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight, Leaf, Zap } from "lucide-react";
 import { HOME_CASES, type HomeCase } from "@/components/home/content";
+import { AnimatedNumber, useInViewOnce } from "@/components/home/scrollAnimate";
 
 // Cases — 客戶實績（數字會說話）。白底、深色漸層卡 ×2，before / after 對比長條，
 // 金屬副色（brass 徽章 + ⚡）克制點綴。內容為模擬數據（見 content.ts）。
+// 捲入視窗時：數字由 0 count-up、進度條由 0 寬度長到目標（尊重 reduced-motion）。
 
 function CaseBar({
   label,
   value,
   pct,
   fill,
+  run,
 }: {
   label: string;
   value: string;
   pct: number;
   fill: string;
+  run: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
         <span className="text-text-on-dark-muted text-[13px]">{label}</span>
-        <span className="font-mono text-[15px] font-semibold text-white">
-          {value}
+        <span className="font-mono text-[15px] font-semibold text-white tabular-nums">
+          <AnimatedNumber raw={value} run={run} />
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-white/10">
         <div
-          className={`h-full rounded-full ${fill}`}
-          style={{ width: `${pct}%` }}
+          className={`h-full rounded-full ${fill} transition-[width] duration-1000 ease-out motion-reduce:transition-none`}
+          style={{ width: run ? `${pct}%` : "0%" }}
         />
       </div>
     </div>
   );
 }
 
-function CaseCard({ item }: { item: HomeCase }) {
+function CaseCard({ item, run }: { item: HomeCase; run: boolean }) {
   return (
     <div className="border-steel flex flex-col gap-5 rounded-[18px] border bg-[linear-gradient(120deg,#54685c,#71877a_24%,#3a4a42_58%,#1d2620)] p-7">
       <div className="flex items-center justify-between">
@@ -43,19 +49,19 @@ function CaseCard({ item }: { item: HomeCase }) {
         </span>
         <span className="bg-brass-soft text-ink inline-flex items-center gap-1.5 rounded-[20px] px-3 py-1.5 text-[13px] font-semibold">
           <Leaf size={13} aria-hidden="true" />
-          {item.reduction}
+          <AnimatedNumber raw={item.reduction} run={run} />
         </span>
       </div>
 
       <div className="flex flex-col gap-3.5">
-        <CaseBar {...item.before} fill="bg-steel-soft" />
-        <CaseBar {...item.after} fill="bg-primary-soft" />
+        <CaseBar {...item.before} fill="bg-steel-soft" run={run} />
+        <CaseBar {...item.after} fill="bg-primary-soft" run={run} />
       </div>
 
       <div className="border-border-dark flex items-center gap-2 border-t pt-4">
         <Zap size={16} aria-hidden="true" className="text-brass" />
         <span className="text-[15px] font-semibold text-white">
-          {item.saving}
+          <AnimatedNumber raw={item.saving} run={run} />
         </span>
       </div>
     </div>
@@ -63,6 +69,9 @@ function CaseCard({ item }: { item: HomeCase }) {
 }
 
 export function CasesSection() {
+  // 卡片區進入視窗（約 100px 進場）才啟動數字與進度條動畫。
+  const { ref, inView } = useInViewOnce<HTMLDivElement>("0px 0px -100px 0px");
+
   return (
     <section className="border-border bg-surface border-b">
       <div className="mx-auto flex max-w-[1440px] flex-col gap-9 px-6 py-16 md:px-20 md:py-[72px]">
@@ -88,9 +97,9 @@ export function CasesSection() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div ref={ref} className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {HOME_CASES.map((item) => (
-            <CaseCard key={item.industry} item={item} />
+            <CaseCard key={item.industry} item={item} run={inView} />
           ))}
         </div>
       </div>
