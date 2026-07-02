@@ -80,11 +80,13 @@ function AnimatedValue({ raw, run }: { raw: string; run: boolean }) {
 }
 
 export function StatBar({ content }: { content: HomeStats }) {
-  const ref = useRef<HTMLDivElement>(null);
+  // sentinel 放在區塊底部：等區塊的「底部」進入視窗（threshold 0）才觸發，
+  // 避免區塊頂端從螢幕最底剛露出一點就開始跑、使用者其實還沒看到。
+  const sentinelRef = useRef<HTMLSpanElement>(null);
   const [run, setRun] = useState(false);
 
   useEffect(() => {
-    const el = ref.current;
+    const el = sentinelRef.current;
     if (!el) return;
     const io = new IntersectionObserver(
       (entries) => {
@@ -93,7 +95,7 @@ export function StatBar({ content }: { content: HomeStats }) {
           io.disconnect();
         }
       },
-      { threshold: 0.3 },
+      { threshold: 0 },
     );
     io.observe(el);
     return () => io.disconnect();
@@ -101,10 +103,7 @@ export function StatBar({ content }: { content: HomeStats }) {
 
   return (
     <section className="border-border bg-surface border-y">
-      <div
-        ref={ref}
-        className="mx-auto grid max-w-[1440px] grid-cols-2 gap-8 px-6 py-11 md:grid-cols-4 md:px-20"
-      >
+      <div className="mx-auto grid max-w-[1440px] grid-cols-2 gap-8 px-6 py-11 md:grid-cols-4 md:px-20">
         {content.items.map((stat) => (
           <div key={stat.label} className="flex flex-col gap-3">
             {/* brass 漸層金屬細線（暖金屬點綴） */}
@@ -119,6 +118,8 @@ export function StatBar({ content }: { content: HomeStats }) {
           </div>
         ))}
       </div>
+      {/* 區塊底部偵測點：滑到此處（區塊底部露出）才啟動 count-up。 */}
+      <span ref={sentinelRef} aria-hidden="true" className="block h-0 w-full" />
     </section>
   );
 }
