@@ -12,8 +12,8 @@ import { formatNewsDate } from "@/components/news/format";
 import type { Article } from "@/lib/types";
 
 // 首頁改版（issue #97，依 wholenewhome 2.pen）。輪播以下區段依序：
-//   輪播圖 → 數字(StatBar) → 客戶實績(Cases) → 產品系列(Products, 深色 rail)
-//   → 最新消息(News, rail) → 服務流程(Service) → 與我們保持聯繫(Contact)。
+//   輪播圖 → 數字(StatBar) → 服務流程(Service) → 客戶實績(Cases)
+//   → 產品系列(Products, 深色 rail) → 最新消息(News, rail) → 與我們保持聯繫(Contact)。
 // 既有 CMS 內容（stats/products/news/social）仍走 site_settings（home_*）；
 // 新區塊（Cases/Service/Contact 細節）為靜態內容（@/components/home/content）。
 // 已退場：TechSection + CarbonDashboard、ProductFeatures（元件檔保留，首頁不再 render）。
@@ -37,10 +37,10 @@ export default async function Home() {
     <>
       <PainCarousel slides={home.carousel.slides} />
       <StatBar content={home.stats} />
+      <ServiceProcess />
       <CasesSection />
       <ProductShowcase content={home.products} />
       <NewsTeaser content={home.news} items={newsItems} />
-      <ServiceProcess />
       <SocialFollow content={home.social} />
     </>
   );
