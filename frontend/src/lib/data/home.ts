@@ -155,9 +155,9 @@ export const HOME_DEFAULTS: HomeContent = {
   stats: {
     items: [
       { value: "100,000K", label: "為客戶省下電費" },
-      { value: "550萬度+", label: "累積節能度數" },
-      { value: "63%", label: "最高節能率" },
-      { value: "1,000+", label: "輔導客戶數" },
+      { value: "550萬度+", label: "節能度數高達" },
+      { value: "63%", label: "節能率最高可達" },
+      { value: "1,000+", label: "輔導客戶" },
     ],
   },
   tech: {
