@@ -5,7 +5,8 @@
 //   可用 rootMargin 微調觸發時機），回傳 ref 與 inView。
 // - AnimatedNumber：數值字串的 count-up（由 0 跳到目標），保留前後綴與千分位，
 //   尊重 prefers-reduced-motion。
-import { useEffect, useMemo, useRef, useState } from "react";
+// - Reveal：捲入視窗時淡入 / 左右滑入的進場包裝（可設 delay 做 stagger）。
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 const DURATION_MS = 1400;
 
@@ -99,5 +100,47 @@ export function AnimatedNumber({ raw, run }: { raw: string; run: boolean }) {
       {formatNumber(n, parsed.decimals, parsed.grouped)}
       {parsed.suffix}
     </>
+  );
+}
+
+type RevealDirection = "up" | "left" | "right" | "none";
+
+const HIDDEN_TRANSFORM: Record<RevealDirection, string> = {
+  up: "translate-y-6",
+  left: "-translate-x-6",
+  right: "translate-x-6",
+  none: "",
+};
+
+/**
+ * 進場動畫包裝：元素捲入視窗時由「透明 + 位移」過渡到「不透明 + 原位」。
+ * direction 決定滑入方向（up 淡入上移 / left / right / none 純淡入）；
+ * delay 可做 stagger。reduced-motion 直接顯示、不做動畫。
+ * 注意：left/right 會有水平位移，容器建議加 overflow-x-clip 避免捲軸。
+ */
+export function Reveal({
+  children,
+  direction = "up",
+  delay = 0,
+  className = "",
+}: {
+  children: ReactNode;
+  direction?: RevealDirection;
+  delay?: number;
+  className?: string;
+}) {
+  const { ref, inView } = useInViewOnce<HTMLDivElement>("0px 0px -80px 0px");
+  return (
+    <div
+      ref={ref}
+      style={{ transitionDelay: inView ? `${delay}ms` : "0ms" }}
+      className={`transition-all duration-700 ease-out motion-reduce:translate-x-0 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none ${
+        inView
+          ? "translate-x-0 translate-y-0 opacity-100"
+          : `opacity-0 ${HIDDEN_TRANSFORM[direction]}`
+      } ${className}`}
+    >
+      {children}
+    </div>
   );
 }

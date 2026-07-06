@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { HomeSocial } from "@/lib/data/home";
 import { HOME_CONTACT_DETAILS } from "@/components/home/content";
+import { Reveal } from "@/components/home/scrollAnimate";
 
 // Contact — 與我們保持聯繫。標題與服務中心（region/name/LINE/FB）來自 site_settings
 // `home_social`；電話 / 地址 / email 等細節取自 content.ts（依 region 對應）。
@@ -34,9 +35,9 @@ function ContactRow({
 
 export function SocialFollow({ content }: { content: HomeSocial }) {
   return (
-    <section className="bg-surface border-border border-b">
+    <section className="bg-surface border-border overflow-x-clip border-b">
       <div className="mx-auto flex max-w-[1440px] flex-col gap-10 px-6 py-16 md:px-20 md:py-[72px]">
-        <div className="flex flex-col items-center gap-3 text-center">
+        <Reveal className="flex flex-col items-center gap-3 text-center">
           <p className="text-primary-deep font-mono text-[12px] tracking-[1px] uppercase">
             {content.eyebrow}
           </p>
@@ -46,15 +47,17 @@ export function SocialFollow({ content }: { content: HomeSocial }) {
           <p className="text-text-muted max-w-[600px] text-[16px] leading-[1.6]">
             {content.description}
           </p>
-        </div>
+        </Reveal>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {content.companies.map((c) => {
+          {content.companies.map((c, i) => {
             const detail = HOME_CONTACT_DETAILS[c.region];
             return (
-              <div
+              <Reveal
                 key={c.name}
-                className="border-border bg-surface-muted flex flex-col gap-6 rounded-[18px] border p-8"
+                direction={i === 0 ? "left" : "right"}
+                delay={i * 80}
+                className="border-border bg-surface-muted flex h-full flex-col gap-6 rounded-[18px] border p-8"
               >
                 <div className="flex flex-col gap-1">
                   <p className="text-primary-deep font-mono text-[12px] tracking-[0.5px]">
@@ -103,7 +106,7 @@ export function SocialFollow({ content }: { content: HomeSocial }) {
                     粉絲專頁
                   </a>
                 </div>
-              </div>
+              </Reveal>
             );
           })}
         </div>

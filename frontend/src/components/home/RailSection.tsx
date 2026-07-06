@@ -2,6 +2,7 @@
 
 import { useRef, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Reveal } from "@/components/home/scrollAnimate";
 
 type RailSectionProps = {
   eyebrow: string;
@@ -49,7 +50,7 @@ export function RailSection({
     >
       <div className="mx-auto flex max-w-[1440px] flex-col gap-8 py-16 md:py-[72px]">
         {/* 標題列（含左右 gutter） */}
-        <div className="flex items-end justify-between gap-4 px-6 md:px-20">
+        <Reveal className="flex items-end justify-between gap-4 px-6 md:px-20">
           <div className="flex flex-col gap-2.5">
             <p
               className={`font-mono text-[12px] tracking-[1px] uppercase ${
@@ -84,7 +85,7 @@ export function RailSection({
               <ChevronRight size={22} aria-hidden="true" />
             </button>
           </div>
-        </div>
+        </Reveal>
 
         {/* 橫向軌道：左 gutter 對齊、右側可捲出 */}
         <div
