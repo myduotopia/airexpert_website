@@ -64,8 +64,19 @@ function formatNumber(n: number, decimals: number, grouped: boolean): string {
   return grouped ? rounded.toLocaleString("en-US") : String(rounded);
 }
 
-/** 數值字串 count-up。run 轉 true 時由 0 動畫到目標值；無數字則原樣顯示。 */
-export function AnimatedNumber({ raw, run }: { raw: string; run: boolean }) {
+/**
+ * 數值字串 count-up。run 轉 true 時由 0 動畫到目標值；無數字則原樣顯示。
+ * durationMs 可調整動畫時長（預設 1400ms）。
+ */
+export function AnimatedNumber({
+  raw,
+  run,
+  durationMs = DURATION_MS,
+}: {
+  raw: string;
+  run: boolean;
+  durationMs?: number;
+}) {
   const parsed = useMemo(() => parseValue(raw), [raw]);
   const [n, setN] = useState(0);
 
@@ -82,7 +93,7 @@ export function AnimatedNumber({ raw, run }: { raw: string; run: boolean }) {
     let start: number | null = null;
     const tick = (t: number) => {
       if (start === null) start = t;
-      const p = Math.min(1, (t - start) / DURATION_MS);
+      const p = Math.min(1, (t - start) / durationMs);
       const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
       setN(parsed.target * eased);
       if (p < 1) raf = requestAnimationFrame(tick);
@@ -90,7 +101,7 @@ export function AnimatedNumber({ raw, run }: { raw: string; run: boolean }) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [parsed, run]);
+  }, [parsed, run, durationMs]);
 
   if (!parsed) return <>{raw}</>;
   return (

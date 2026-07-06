@@ -21,7 +21,8 @@ export function StatBar({ content }: { content: HomeStats }) {
               className="h-[3px] w-[72px] rounded-[2px] bg-[linear-gradient(90deg,var(--color-brass-deep),var(--color-brass)_35%,transparent)]"
             />
             <span className="text-primary-deep font-mono text-[28px] leading-none font-bold tabular-nums sm:text-[34px] md:text-[44px]">
-              <AnimatedNumber raw={stat.value} run={inView} />
+              {/* 放慢一倍（2800ms）——輪播下方數字動畫較慢、較有感。 */}
+              <AnimatedNumber raw={stat.value} run={inView} durationMs={2800} />
             </span>
             <span className="text-text-muted text-[15px]">{stat.label}</span>
           </div>
