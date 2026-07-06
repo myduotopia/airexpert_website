@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { ArrowRight, Leaf, Zap } from "lucide-react";
 import { HOME_CASES, type HomeCase } from "@/components/home/content";
-import { AnimatedNumber, useInViewOnce } from "@/components/home/scrollAnimate";
+import {
+  AnimatedNumber,
+  Reveal,
+  useInViewOnce,
+} from "@/components/home/scrollAnimate";
 
 // Cases — 客戶實績（數字會說話）。白底、深色漸層卡 ×2，before / after 對比長條，
 // 金屬副色（brass 徽章 + ⚡）克制點綴。內容為模擬數據（見 content.ts）。
@@ -42,7 +46,7 @@ function CaseBar({
 
 function CaseCard({ item, run }: { item: HomeCase; run: boolean }) {
   return (
-    <div className="border-steel flex flex-col gap-5 rounded-[18px] border bg-[linear-gradient(120deg,#54685c,#71877a_24%,#3a4a42_58%,#1d2620)] p-7">
+    <div className="border-steel flex h-full flex-col gap-5 rounded-[18px] border bg-[linear-gradient(120deg,#54685c,#71877a_24%,#3a4a42_58%,#1d2620)] p-7">
       <div className="flex items-center justify-between">
         <span className="bg-surface-dark-2 rounded-[20px] px-3 py-1.5 text-[13px] font-medium text-white">
           {item.industry}
@@ -73,9 +77,9 @@ export function CasesSection() {
   const { ref, inView } = useInViewOnce<HTMLDivElement>("0px 0px -100px 0px");
 
   return (
-    <section className="border-border bg-surface border-b">
+    <section className="border-border bg-surface overflow-x-clip border-b">
       <div className="mx-auto flex max-w-[1440px] flex-col gap-9 px-6 py-16 md:px-20 md:py-[72px]">
-        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+        <Reveal className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
           <div className="flex flex-col gap-2.5">
             <p className="text-primary-deep font-mono text-[12px] tracking-[1px] uppercase">
               CASE STUDIES · 客戶實績
@@ -95,11 +99,18 @@ export function CasesSection() {
             看更多案例
             <ArrowRight size={16} aria-hidden="true" />
           </Link>
-        </div>
+        </Reveal>
 
         <div ref={ref} className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {HOME_CASES.map((item) => (
-            <CaseCard key={item.industry} item={item} run={inView} />
+          {HOME_CASES.map((item, i) => (
+            <Reveal
+              key={item.industry}
+              direction={i === 0 ? "left" : "right"}
+              delay={i * 80}
+              className="h-full"
+            >
+              <CaseCard item={item} run={inView} />
+            </Reveal>
           ))}
         </div>
       </div>
