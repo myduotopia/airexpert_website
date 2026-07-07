@@ -159,15 +159,18 @@ export default async function ArticleDetailPage(props: DetailPageProps) {
               {gallery.map((img, i) => (
                 <div
                   key={img.url}
-                  className="border-border relative aspect-[16/10] w-full overflow-hidden rounded-[12px] border"
+                  className="border-border bg-surface aspect-[16/10] w-full overflow-hidden rounded-[12px] border p-3"
                 >
-                  <Image
-                    src={img.url}
-                    alt={img.alt ?? `${article.title} 圖 ${i + 1}`}
-                    fill
-                    sizes="(max-width: 640px) 100vw, 400px"
-                    className="object-cover"
-                  />
+                  {/* 白底 + 留白 + object-contain：內文圖完整顯示、不裁切。 */}
+                  <div className="relative h-full w-full">
+                    <Image
+                      src={img.url}
+                      alt={img.alt ?? `${article.title} 圖 ${i + 1}`}
+                      fill
+                      sizes="(max-width: 640px) 100vw, 400px"
+                      className="object-contain"
+                    />
+                  </div>
                 </div>
               ))}
             </div>
