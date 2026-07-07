@@ -12,6 +12,8 @@ type ProductImageProps = {
   className?: string;
   /** Mark the primary above-the-fold image as priority. */
   priority?: boolean;
+  /** object-fit：cover（裁切填滿，預設）/ contain（完整顯示、不裁切）。 */
+  fit?: "cover" | "contain";
 };
 
 /**
@@ -27,6 +29,7 @@ export function ProductImage({
   sizes,
   className,
   priority,
+  fit = "cover",
 }: ProductImageProps) {
   const url = image?.url?.trim();
 
@@ -49,7 +52,7 @@ export function ProductImage({
       fill
       sizes={sizes ?? "(max-width: 768px) 100vw, 33vw"}
       priority={priority}
-      className={`object-cover ${className ?? ""}`}
+      className={`${fit === "contain" ? "object-contain" : "object-cover"} ${className ?? ""}`}
     />
   );
 }
