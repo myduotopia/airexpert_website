@@ -26,15 +26,27 @@ export function ProductCard({ product, variant = "list" }: ProductCardProps) {
       href={`/products/${product.slug}`}
       className="group border-border bg-surface focus-visible:ring-primary block overflow-hidden rounded-[14px] border transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:outline-none"
     >
-      <div
-        className={`relative w-full overflow-hidden ${isRelated ? "aspect-[16/10]" : "aspect-[16/9]"}`}
-      >
-        <ProductImage
-          image={primaryImage}
-          fallbackAlt={product.name}
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-        />
-      </div>
+      {isRelated ? (
+        <div className="relative aspect-[16/10] w-full overflow-hidden">
+          <ProductImage
+            image={primaryImage}
+            fallbackAlt={product.name}
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          />
+        </div>
+      ) : (
+        // list：白底 + 留白 + object-contain，完整顯示商品圖（與首頁產品系列一致）。
+        <div className="bg-surface aspect-[16/9] w-full overflow-hidden p-4">
+          <div className="relative h-full w-full">
+            <ProductImage
+              image={primaryImage}
+              fallbackAlt={product.name}
+              fit="contain"
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 p-4">
         {isRelated ? (
