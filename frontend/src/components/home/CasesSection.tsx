@@ -30,21 +30,19 @@ function CasePhoto({
   src,
   label,
   alt,
-  priority,
 }: {
   src: string;
   label: string;
   alt: string;
-  priority?: boolean;
 }) {
   return (
-    <div className="border-border relative aspect-[4/3] w-full overflow-hidden rounded-[16px] border">
+    <div className="border-border relative aspect-[1206/607] w-full overflow-hidden rounded-[16px] border">
       <Image
         src={src}
         alt={alt}
         fill
-        sizes="(max-width: 1024px) 100vw, 560px"
-        priority={priority}
+        sizes="(max-width: 1024px) 100vw, 700px"
+        priority
         className="object-cover"
       />
       <span className="bg-ink/70 absolute top-3 left-3 rounded-full px-3 py-1 text-[12px] font-semibold text-white backdrop-blur-sm">
@@ -115,26 +113,23 @@ export function CasesSection() {
 
         <div
           ref={ref}
-          className="grid grid-cols-1 gap-6 lg:grid-cols-[1.05fr_0.95fr]"
+          className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.05fr_0.95fr]"
         >
-          {/* 左：交機前 / 交機後 個案照片 */}
-          <Reveal direction="left" className="flex flex-col gap-4">
+          {/* 左：改造前後對照圖 */}
+          <Reveal direction="left" className="flex flex-col gap-3">
             <CasePhoto
-              src={c.beforeImage}
-              label="交機前"
-              alt={`${c.client}交機前`}
-              priority
+              src={c.image}
+              label="改造前後對照"
+              alt={`${c.client}節能改造前後對照`}
             />
-            <CasePhoto
-              src={c.afterImage}
-              label="交機後"
-              alt={`${c.client}交機後`}
-            />
+            <p className="text-text-muted text-[14px] leading-[1.6]">
+              {c.client} · 導入變頻節能方案，機房改造前後對照。
+            </p>
           </Reveal>
 
           {/* 右：ROI 數據面板 */}
-          <Reveal direction="right" delay={80} className="h-full">
-            <div className="border-steel flex h-full flex-col rounded-[18px] border bg-[linear-gradient(140deg,#3a4a42,#1d2620_70%)] p-8">
+          <Reveal direction="right" delay={80}>
+            <div className="border-steel flex flex-col rounded-[18px] border bg-[linear-gradient(140deg,#3a4a42,#1d2620_70%)] p-8">
               <div className="flex items-center justify-between border-b border-white/10 pb-5">
                 <div className="flex flex-col gap-1">
                   <span className="text-text-on-dark-muted font-mono text-[12px] tracking-[0.5px] uppercase">
@@ -150,7 +145,7 @@ export function CasesSection() {
                 </span>
               </div>
 
-              <div className="flex flex-1 flex-col justify-between pt-2">
+              <div className="flex flex-col pt-2">
                 {c.metrics.map((metric, i) => (
                   <MetricRow
                     key={metric.label}

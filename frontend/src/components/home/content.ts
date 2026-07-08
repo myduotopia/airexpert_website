@@ -11,21 +11,18 @@ export interface RoiMetric {
   value: string;
 }
 
-/** 客戶實績個案：左側交機前/後照片、右側 ROI 數據。 */
+/** 客戶實績個案：左側前後對照圖、右側 ROI 數據。 */
 export interface HomeCaseStudy {
   client: string;
-  /** 交機前照片（放 frontend/public 下的路徑）。 */
-  beforeImage: string;
-  /** 交機後照片。 */
-  afterImage: string;
+  /** 前後對照圖（放 frontend/public 下的路徑）。 */
+  image: string;
   metrics: RoiMetric[];
 }
 
 /** 首頁客戶實績（全球傳動 · 實際 ROI 數據）。 */
 export const HOME_CASE: HomeCaseStudy = {
   client: "全球傳動",
-  beforeImage: "/cases/1_0.jpg",
-  afterImage: "/cases/2_0.jpg",
+  image: "/cases/3_0.jpg",
   metrics: [
     { icon: "zap", label: "節電率高達", value: "32.68%" },
     { icon: "wallet", label: "年省電費", value: "約 385 萬" },
