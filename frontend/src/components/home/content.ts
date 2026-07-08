@@ -18,6 +18,8 @@ export interface HomeCaseStudy {
   beforeImage: string;
   /** 交機後照片（collage 右下）。 */
   afterImage: string;
+  /** 去背 logo（壓在交機後照片右下角）。 */
+  logo: string;
   metrics: RoiMetric[];
 }
 
@@ -26,6 +28,7 @@ export const HOME_CASE: HomeCaseStudy = {
   client: "全球傳動",
   beforeImage: "/cases/1_0.jpg",
   afterImage: "/cases/2_0.jpg",
+  logo: "/cases/logo.png",
   metrics: [
     { icon: "zap", label: "節電率高達", value: "32.68%" },
     { icon: "wallet", label: "年省電費", value: "約 385 萬" },

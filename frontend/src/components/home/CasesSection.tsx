@@ -33,12 +33,15 @@ function CollagePhoto({
   alt,
   position,
   run,
+  logo,
 }: {
   src: string;
   label: string;
   alt: string;
   position: "before" | "after";
   run: boolean;
+  /** 去背 logo（右下角浮水印），僅交機後照片帶入。 */
+  logo?: string;
 }) {
   const isBefore = position === "before";
   const place = isBefore ? "top-0 left-0 z-10" : "right-0 bottom-0 z-20";
@@ -64,6 +67,16 @@ function CollagePhoto({
       <span className="bg-ink/70 absolute top-3 left-3 rounded-full px-3 py-1 text-[12px] font-semibold text-white backdrop-blur-sm">
         {label}
       </span>
+      {logo ? (
+        <Image
+          src={logo}
+          alt=""
+          aria-hidden="true"
+          width={432}
+          height={333}
+          className="absolute right-3 bottom-2 h-auto w-[36%] max-w-[150px] drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)]"
+        />
+      ) : null}
     </div>
   );
 }
@@ -147,6 +160,7 @@ export function CasesSection() {
                 alt={`${c.client}交機後`}
                 position="after"
                 run={inView}
+                logo={c.logo}
               />
             </div>
             <p className="text-text-muted text-[14px] leading-[1.6]">
