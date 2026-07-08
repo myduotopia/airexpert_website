@@ -17,8 +17,9 @@ import {
   useInViewOnce,
 } from "@/components/home/scrollAnimate";
 
-// Cases — 客戶實績（全球傳動）。左側交機前 / 交機後照片，右側 ROI 數據。
-// 捲入視窗時右側數字由 0 count-up、左右卡片滑入（尊重 reduced-motion）。
+// Cases — 客戶實績（全球傳動）。左側交機前 / 交機後照片 collage（左上 + 右下重疊），
+// 右側 ROI 數據。捲入視窗時：兩張照片由左 / 右滑入、右側數字 0 count-up
+// （尊重 reduced-motion）。
 const METRIC_ICONS: Record<string, LucideIcon> = {
   zap: Zap,
   wallet: Wallet,
@@ -26,23 +27,38 @@ const METRIC_ICONS: Record<string, LucideIcon> = {
   leaf: Leaf,
 };
 
-function CasePhoto({
+function CollagePhoto({
   src,
   label,
   alt,
+  position,
+  run,
 }: {
   src: string;
   label: string;
   alt: string;
+  position: "before" | "after";
+  run: boolean;
 }) {
+  const isBefore = position === "before";
+  const place = isBefore ? "top-0 left-0 z-10" : "right-0 bottom-0 z-20";
+  const hidden = isBefore
+    ? "-translate-x-6 opacity-0"
+    : "translate-x-6 opacity-0";
   return (
-    <div className="border-border relative aspect-[1206/607] w-full overflow-hidden rounded-[16px] border">
+    <div
+      className={`absolute ${place} aspect-[4/3] w-[68%] overflow-hidden rounded-[16px] border-4 border-white shadow-[0_20px_44px_rgba(22,32,26,0.24)] transition-all duration-700 ease-out ${
+        isBefore ? "" : "delay-150"
+      } motion-reduce:translate-x-0 motion-reduce:opacity-100 motion-reduce:transition-none ${
+        run ? "translate-x-0 opacity-100" : hidden
+      }`}
+    >
       <Image
         src={src}
         alt={alt}
         fill
-        sizes="(max-width: 1024px) 100vw, 700px"
-        priority
+        sizes="(max-width: 1024px) 60vw, 380px"
+        priority={isBefore}
         className="object-cover"
       />
       <span className="bg-ink/70 absolute top-3 left-3 rounded-full px-3 py-1 text-[12px] font-semibold text-white backdrop-blur-sm">
@@ -82,7 +98,7 @@ function MetricRow({
 }
 
 export function CasesSection() {
-  // 進入視窗（約 100px 進場）才啟動右側 ROI 數字 count-up。
+  // 進入視窗（約 100px 進場）才啟動照片滑入與右側 ROI 數字 count-up。
   const { ref, inView } = useInViewOnce<HTMLDivElement>("0px 0px -100px 0px");
   const c = HOME_CASE;
 
@@ -113,21 +129,32 @@ export function CasesSection() {
 
         <div
           ref={ref}
-          className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.05fr_0.95fr]"
+          className="grid grid-cols-1 items-center gap-6 lg:grid-cols-[1.05fr_0.95fr]"
         >
-          {/* 左：改造前後對照圖 */}
-          <Reveal direction="left" className="flex flex-col gap-3">
-            <CasePhoto
-              src={c.image}
-              label="改造前後對照"
-              alt={`${c.client}節能改造前後對照`}
-            />
+          {/* 左：交機前（左上）/ 交機後（右下）重疊 collage */}
+          <div className="flex flex-col gap-3">
+            <div className="relative aspect-[100/84] w-full">
+              <CollagePhoto
+                src={c.beforeImage}
+                label="交機前"
+                alt={`${c.client}交機前`}
+                position="before"
+                run={inView}
+              />
+              <CollagePhoto
+                src={c.afterImage}
+                label="交機後"
+                alt={`${c.client}交機後`}
+                position="after"
+                run={inView}
+              />
+            </div>
             <p className="text-text-muted text-[14px] leading-[1.6]">
               {c.client} · 導入變頻節能方案，機房改造前後對照。
             </p>
-          </Reveal>
+          </div>
 
-          {/* 右：ROI 數據面板 */}
+          {/* 右：ROI 數據面板（滑入 + 數字 count-up） */}
           <Reveal direction="right" delay={80}>
             <div className="border-steel flex flex-col rounded-[18px] border bg-[linear-gradient(140deg,#3a4a42,#1d2620_70%)] p-8">
               <div className="flex items-center justify-between border-b border-white/10 pb-5">
