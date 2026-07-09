@@ -108,12 +108,12 @@ const COST_TREND = [100, 91, 80, 70, 62, 56, 52];
 
 function MiniTrend({ run }: { run: boolean }) {
   return (
-    <div className="flex shrink-0 flex-col items-end gap-2">
-      <div className="flex h-32 items-end gap-2">
+    <div className="flex h-full min-h-[150px] shrink-0 flex-col items-end gap-2">
+      <div className="flex flex-1 items-end gap-2">
         {COST_TREND.map((h, i) => (
           <span
             key={i}
-            className="from-primary-deep to-primary-soft w-4 rounded-t-[4px] bg-gradient-to-t transition-[height] duration-700 ease-out motion-reduce:transition-none"
+            className="from-primary-deep to-primary-soft w-5 rounded-t-[4px] bg-gradient-to-t transition-[height] duration-700 ease-out motion-reduce:transition-none"
             style={{
               height: run ? `${h}%` : "0%",
               transitionDelay: run ? `${i * 70}ms` : "0ms",
@@ -233,34 +233,33 @@ export function CasesSection() {
                 className="bg-primary/25 pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full blur-3xl"
               />
               <div className="relative flex flex-col">
-                <div className="flex items-center justify-between">
+                {/* 上區：左＝資訊直欄（ROI 數據 / 某製造廠+ESG / 大數字），右＝圖表等高 */}
+                <div className="flex items-stretch justify-between gap-5">
                   <div className="flex flex-col gap-1">
                     <span className="text-text-on-dark-muted font-mono text-[12px] tracking-[0.5px] uppercase">
                       ROI 數據
                     </span>
-                    <span className="text-[20px] font-bold text-white">
-                      {c.client}
-                    </span>
-                  </div>
-                  <span className="bg-brass-soft text-ink inline-flex items-center gap-1.5 rounded-[20px] px-3 py-1.5 text-[13px] font-semibold">
-                    <Leaf size={13} aria-hidden="true" />
-                    ESG
-                  </span>
-                </div>
-
-                {/* 主打大數字 + brass 細線 + 電費趨勢迷你長條圖 */}
-                <div className="mt-6 flex items-end justify-between gap-4">
-                  <div className="flex flex-col gap-2">
-                    <span
-                      aria-hidden="true"
-                      className="h-[3px] w-[64px] rounded-[2px] bg-[linear-gradient(90deg,var(--color-brass-deep),var(--color-brass)_35%,transparent)]"
-                    />
-                    <span className="text-text-on-dark-muted text-[13px]">
-                      {hero.label}
-                    </span>
-                    <span className="text-primary-soft font-mono text-[46px] leading-none font-bold tabular-nums sm:text-[52px]">
-                      <AnimatedNumber raw={hero.value} run={inView} />
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="text-[20px] font-bold text-white">
+                        {c.client}
+                      </span>
+                      <span className="bg-brass-soft text-ink inline-flex items-center gap-1.5 rounded-[20px] px-3 py-1 text-[13px] font-semibold">
+                        <Leaf size={13} aria-hidden="true" />
+                        ESG
+                      </span>
+                    </div>
+                    <div className="mt-4 flex flex-col gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-[3px] w-[64px] rounded-[2px] bg-[linear-gradient(90deg,var(--color-brass-deep),var(--color-brass)_35%,transparent)]"
+                      />
+                      <span className="text-text-on-dark-muted text-[13px]">
+                        {hero.label}
+                      </span>
+                      <span className="text-primary-soft font-mono text-[46px] leading-none font-bold tabular-nums sm:text-[52px]">
+                        <AnimatedNumber raw={hero.value} run={inView} />
+                      </span>
+                    </div>
                   </div>
                   <MiniTrend run={inView} />
                 </div>
