@@ -17,9 +17,9 @@ import {
   useInViewOnce,
 } from "@/components/home/scrollAnimate";
 
-// Cases — 客戶實績（全球傳動）。左側交機前 / 交機後照片 collage（左上 + 右下重疊），
-// 右側 ROI 數據。捲入視窗時：兩張照片由左 / 右滑入、右側數字 0 count-up
-// （尊重 reduced-motion）。
+// Cases — 客戶實績（匿名製造廠）。左側改善前 / 改善後照片 collage（左上 + 右下重疊、
+// 交機後壓去背 logo、左下浮動亮點徽章），右側 ROI 數據面板（主打大數字 + 支撐數據
+// + CTA）。捲入視窗時照片左右滑入、數字 0 count-up（尊重 reduced-motion）。
 const METRIC_ICONS: Record<string, LucideIcon> = {
   zap: Zap,
   wallet: Wallet,
@@ -40,7 +40,6 @@ function CollagePhoto({
   alt: string;
   position: "before" | "after";
   run: boolean;
-  /** 去背 logo（右下角浮水印），僅交機後照片帶入。 */
   logo?: string;
 }) {
   const isBefore = position === "before";
@@ -81,39 +80,54 @@ function CollagePhoto({
   );
 }
 
-function MetricRow({
-  metric,
-  run,
-  first,
-}: {
-  metric: RoiMetric;
-  run: boolean;
-  first: boolean;
-}) {
+/** 左下浮動亮點徽章：把改善故事直接連到關鍵成果。 */
+function SpotlightBadge({ metric, run }: { metric: RoiMetric; run: boolean }) {
   const Icon = METRIC_ICONS[metric.icon] ?? Zap;
   return (
     <div
-      className={`flex items-center gap-4 py-4 ${first ? "" : "border-t border-white/10"}`}
+      className={`border-border absolute bottom-0 left-0 z-30 flex items-center gap-3 rounded-[16px] border bg-white/95 py-3 pr-5 pl-4 shadow-[0_16px_36px_rgba(22,32,26,0.18)] backdrop-blur-sm transition-all delay-300 duration-700 ease-out motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none ${
+        run ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+      }`}
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10">
-        <Icon size={20} className="text-primary-soft" aria-hidden="true" />
+      <span className="bg-primary-soft/20 flex h-10 w-10 items-center justify-center rounded-full">
+        <Icon size={18} className="text-primary-deep" aria-hidden="true" />
       </span>
-      <div className="flex flex-col gap-0.5">
-        <span className="text-text-on-dark-muted text-[13px]">
-          {metric.label}
-        </span>
-        <span className="font-mono text-[22px] font-bold text-white tabular-nums sm:text-[24px]">
+      <span className="flex flex-col">
+        <span className="text-text-muted text-[12px]">{metric.label}</span>
+        <span className="text-ink font-mono text-[20px] font-bold tabular-nums">
           <AnimatedNumber raw={metric.value} run={run} />
         </span>
-      </div>
+      </span>
+    </div>
+  );
+}
+
+/** 右側面板支撐數據列。 */
+function MetricRow({ metric, run }: { metric: RoiMetric; run: boolean }) {
+  const Icon = METRIC_ICONS[metric.icon] ?? Zap;
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-white/10 py-3.5">
+      <span className="flex items-center gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
+          <Icon size={17} className="text-primary-soft" aria-hidden="true" />
+        </span>
+        <span className="text-text-on-dark-muted text-[14px]">
+          {metric.label}
+        </span>
+      </span>
+      <span className="font-mono text-[18px] font-bold text-white tabular-nums">
+        <AnimatedNumber raw={metric.value} run={run} />
+      </span>
     </div>
   );
 }
 
 export function CasesSection() {
-  // 進入視窗（約 100px 進場）才啟動照片滑入與右側 ROI 數字 count-up。
+  // 進入視窗（約 100px 進場）才啟動照片滑入與右側數字 count-up。
   const { ref, inView } = useInViewOnce<HTMLDivElement>("0px 0px -100px 0px");
   const c = HOME_CASE;
+  const hero = c.metrics[0];
+  const rest = c.metrics.slice(1);
 
   return (
     <section className="border-border bg-surface overflow-x-clip border-b">
@@ -124,7 +138,7 @@ export function CasesSection() {
               CASE STUDIES · 客戶實績
             </p>
             <h2 className="text-ink text-[26px] font-bold sm:text-[32px]">
-              數字會說話：{c.client}節能實績
+              數字會說話：{c.client}節能改造
             </h2>
             <p className="text-text-muted max-w-[640px] text-[15px] leading-[1.6]">
               導入變頻節能方案後的實測 ROI ——
@@ -144,57 +158,95 @@ export function CasesSection() {
           ref={ref}
           className="grid grid-cols-1 items-center gap-6 lg:grid-cols-[1.05fr_0.95fr]"
         >
-          {/* 左：交機前（左上）/ 交機後（右下）重疊 collage */}
-          <div className="flex flex-col gap-3">
+          {/* 左：改善前（左上）/ 改善後（右下）重疊 collage + 浮動亮點 + 標籤 */}
+          <div className="flex flex-col gap-4">
             <div className="relative aspect-[100/84] w-full">
               <CollagePhoto
                 src={c.beforeImage}
-                label="交機前"
-                alt={`${c.client}交機前`}
+                label="改善前"
+                alt={`${c.client}改善前`}
                 position="before"
                 run={inView}
               />
               <CollagePhoto
                 src={c.afterImage}
-                label="交機後"
-                alt={`${c.client}交機後`}
+                label="改善後"
+                alt={`${c.client}改善後`}
                 position="after"
                 run={inView}
                 logo={c.logo}
               />
+              <SpotlightBadge metric={c.spotlight} run={inView} />
             </div>
-            <p className="text-text-muted text-[14px] leading-[1.6]">
-              {c.client} · 導入變頻節能方案，機房改造前後對照。
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {c.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="border-border text-text-muted bg-surface-muted rounded-full border px-3 py-1 text-[12.5px] font-medium"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
           </div>
 
-          {/* 右：ROI 數據面板（滑入 + 數字 count-up） */}
+          {/* 右：ROI 面板（主打大數字 + 支撐數據 + CTA + 光暈） */}
           <Reveal direction="right" delay={80}>
-            <div className="border-steel flex flex-col rounded-[18px] border bg-[linear-gradient(140deg,#3a4a42,#1d2620_70%)] p-8">
-              <div className="flex items-center justify-between border-b border-white/10 pb-5">
-                <div className="flex flex-col gap-1">
-                  <span className="text-text-on-dark-muted font-mono text-[12px] tracking-[0.5px] uppercase">
-                    ROI 數據
-                  </span>
-                  <span className="text-[22px] font-bold text-white">
-                    {c.client}
+            <div className="border-steel relative overflow-hidden rounded-[18px] border bg-[linear-gradient(140deg,#3a4a42,#1d2620_70%)] p-8">
+              {/* 綠色光暈點綴 */}
+              <div
+                aria-hidden="true"
+                className="bg-primary/25 pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full blur-3xl"
+              />
+              <div className="relative flex flex-col">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-text-on-dark-muted font-mono text-[12px] tracking-[0.5px] uppercase">
+                      ROI 數據
+                    </span>
+                    <span className="text-[20px] font-bold text-white">
+                      {c.client}
+                    </span>
+                  </div>
+                  <span className="bg-brass-soft text-ink inline-flex items-center gap-1.5 rounded-[20px] px-3 py-1.5 text-[13px] font-semibold">
+                    <Leaf size={13} aria-hidden="true" />
+                    ESG
                   </span>
                 </div>
-                <span className="bg-brass-soft text-ink inline-flex items-center gap-1.5 rounded-[20px] px-3 py-1.5 text-[13px] font-semibold">
-                  <Leaf size={13} aria-hidden="true" />
-                  ESG
-                </span>
-              </div>
 
-              <div className="flex flex-col pt-2">
-                {c.metrics.map((metric, i) => (
-                  <MetricRow
-                    key={metric.label}
-                    metric={metric}
-                    run={inView}
-                    first={i === 0}
+                {/* 主打大數字 + brass 細線 */}
+                <div className="mt-6 flex flex-col gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="h-[3px] w-[64px] rounded-[2px] bg-[linear-gradient(90deg,var(--color-brass-deep),var(--color-brass)_35%,transparent)]"
                   />
-                ))}
+                  <span className="text-text-on-dark-muted text-[13px]">
+                    {hero.label}
+                  </span>
+                  <span className="text-primary-soft font-mono text-[46px] leading-none font-bold tabular-nums sm:text-[52px]">
+                    <AnimatedNumber raw={hero.value} run={inView} />
+                  </span>
+                </div>
+
+                {/* 支撐數據 */}
+                <div className="mt-6 flex flex-col">
+                  {rest.map((metric) => (
+                    <MetricRow
+                      key={metric.label}
+                      metric={metric}
+                      run={inView}
+                    />
+                  ))}
+                </div>
+
+                {/* CTA */}
+                <Link
+                  href="/contact"
+                  className="bg-primary-soft text-ink focus-visible:ring-primary-soft mt-7 inline-flex items-center justify-center gap-2 rounded-[26px] px-6 py-3 text-[15px] font-semibold transition-colors hover:bg-white focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  預約節能評估
+                  <ArrowRight size={16} aria-hidden="true" />
+                </Link>
               </div>
             </div>
           </Reveal>

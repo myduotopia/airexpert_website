@@ -11,24 +11,32 @@ export interface RoiMetric {
   value: string;
 }
 
-/** 客戶實績個案：左側交機前/後 collage、右側 ROI 數據。 */
+/** 客戶實績個案：左側改善前/後 collage、右側 ROI 數據。 */
 export interface HomeCaseStudy {
+  /** 匿名客戶稱呼（不揭露公司名）。 */
   client: string;
-  /** 交機前照片（collage 左上）。 */
+  /** 情境標籤（左側 chips）。 */
+  tags: string[];
+  /** 改善前照片（collage 左上）。 */
   beforeImage: string;
-  /** 交機後照片（collage 右下）。 */
+  /** 改善後照片（collage 右下）。 */
   afterImage: string;
-  /** 去背 logo（壓在交機後照片右下角）。 */
+  /** 去背 logo（壓在改善後照片右下角）。 */
   logo: string;
+  /** 浮動亮點徽章（壓在 collage 左下角）。 */
+  spotlight: RoiMetric;
+  /** 右側面板主打大數字（第 1 項）＋支撐數據（其餘）。 */
   metrics: RoiMetric[];
 }
 
-/** 首頁客戶實績（全球傳動 · 實際 ROI 數據）。 */
+/** 首頁客戶實績（匿名 · 實際 ROI 數據）。 */
 export const HOME_CASE: HomeCaseStudy = {
-  client: "全球傳動",
+  client: "某製造廠",
+  tags: ["製造業", "變頻空壓系統", "ESG 減碳"],
   beforeImage: "/cases/1_0.jpg",
   afterImage: "/cases/2_0.jpg",
   logo: "/cases/logo.png",
+  spotlight: { icon: "clock", label: "投資回收", value: "1.5 年" },
   metrics: [
     { icon: "zap", label: "節電率高達", value: "32.68%" },
     { icon: "wallet", label: "年省電費", value: "約 385 萬" },
