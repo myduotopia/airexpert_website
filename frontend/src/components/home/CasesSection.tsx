@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Clock,
   Leaf,
+  TrendingDown,
   Wallet,
   Zap,
   type LucideIcon,
@@ -97,6 +98,32 @@ function SpotlightBadge({ metric, run }: { metric: RoiMetric; run: boolean }) {
         <span className="text-ink font-mono text-[20px] font-bold tabular-nums">
           <AnimatedNumber raw={metric.value} run={run} />
         </span>
+      </span>
+    </div>
+  );
+}
+
+// 電費逐月下降趨勢（示意）：長條相對高度（%），進場時由 0 依序長上來。
+const COST_TREND = [100, 91, 80, 70, 62, 56, 52];
+
+function MiniTrend({ run }: { run: boolean }) {
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1.5">
+      <div className="flex h-16 items-end gap-1">
+        {COST_TREND.map((h, i) => (
+          <span
+            key={i}
+            className="from-primary-deep to-primary-soft w-2 rounded-t-[3px] bg-gradient-to-t transition-[height] duration-700 ease-out motion-reduce:transition-none"
+            style={{
+              height: run ? `${h}%` : "0%",
+              transitionDelay: run ? `${i * 70}ms` : "0ms",
+            }}
+          />
+        ))}
+      </div>
+      <span className="text-text-on-dark-muted inline-flex items-center gap-1 text-[11px]">
+        <TrendingDown size={12} aria-hidden="true" />
+        月電費逐月下降
       </span>
     </div>
   );
@@ -221,18 +248,21 @@ export function CasesSection() {
                   </span>
                 </div>
 
-                {/* 主打大數字 + brass 細線 */}
-                <div className="mt-6 flex flex-col gap-2">
-                  <span
-                    aria-hidden="true"
-                    className="h-[3px] w-[64px] rounded-[2px] bg-[linear-gradient(90deg,var(--color-brass-deep),var(--color-brass)_35%,transparent)]"
-                  />
-                  <span className="text-text-on-dark-muted text-[13px]">
-                    {hero.label}
-                  </span>
-                  <span className="text-primary-soft font-mono text-[46px] leading-none font-bold tabular-nums sm:text-[52px]">
-                    <AnimatedNumber raw={hero.value} run={inView} />
-                  </span>
+                {/* 主打大數字 + brass 細線 + 電費趨勢迷你長條圖 */}
+                <div className="mt-6 flex items-end justify-between gap-4">
+                  <div className="flex flex-col gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="h-[3px] w-[64px] rounded-[2px] bg-[linear-gradient(90deg,var(--color-brass-deep),var(--color-brass)_35%,transparent)]"
+                    />
+                    <span className="text-text-on-dark-muted text-[13px]">
+                      {hero.label}
+                    </span>
+                    <span className="text-primary-soft font-mono text-[46px] leading-none font-bold tabular-nums sm:text-[52px]">
+                      <AnimatedNumber raw={hero.value} run={inView} />
+                    </span>
+                  </div>
+                  <MiniTrend run={inView} />
                 </div>
 
                 {/* 支撐數據 */}
