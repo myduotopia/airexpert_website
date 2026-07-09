@@ -108,12 +108,12 @@ const COST_TREND = [100, 91, 80, 70, 62, 56, 52];
 
 function MiniTrend({ run }: { run: boolean }) {
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1.5">
-      <div className="flex h-16 items-end gap-1">
+    <div className="flex shrink-0 flex-col items-end gap-2">
+      <div className="flex h-32 items-end gap-2">
         {COST_TREND.map((h, i) => (
           <span
             key={i}
-            className="from-primary-deep to-primary-soft w-2 rounded-t-[3px] bg-gradient-to-t transition-[height] duration-700 ease-out motion-reduce:transition-none"
+            className="from-primary-deep to-primary-soft w-4 rounded-t-[4px] bg-gradient-to-t transition-[height] duration-700 ease-out motion-reduce:transition-none"
             style={{
               height: run ? `${h}%` : "0%",
               transitionDelay: run ? `${i * 70}ms` : "0ms",
@@ -121,8 +121,8 @@ function MiniTrend({ run }: { run: boolean }) {
           />
         ))}
       </div>
-      <span className="text-text-on-dark-muted inline-flex items-center gap-1 text-[11px]">
-        <TrendingDown size={12} aria-hidden="true" />
+      <span className="text-text-on-dark-muted inline-flex items-center gap-1 text-[12px]">
+        <TrendingDown size={14} aria-hidden="true" />
         月電費逐月下降
       </span>
     </div>
