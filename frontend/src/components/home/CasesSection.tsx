@@ -193,6 +193,13 @@ export function CasesSection() {
           {/* 右：ROI 面板（主打大數字 + 支撐數據 + CTA + 光暈） */}
           <Reveal direction="right" delay={80}>
             <div className="border-steel relative overflow-hidden rounded-[18px] border bg-[linear-gradient(140deg,#3a4a42,#1d2620_70%)] p-8">
+              {/* 底色漸層：進場（數字 count-up）時由深慢慢轉淺 —— 疊一層較淺漸層淡入 */}
+              <div
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,#55695d,#2b3630_70%)] transition-opacity duration-[1600ms] ease-out motion-reduce:transition-none ${
+                  inView ? "opacity-100" : "opacity-0"
+                }`}
+              />
               {/* 綠色光暈點綴 */}
               <div
                 aria-hidden="true"
