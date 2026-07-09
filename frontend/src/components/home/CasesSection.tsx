@@ -196,7 +196,7 @@ export function CasesSection() {
               {/* 底色漸層：進場（數字 count-up）時由深慢慢轉淺 —— 疊一層較淺漸層淡入 */}
               <div
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,#55695d,#2b3630_70%)] transition-opacity duration-[1600ms] ease-out motion-reduce:transition-none ${
+                className={`pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,#6d8579,#38443d_70%)] transition-opacity duration-[2600ms] ease-out motion-reduce:transition-none ${
                   inView ? "opacity-100" : "opacity-0"
                 }`}
               />
