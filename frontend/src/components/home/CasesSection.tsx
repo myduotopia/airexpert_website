@@ -108,8 +108,8 @@ const COST_TREND = [100, 91, 80, 70, 62, 56, 52];
 
 function MiniTrend({ run }: { run: boolean }) {
   return (
-    <div className="flex h-full min-h-[150px] shrink-0 flex-col items-end gap-2">
-      <div className="flex flex-1 items-end gap-2">
+    <div className="flex shrink-0 flex-col items-end gap-2">
+      <div className="flex h-44 items-end gap-2">
         {COST_TREND.map((h, i) => (
           <span
             key={i}
@@ -233,8 +233,8 @@ export function CasesSection() {
                 className="bg-primary/25 pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full blur-3xl"
               />
               <div className="relative flex flex-col">
-                {/* 上區：左＝資訊直欄（ROI 數據 / 某製造廠+ESG / 大數字），右＝圖表等高 */}
-                <div className="flex items-stretch justify-between gap-5">
+                {/* 上區：左＝資訊直欄（ROI 數據 / 某製造廠+ESG / 大數字），右＝加高圖表 */}
+                <div className="flex items-end justify-between gap-5">
                   <div className="flex flex-col gap-1">
                     <span className="text-text-on-dark-muted font-mono text-[12px] tracking-[0.5px] uppercase">
                       ROI 數據
