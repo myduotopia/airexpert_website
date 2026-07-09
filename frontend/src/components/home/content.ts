@@ -31,7 +31,7 @@ export interface HomeCaseStudy {
 
 /** 首頁客戶實績（匿名 · 實際 ROI 數據）。 */
 export const HOME_CASE: HomeCaseStudy = {
-  client: "某製造廠",
+  client: "機械製造廠",
   tags: ["製造業", "變頻空壓系統", "ESG 減碳"],
   beforeImage: "/cases/1_0.jpg",
   afterImage: "/cases/2_0.jpg",
