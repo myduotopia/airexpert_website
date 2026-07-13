@@ -45,6 +45,20 @@ export const HOME_CASE: HomeCaseStudy = {
   ],
 };
 
+/** 指標性客戶 logo（只顯示 logo，不顯示公司名/代號；name 僅供 alt 使用）。 */
+export interface HomeClient {
+  name: string;
+  logo: string;
+}
+
+export const HOME_CLIENTS: HomeClient[] = [
+  { name: "家登精密工業", logo: "/clients/gudeng.svg" },
+  { name: "家碩科技", logo: "/clients/gdauto.png" },
+  { name: "全球傳動科技", logo: "/clients/tbi.png" },
+  { name: "和成欣業 HCG", logo: "/clients/hcg.svg" },
+  { name: "春源鋼鐵", logo: "/clients/cysteel.svg" },
+];
+
 export interface HomeServiceStep {
   /** lucide 圖示名稱（由 ServiceProcess 對應成元件）。 */
   icon: string;

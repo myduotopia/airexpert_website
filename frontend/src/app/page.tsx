@@ -3,6 +3,7 @@ import { StatBar } from "@/components/home/StatBar";
 import { CasesSection } from "@/components/home/CasesSection";
 import { ProductShowcase } from "@/components/home/ProductShowcase";
 import { NewsTeaser } from "@/components/home/NewsTeaser";
+import { ClientLogos } from "@/components/home/ClientLogos";
 import { ServiceProcess } from "@/components/home/ServiceProcess";
 import { SocialFollow } from "@/components/home/SocialFollow";
 import type { NewsCardProps } from "@/components/NewsCard";
@@ -41,6 +42,9 @@ export default async function Home() {
       <CasesSection />
       <ProductShowcase content={home.products} />
       <NewsTeaser content={home.news} items={newsItems} />
+      {/* PREVIEW：指標性客戶 logo 牆 A / B 兩版並列供客戶挑選；定案後只留一版並移除 previewLabel。 */}
+      <ClientLogos variant="gray" previewLabel="版本 A · 灰階，滑過變彩色" />
+      <ClientLogos variant="color" previewLabel="版本 B · 直接彩色" />
       <SocialFollow content={home.social} />
     </>
   );
