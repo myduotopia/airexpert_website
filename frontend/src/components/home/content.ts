@@ -45,18 +45,35 @@ export const HOME_CASE: HomeCaseStudy = {
   ],
 };
 
-/** 指標性客戶 logo（只顯示 logo，不顯示公司名/代號；name 僅供 alt 使用）。 */
+/**
+ * 指標性客戶。卡片內只顯示 logo（name 僅供 alt）；有股票代號者於 logo 下方
+ * 加一行「上市公司股票代號：xxxx」，未上市者不顯示該行。
+ */
 export interface HomeClient {
   name: string;
-  logo: string;
+  /** logo 圖檔路徑；查無官方 logo 檔時留空，改以公司名文字呈現。 */
+  logo?: string;
+  /** 上市公司股票代號；未上市留空（不顯示代號行）。 */
+  code?: string;
 }
 
 export const HOME_CLIENTS: HomeClient[] = [
-  { name: "家登精密工業", logo: "/clients/gudeng.svg" },
-  { name: "家碩科技", logo: "/clients/gdauto.png" },
-  { name: "全球傳動科技", logo: "/clients/tbi.png" },
-  { name: "和成欣業 HCG", logo: "/clients/hcg.svg" },
-  { name: "春源鋼鐵", logo: "/clients/cysteel.svg" },
+  { name: "家登精密工業", logo: "/clients/gudeng.svg", code: "3680" },
+  { name: "家碩科技", logo: "/clients/gdauto.png", code: "6953" },
+  { name: "全球傳動科技", logo: "/clients/tbi.png", code: "4540" },
+  { name: "兆利科技工業", logo: "/clients/jarllytec.png", code: "3548" },
+  { name: "和成欣業 HCG", logo: "/clients/hcg.svg", code: "1810" },
+  { name: "巧新科技工業", logo: "/clients/superalloy.svg", code: "1563" },
+  { name: "春源鋼鐵", logo: "/clients/cysteel.svg", code: "2010" },
+  { name: "景美科技", logo: "/clients/cmat.svg", code: "7899" },
+  { name: "大毅科技", logo: "/clients/tai.svg", code: "2478" },
+  // 悅城科技：官網無可用的 logo 圖檔（僅有廠房 banner），暫以公司名文字呈現。
+  { name: "悅城科技", code: "6405" },
+  { name: "台灣積層工業", logo: "/clients/lamination.png", code: "8999" },
+  { name: "力鵬企業", logo: "/clients/lipeng.png", code: "1447" },
+  // 以下未上市，不顯示股票代號行。
+  { name: "碩頂精密工業", logo: "/clients/suting.png" },
+  { name: "圓達科技", logo: "/clients/fusiontech.png" },
 ];
 
 export interface HomeServiceStep {

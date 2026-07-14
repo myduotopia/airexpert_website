@@ -40,20 +40,34 @@ export function ClientLogos({
           </p>
         </Reveal>
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-7">
           {HOME_CLIENTS.map((client, i) => (
-            <Reveal key={client.name} delay={i * 70}>
-              <div className="group border-border bg-surface hover:border-primary flex h-[112px] items-center justify-center rounded-2xl border p-5 transition-all hover:shadow-[0_10px_26px_rgba(22,32,26,0.08)]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={client.logo}
-                  alt={client.name}
-                  className={`max-h-14 max-w-full object-contain ${
-                    gray
-                      ? "opacity-70 grayscale transition duration-300 group-hover:opacity-100 group-hover:grayscale-0"
-                      : ""
-                  }`}
-                />
+            <Reveal key={client.name} delay={i * 50}>
+              <div className="flex flex-col items-center gap-2">
+                <div className="group border-border bg-surface hover:border-primary flex h-[104px] w-full items-center justify-center rounded-2xl border p-4 transition-all hover:shadow-[0_10px_26px_rgba(22,32,26,0.08)]">
+                  {client.logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={client.logo}
+                      alt={client.name}
+                      className={`max-h-14 max-w-full object-contain ${
+                        gray
+                          ? "opacity-70 grayscale transition duration-300 group-hover:opacity-100 group-hover:grayscale-0"
+                          : ""
+                      }`}
+                    />
+                  ) : (
+                    // 查無官方 logo 檔者，以公司名文字呈現。
+                    <span className="text-ink text-center text-[15px] leading-tight font-bold">
+                      {client.name}
+                    </span>
+                  )}
+                </div>
+                {client.code ? (
+                  <span className="text-text-muted text-center text-[11.5px] leading-tight">
+                    上市公司股票代號：{client.code}
+                  </span>
+                ) : null}
               </div>
             </Reveal>
           ))}
