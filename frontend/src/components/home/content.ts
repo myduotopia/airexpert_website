@@ -51,8 +51,13 @@ export const HOME_CASE: HomeCaseStudy = {
  */
 export interface HomeClient {
   name: string;
-  /** logo 圖檔路徑；查無官方 logo 檔時留空，改以公司名文字呈現。 */
+  /** logo 圖檔路徑；查無官方 logo 檔時留空，改以 wordmark / 公司名文字呈現。 */
   logo?: string;
+  /**
+   * 無 logo 圖檔時的替代字標（向量文字、任何尺寸都銳利）。
+   * text = 主字（品牌色），sub = 下方小字。
+   */
+  wordmark?: { text: string; sub?: string };
   /** 上市公司股票代號；未上市留空（不顯示代號行）。 */
   code?: string;
 }
@@ -67,8 +72,12 @@ export const HOME_CLIENTS: HomeClient[] = [
   { name: "春源鋼鐵", logo: "/clients/cysteel.svg", code: "2010" },
   { name: "景美科技", logo: "/clients/cmat.svg", code: "7899" },
   { name: "大毅科技", logo: "/clients/tai.svg", code: "2478" },
-  // 悅城科技：官網無可用的 logo 圖檔（僅有廠房 banner），暫以公司名文字呈現。
-  { name: "悅城科技", code: "6405" },
+  // 悅城科技：官網無可用的 logo 圖檔（僅有廠房 banner），改以向量字標呈現（銳利、可縮放）。
+  {
+    name: "悅城科技 ONANO",
+    wordmark: { text: "ONANO", sub: "ONANO INDUSTRIAL CORP." },
+    code: "6405",
+  },
   { name: "台灣積層工業", logo: "/clients/lamination.png", code: "8999" },
   { name: "力鵬企業", logo: "/clients/lipeng.png", code: "1447" },
   // 以下未上市，不顯示股票代號行。
