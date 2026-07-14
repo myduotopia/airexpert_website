@@ -80,7 +80,14 @@ export const HOME_CLIENTS: HomeClient[] = [
   },
   { name: "台灣積層工業", logo: "/clients/lamination.png", code: "8999" },
   { name: "力鵬企業", logo: "/clients/lipeng.png", code: "1447" },
-  // 以下未上市，不顯示股票代號行。
+  { name: "千興不銹鋼", logo: "/clients/chienshing.png", code: "2025" },
+  { name: "榮剛材料科技", logo: "/clients/gmtc.svg", code: "5009" },
+  { name: "建通精密工業", logo: "/clients/gem.svg", code: "2460" },
+  { name: "正瀚生技", logo: "/clients/chbio.svg", code: "6534" },
+  { name: "安心食品服務 摩斯漢堡", logo: "/clients/mos.png", code: "1259" },
+  { name: "三星科技", logo: "/clients/sanshing.svg", code: "5007" },
+  { name: "台橡 TSRC", logo: "/clients/tsrc.svg", code: "2103" },
+  // 以下未上市，不顯示股票代號行（排在最後，讓有代號者版面一致）。
   { name: "碩頂精密工業", logo: "/clients/suting.png" },
   { name: "圓達科技", logo: "/clients/fusiontech.png" },
 ];
