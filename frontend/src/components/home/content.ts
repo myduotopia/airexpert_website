@@ -3,41 +3,47 @@
 // 為避免牽動既有 site_settings / 後台 SectionForms（本次不做新區塊後台表單），
 // 暫以型別化常數集中於此，元件直接 import。圖示以 lucide 名稱字串表示，由元件對應。
 
-/** Cases 卡片內的 before / after 單一長條。pct 為長條相對寬度（0–100）。 */
-export interface HomeCaseBar {
+/** 客戶實績的一筆 ROI 指標（右側數據列）。icon 為 lucide 名稱，由元件對應。 */
+export interface RoiMetric {
+  icon: string;
   label: string;
+  /** 數值字串，可含前後綴（AnimatedNumber 會 count-up 其中的數字）。 */
   value: string;
-  pct: number;
 }
 
-export interface HomeCase {
-  /** 產業別（深色卡左上 chip）。 */
-  industry: string;
-  /** 減碳幅度（右上金色徽章），例：「−36%」。 */
-  reduction: string;
-  before: HomeCaseBar;
-  after: HomeCaseBar;
-  /** 卡片底部年省電費文案。 */
-  saving: string;
+/** 客戶實績個案：左側改善前/後 collage、右側 ROI 數據。 */
+export interface HomeCaseStudy {
+  /** 匿名客戶稱呼（不揭露公司名）。 */
+  client: string;
+  /** 情境標籤（左側 chips）。 */
+  tags: string[];
+  /** 改善前照片（collage 左上）。 */
+  beforeImage: string;
+  /** 改善後照片（collage 右下）。 */
+  afterImage: string;
+  /** 去背 logo（壓在改善後照片右下角）。 */
+  logo: string;
+  /** 浮動亮點徽章（壓在 collage 左下角）。 */
+  spotlight: RoiMetric;
+  /** 右側面板主打大數字（第 1 項）＋支撐數據（其餘）。 */
+  metrics: RoiMetric[];
 }
 
-/** 客戶實績（模擬數據，實際案例待業主提供）。 */
-export const HOME_CASES: HomeCase[] = [
-  {
-    industry: "半導體大廠",
-    reduction: "減碳 −36%",
-    before: { label: "導入前 月電費", value: "88 萬", pct: 100 },
-    after: { label: "導入後 月電費", value: "56 萬", pct: 64 },
-    saving: "年省電費 320 萬",
-  },
-  {
-    industry: "食品飲料廠",
-    reduction: "減碳 −31%",
-    before: { label: "導入前 月電費", value: "42 萬", pct: 100 },
-    after: { label: "導入後 月電費", value: "27 萬", pct: 64 },
-    saving: "年省電費 180 萬",
-  },
-];
+/** 首頁客戶實績（匿名 · 實際 ROI 數據）。 */
+export const HOME_CASE: HomeCaseStudy = {
+  client: "機械製造廠",
+  tags: ["製造業", "變頻空壓系統", "ESG 減碳"],
+  beforeImage: "/cases/1_0.jpg",
+  afterImage: "/cases/2_0.jpg",
+  logo: "/cases/logo.png",
+  spotlight: { icon: "clock", label: "投資回收", value: "1.5 年" },
+  metrics: [
+    { icon: "zap", label: "節電率高達", value: "32.68%" },
+    { icon: "wallet", label: "年省電費", value: "約 385 萬" },
+    { icon: "clock", label: "投資回收期 (ROI)", value: "1.5 年" },
+    { icon: "leaf", label: "綠色減碳效益", value: "年減約 476 噸 CO₂e" },
+  ],
+};
 
 export interface HomeServiceStep {
   /** lucide 圖示名稱（由 ServiceProcess 對應成元件）。 */
