@@ -28,12 +28,22 @@ export function ClientLogos() {
               <div className="flex flex-col items-center gap-2">
                 <div className="border-border bg-surface hover:border-primary flex h-[104px] w-full items-center justify-center rounded-2xl border p-4 transition-all hover:shadow-[0_10px_26px_rgba(22,32,26,0.08)]">
                   {client.logo ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={client.logo}
-                      alt={client.name}
-                      className="max-h-14 max-w-full object-contain"
-                    />
+                    // logo；若有 caption（只有圖標的 logo），圖標縮小並在下方補文字。
+                    <span className="flex flex-col items-center gap-1.5">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={client.logo}
+                        alt={client.name}
+                        className={`max-w-full object-contain ${
+                          client.caption ? "max-h-9" : "max-h-14"
+                        }`}
+                      />
+                      {client.caption ? (
+                        <span className="text-ink text-[14px] leading-none font-bold">
+                          {client.caption}
+                        </span>
+                      ) : null}
+                    </span>
                   ) : client.wordmark ? (
                     // 查無官方 logo 檔者，以向量字標呈現（任何尺寸都銳利）。
                     <span className="flex flex-col items-center gap-0.5 text-center">

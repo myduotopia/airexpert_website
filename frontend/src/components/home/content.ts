@@ -58,6 +58,8 @@ export interface HomeClient {
    * text = 主字（品牌色），sub = 下方小字。
    */
   wordmark?: { text: string; sub?: string };
+  /** 卡片內 logo 下方的文字（例如只有圖標、無公司名的 logo）。 */
+  caption?: string;
   /** 上市公司股票代號；未上市留空（不顯示代號行）。 */
   code?: string;
 }
@@ -89,7 +91,8 @@ export const HOME_CLIENTS: HomeClient[] = [
   { name: "台橡 TSRC", logo: "/clients/tsrc.svg", code: "2103" },
   // 以下未上市，不顯示股票代號行（排在最後，讓有代號者版面一致）。
   { name: "碩頂精密工業", logo: "/clients/suting.png" },
-  { name: "圓達科技", logo: "/clients/fusiontech.png" },
+  // 圓達 logo 只有圖標無文字：圖標縮小 + 下方補「圓達科技」。
+  { name: "圓達科技", logo: "/clients/fusiontech.png", caption: "圓達科技" },
 ];
 
 export interface HomeServiceStep {
