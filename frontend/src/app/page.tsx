@@ -3,6 +3,7 @@ import { StatBar } from "@/components/home/StatBar";
 import { CasesSection } from "@/components/home/CasesSection";
 import { ProductShowcase } from "@/components/home/ProductShowcase";
 import { NewsTeaser } from "@/components/home/NewsTeaser";
+import { ClientLogos } from "@/components/home/ClientLogos";
 import { ServiceProcess } from "@/components/home/ServiceProcess";
 import { SocialFollow } from "@/components/home/SocialFollow";
 import type { NewsCardProps } from "@/components/NewsCard";
@@ -41,6 +42,7 @@ export default async function Home() {
       <CasesSection />
       <ProductShowcase content={home.products} />
       <NewsTeaser content={home.news} items={newsItems} />
+      <ClientLogos />
       <SocialFollow content={home.social} />
     </>
   );

@@ -45,6 +45,56 @@ export const HOME_CASE: HomeCaseStudy = {
   ],
 };
 
+/**
+ * 指標性客戶。卡片內只顯示 logo（name 僅供 alt）；有股票代號者於 logo 下方
+ * 加一行「上市公司股票代號：xxxx」，未上市者不顯示該行。
+ */
+export interface HomeClient {
+  name: string;
+  /** logo 圖檔路徑；查無官方 logo 檔時留空，改以 wordmark / 公司名文字呈現。 */
+  logo?: string;
+  /**
+   * 無 logo 圖檔時的替代字標（向量文字、任何尺寸都銳利）。
+   * text = 主字（品牌色），sub = 下方小字。
+   */
+  wordmark?: { text: string; sub?: string };
+  /** 卡片內 logo 下方的文字（例如只有圖標、無公司名的 logo）。 */
+  caption?: string;
+  /** 上市公司股票代號；未上市留空（不顯示代號行）。 */
+  code?: string;
+}
+
+export const HOME_CLIENTS: HomeClient[] = [
+  { name: "家登精密工業", logo: "/clients/gudeng.svg", code: "3680" },
+  { name: "家碩科技", logo: "/clients/gdauto.png", code: "6953" },
+  { name: "全球傳動科技", logo: "/clients/tbi.png", code: "4540" },
+  { name: "兆利科技工業", logo: "/clients/jarllytec.png", code: "3548" },
+  { name: "和成欣業 HCG", logo: "/clients/hcg.svg", code: "1810" },
+  { name: "巧新科技工業", logo: "/clients/superalloy.svg", code: "1563" },
+  { name: "春源鋼鐵", logo: "/clients/cysteel.svg", code: "2010" },
+  { name: "景美科技", logo: "/clients/cmat.svg", code: "7899" },
+  { name: "大毅科技", logo: "/clients/tai.svg", code: "2478" },
+  // 悅城科技：官網無可用的 logo 圖檔（僅有廠房 banner），改以向量字標呈現（銳利、可縮放）。
+  {
+    name: "悅城科技 ONANO",
+    wordmark: { text: "ONANO", sub: "ONANO INDUSTRIAL CORP." },
+    code: "6405",
+  },
+  { name: "台灣積層工業", logo: "/clients/lamination.png", code: "8999" },
+  { name: "力鵬企業", logo: "/clients/lipeng.png", code: "1447" },
+  { name: "千興不銹鋼", logo: "/clients/chienshing.png", code: "2025" },
+  { name: "榮剛材料科技", logo: "/clients/gmtc.svg", code: "5009" },
+  { name: "建通精密工業", logo: "/clients/gem.svg", code: "2460" },
+  { name: "正瀚生技", logo: "/clients/chbio.svg", code: "6534" },
+  { name: "安心食品服務 摩斯漢堡", logo: "/clients/mos.png", code: "1259" },
+  { name: "三星科技", logo: "/clients/sanshing.svg", code: "5007" },
+  { name: "台橡 TSRC", logo: "/clients/tsrc.svg", code: "2103" },
+  // 以下未上市，不顯示股票代號行（排在最後，讓有代號者版面一致）。
+  { name: "碩頂精密工業", logo: "/clients/suting.png" },
+  // 圓達 logo 只有圖標無文字：圖標縮小 + 下方補「圓達科技」。
+  { name: "圓達科技", logo: "/clients/fusiontech.png", caption: "圓達科技" },
+];
+
 export interface HomeServiceStep {
   /** lucide 圖示名稱（由 ServiceProcess 對應成元件）。 */
   icon: string;
