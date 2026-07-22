@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      // 後台圖片 / 技術手冊 PDF 以 Server Action（uploadMedia）上傳，但 Server Action
+      // 請求主體預設上限僅 1MB —— 相機拍的商品照多為 2~8MB，會在傳輸層就被擋下，
+      // 表現為整頁崩潰（This page couldn't load）、表單內容全失、商品無法建立。
+      // 調高至 25MB 以對齊 uploadMedia 自身的 MAX_BYTES（見 lib/admin/storage.ts）。
+      bodySizeLimit: "25mb",
+    },
+  },
   images: {
     // Vercel Hobby 方案的 Image Optimization 有用量上限；超過後 /_next/image
     // 會回 402（OPTIMIZED_IMAGE_REQUEST_PAYMENT_REQUIRED），導致全站 next/image
