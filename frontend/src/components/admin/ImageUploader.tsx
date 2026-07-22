@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState, useTransition } from "react";
-import { uploadMedia } from "@/lib/admin/storage";
+import { uploadMediaDirect } from "@/lib/admin/upload-client";
 
 // 圖片上傳：選檔 → 上傳到 media bucket → 回傳公開 URL。
 // onUploaded 讓父層（表單）接住 URL 寫進對應欄位（如 images jsonb / logo_url）。
@@ -19,11 +19,8 @@ export function ImageUploader({
 
   function handleFile(file: File) {
     setError(null);
-    const fd = new FormData();
-    fd.set("file", file);
-    fd.set("folder", folder);
     startTransition(async () => {
-      const res = await uploadMedia(fd);
+      const res = await uploadMediaDirect(file, folder);
       if (res.ok) {
         setUrl(res.url);
         onUploaded?.(res.url);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { uploadMedia } from "@/lib/admin/storage";
+import { uploadMediaDirect } from "@/lib/admin/upload-client";
 
 // 非圖片檔案上傳（如技術手冊 PDF）：選檔 → 上傳到 media bucket → 回傳公開 URL。
 // 與 ImageUploader 同套路，但不顯示 <Image> 預覽，改以連結呈現已上傳檔案。
@@ -21,11 +21,8 @@ export function FileUploader({
 
   function handleFile(file: File) {
     setError(null);
-    const fd = new FormData();
-    fd.set("file", file);
-    fd.set("folder", folder);
     startTransition(async () => {
-      const res = await uploadMedia(fd);
+      const res = await uploadMediaDirect(file, folder);
       if (res.ok) {
         setUrl(res.url);
         onUploaded?.(res.url);
