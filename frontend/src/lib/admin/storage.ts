@@ -19,6 +19,56 @@ const ALLOWED = [
   "application/pdf",
 ];
 
+export type SignedUploadResult =
+  | { ok: true; path: string; token: string; url: string }
+  | { ok: false; error: string };
+
+/**
+ * 發給瀏覽器的「簽名上傳網址」——檔案由瀏覽器直傳 Supabase Storage，不經過本站
+ * 伺服器。這是必要的：Vercel Serverless Function 的請求主體硬上限為 4.5MB
+ * （平台限制、無法調高），大張商品照走 Server Action 會在傳輸層被擋，
+ * 表現為整頁崩潰。此處僅驗證身分與宣告的型別/大小並回傳簽名，體積不受限。
+ *
+ * 注意：size/contentType 由客戶端宣告（僅作前置擋門），真正的硬性上限請於
+ * Supabase bucket 設定 file size limit。
+ */
+export async function createMediaUploadUrl(input: {
+  folder?: string;
+  filename: string;
+  contentType?: string;
+  size?: number;
+}): Promise<SignedUploadResult> {
+  await requireAdmin();
+
+  if (typeof input.size === "number" && input.size > MAX_BYTES) {
+    return { ok: false, error: "檔案過大（上限 25MB）" };
+  }
+  if (input.contentType && !ALLOWED.includes(input.contentType)) {
+    return { ok: false, error: `不支援的檔案類型：${input.contentType}` };
+  }
+
+  const folder = String(input.folder ?? "uploads").replace(
+    /[^a-z0-9/_-]/gi,
+    "",
+  );
+  const ext = (input.filename.split(".").pop() ?? "bin")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  const rand = Math.round(Math.random() * 1e9);
+  const path = `${folder}/${Date.now()}-${rand}.${ext || "bin"}`;
+
+  const admin = getAdminSupabase();
+  const { data, error } = await admin.storage
+    .from("media")
+    .createSignedUploadUrl(path);
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "無法建立上傳網址" };
+  }
+
+  const { data: pub } = admin.storage.from("media").getPublicUrl(path);
+  return { ok: true, path: data.path, token: data.token, url: pub.publicUrl };
+}
+
 export async function uploadMedia(formData: FormData): Promise<UploadResult> {
   await requireAdmin();
 
