@@ -1,8 +1,9 @@
 import Link from "next/link";
 import {
-  ReorderableTable,
-  type ReorderColumn,
-} from "@/components/admin/ReorderableTable";
+  AdminTable,
+  type AdminColumn,
+  type AdminRow,
+} from "@/components/admin/AdminTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import type { Product } from "@/lib/types";
@@ -18,16 +19,17 @@ export const metadata = { title: "商品介紹 · 後台" };
 export default async function AdminProductsPage() {
   const products = (await listAllProductsForAdmin()) as Product[];
 
-  // ReorderableTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode。
-  const columns: ReorderColumn[] = [
-    { header: "名稱" },
-    { header: "分類" },
+  // AdminTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode；
+  // 排序 / 搜尋所需原始值另以 sortValues / search 附帶。
+  const columns: AdminColumn[] = [
+    { header: "名稱", sortable: true },
+    { header: "分類", sortable: true },
     { header: "圖片", className: "whitespace-nowrap" },
-    { header: "狀態" },
+    { header: "狀態", sortable: true },
     { header: "操作", className: "text-right whitespace-nowrap" },
   ];
 
-  const rows = products.map((p) => ({
+  const rows: AdminRow[] = products.map((p) => ({
     key: p.id,
     cells: [
       <div className="flex flex-col" key="name">
@@ -52,6 +54,8 @@ export default async function AdminProductsPage() {
         <DeleteButton onDelete={deleteProductAction.bind(null, p.id)} />
       </div>,
     ],
+    sortValues: [p.name, p.category, null, p.status, null],
+    search: `${p.name} ${p.slug} ${p.category}`.toLowerCase(),
   }));
 
   return (
@@ -71,10 +75,11 @@ export default async function AdminProductsPage() {
         </Link>
       </div>
 
-      <ReorderableTable
+      <AdminTable
         rows={rows}
         columns={columns}
         onReorder={reorderProductsAction}
+        searchPlaceholder="搜尋名稱 / 分類…"
         empty="尚無商品，點右上角「新增商品」建立第一筆。"
       />
     </div>

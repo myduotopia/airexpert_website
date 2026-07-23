@@ -10,7 +10,7 @@ export function StatusBadge({ status }: { status: ContentStatus }) {
   const s = STYLES[status];
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium ${s.className}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium whitespace-nowrap ${s.className}`}
     >
       {s.label}
     </span>
