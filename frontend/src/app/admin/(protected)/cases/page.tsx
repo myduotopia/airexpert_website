@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import {
-  ReorderableTable,
-  type ReorderColumn,
-} from "@/components/admin/ReorderableTable";
+  AdminTable,
+  type AdminColumn,
+  type AdminRow,
+} from "@/components/admin/AdminTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
+import { formatNewsDate } from "@/components/news/format";
 import { deleteCase, reorderCasesAction } from "./actions";
 import type { Case } from "@/lib/types";
 
@@ -25,17 +27,19 @@ async function getAllCases(): Promise<Case[]> {
 export default async function AdminCasesPage() {
   const cases = await getAllCases();
 
-  // ReorderableTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode。
-  const columns: ReorderColumn[] = [
-    { header: "標題" },
-    { header: "分類" },
-    { header: "地區" },
-    { header: "產業" },
-    { header: "狀態" },
-    { header: "", className: "text-right" },
+  // AdminTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode；
+  // 排序 / 搜尋所需原始值另以 sortValues / search 附帶。
+  const columns: AdminColumn[] = [
+    { header: "標題", sortable: true },
+    { header: "分類", sortable: true },
+    { header: "地區", sortable: true },
+    { header: "產業", sortable: true },
+    { header: "建立日期", sortable: true },
+    { header: "狀態", sortable: true },
+    { header: "操作", className: "text-right" },
   ];
 
-  const rows = cases.map((c) => ({
+  const rows: AdminRow[] = cases.map((c) => ({
     key: c.id,
     cells: [
       <Link
@@ -48,6 +52,9 @@ export default async function AdminCasesPage() {
       c.category,
       c.region || "—",
       c.industry || "—",
+      <span className="font-mono text-[13px]" key="date">
+        {formatNewsDate(c.published_at) || "—"}
+      </span>,
       <StatusBadge status={c.status} key="status" />,
       <span className="inline-flex items-center gap-1" key="ops">
         <Link
@@ -59,6 +66,18 @@ export default async function AdminCasesPage() {
         <DeleteButton onDelete={deleteCase.bind(null, c.id)} />
       </span>,
     ],
+    sortValues: [
+      c.title,
+      c.category,
+      c.region,
+      c.industry,
+      c.published_at,
+      c.status,
+      null,
+    ],
+    search: `${c.title} ${c.category} ${c.region ?? ""} ${
+      c.industry ?? ""
+    }`.toLowerCase(),
   }));
 
   return (
@@ -79,10 +98,11 @@ export default async function AdminCasesPage() {
       </div>
 
       <div className="mt-6">
-        <ReorderableTable
+        <AdminTable
           rows={rows}
           columns={columns}
           onReorder={reorderCasesAction}
+          searchPlaceholder="搜尋標題 / 分類 / 地區 / 產業…"
           empty="尚無實績，點右上角「新增實績」開始建立。"
         />
       </div>

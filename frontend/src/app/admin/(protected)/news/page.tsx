@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import {
-  ReorderableTable,
-  type ReorderColumn,
-} from "@/components/admin/ReorderableTable";
+  AdminTable,
+  type AdminColumn,
+  type AdminRow,
+} from "@/components/admin/AdminTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { formatNewsDate } from "@/components/news/format";
@@ -26,16 +27,17 @@ async function getAllArticles(): Promise<Article[]> {
 export default async function AdminNewsPage() {
   const articles = await getAllArticles();
 
-  // ReorderableTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode。
-  const columns: ReorderColumn[] = [
-    { header: "標題" },
-    { header: "分類" },
-    { header: "發佈時間" },
-    { header: "狀態" },
-    { header: "", className: "text-right" },
+  // AdminTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode；
+  // 排序 / 搜尋所需原始值另以 sortValues / search 附帶。
+  const columns: AdminColumn[] = [
+    { header: "標題", sortable: true },
+    { header: "分類", sortable: true },
+    { header: "發佈時間", sortable: true },
+    { header: "狀態", sortable: true },
+    { header: "操作", className: "text-right" },
   ];
 
-  const rows = articles.map((a) => ({
+  const rows: AdminRow[] = articles.map((a) => ({
     key: a.id,
     cells: [
       <Link
@@ -60,6 +62,8 @@ export default async function AdminNewsPage() {
         <DeleteButton onDelete={deleteArticle.bind(null, a.id)} />
       </span>,
     ],
+    sortValues: [a.title, a.category, a.published_at, a.status, null],
+    search: `${a.title} ${a.category}`.toLowerCase(),
   }));
 
   return (
@@ -88,10 +92,11 @@ export default async function AdminNewsPage() {
       </div>
 
       <div className="mt-6">
-        <ReorderableTable
+        <AdminTable
           rows={rows}
           columns={columns}
           onReorder={reorderNewsAction}
+          searchPlaceholder="搜尋標題 / 分類…"
           empty="尚無文章，點右上角「新增文章」開始建立。"
         />
       </div>
