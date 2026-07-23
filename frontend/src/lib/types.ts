@@ -106,6 +106,7 @@ export interface Case extends SeoColumns {
   status: ContentStatus;
   sort_order: number;
   legacy_path: string | null;
+  published_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +120,7 @@ export interface Event {
   event_date: string | null;
   sort_order: number;
   status: ContentStatus;
+  published_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -131,6 +133,7 @@ export interface PhotoAlbum extends SeoColumns {
   description: string | null;
   cover_image: string | null;
   status: ContentStatus;
+  published_at: string | null;
   created_at: string;
   updated_at: string;
 }
