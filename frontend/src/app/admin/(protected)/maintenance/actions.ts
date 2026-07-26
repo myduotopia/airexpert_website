@@ -212,6 +212,9 @@ export async function commitImportAction(
   const supabase = await getServerSupabase();
   try {
     let machineId = input.machineId;
+    // 記錄本次是否「新建」卡：若接著寫維護列失敗，需回滾刪卡避免孤兒卡
+    // （commitImportAction 非單一 DB 交易，故手動補償）。
+    let createdMachineId: string | null = null;
 
     if (!machineId) {
       const serial = input.basic.serial_no.trim();
@@ -240,6 +243,7 @@ export async function commitImportAction(
         return { ok: false, error: mErr.message };
       }
       machineId = (machine as { id: string }).id;
+      createdMachineId = machineId;
     }
 
     if (input.records.length > 0) {
@@ -250,14 +254,27 @@ export async function commitImportAction(
           source: "photo" as const,
         })),
       );
-      if (rErr)
+      if (rErr) {
+        // 回滾：本次新建的卡若寫維護列失敗 → 刪卡，避免留下空的孤兒卡。
+        // 附加到既有卡（createdMachineId 為 null）時不刪，維持既有資料。
+        if (createdMachineId) {
+          await supabase
+            .from("mx_machines")
+            .delete()
+            .eq("id", createdMachineId);
+        }
         return { ok: false, error: `匯入維護紀錄失敗：${rErr.message}` };
+      }
     }
 
-    await supabase
-      .from("mx_import_drafts")
-      .update({ status: "committed", machine_id: machineId })
-      .eq("id", input.draftId);
+    // draftId 可能為空（辨識時稽核草稿寫入失敗，best-effort）；為空則跳過更新，
+    // 避免 .eq("id","") 靜默匹配不到任何列。
+    if (input.draftId) {
+      await supabase
+        .from("mx_import_drafts")
+        .update({ status: "committed", machine_id: machineId })
+        .eq("id", input.draftId);
+    }
 
     revalidatePath("/admin/maintenance");
     return { ok: true, machineId };
