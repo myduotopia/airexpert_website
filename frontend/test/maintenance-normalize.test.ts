@@ -3,6 +3,8 @@ import {
   cleanText,
   machinePayloadFromForm,
   recordPayloadFromForm,
+  normalizeSerial,
+  parseExtraction,
 } from "@/lib/admin/maintenance-normalize";
 
 describe("cleanText", () => {
@@ -39,5 +41,38 @@ describe("recordPayloadFromForm", () => {
     expect(out.hours).toBe("8342");
     expect(out.oil).toBe("V190");
     expect(out.technician).toBeNull();
+  });
+});
+
+describe("normalizeSerial", () => {
+  it("lowercases and trims for matching", () => {
+    expect(normalizeSerial("  B072303002 ")).toBe("b072303002");
+    expect(normalizeSerial(null)).toBe("");
+  });
+});
+
+describe("parseExtraction", () => {
+  it("coerces AI json into typed draft, dropping empty rows", () => {
+    const raw = {
+      basic: {
+        customer_name: "念德鋼鐵",
+        serial_no: "B072303002",
+        model: "PMV10",
+      },
+      records: [
+        { service_date: "2024-06-12", hours: "8342", technician: "陳" },
+        { service_date: "", hours: "", technician: "" },
+      ],
+    };
+    const out = parseExtraction(raw);
+    expect(out.basic.serial_no).toBe("B072303002");
+    expect(out.records).toHaveLength(1);
+    expect(out.records[0].hours).toBe("8342");
+  });
+
+  it("tolerates missing fields and non-array records", () => {
+    const out = parseExtraction({});
+    expect(out.basic.serial_no).toBe("");
+    expect(out.records).toEqual([]);
   });
 });

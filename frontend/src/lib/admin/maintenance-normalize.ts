@@ -58,3 +58,65 @@ export function recordPayloadFromForm(fd: FormData): RecordPayload {
     note: cleanText(fd.get("note")),
   };
 }
+
+/** 機號比對用正規化：lower + trim。與 migration 的 unique index lower(btrim()) 對齊。 */
+export function normalizeSerial(v: string | null | undefined): string {
+  return (v ?? "").trim().toLowerCase();
+}
+
+export interface ExtractedDraft {
+  basic: {
+    customer_name: string;
+    serial_no: string;
+    card_no: string;
+    location: string;
+    purchased_at: string;
+    model: string;
+    horsepower: string;
+    voltage: string;
+  };
+  records: RecordPayload[];
+}
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/** 把 Gemini 回傳的 JSON 物件安全轉成型別化 draft；全空的維護列丟棄。 */
+export function parseExtraction(raw: unknown): ExtractedDraft {
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  const b = (obj.basic ?? {}) as Record<string, unknown>;
+  const rawRecords = Array.isArray(obj.records) ? obj.records : [];
+
+  const records: RecordPayload[] = rawRecords
+    .map((r) => {
+      const o = (r ?? {}) as Record<string, unknown>;
+      return {
+        service_date: cleanText(str(o.service_date)),
+        hours: cleanText(str(o.hours)),
+        oil: cleanText(str(o.oil)),
+        oil_filter: cleanText(str(o.oil_filter)),
+        air_filter: cleanText(str(o.air_filter)),
+        oil_separator: cleanText(str(o.oil_separator)),
+        inverter: cleanText(str(o.inverter)),
+        filter_system: cleanText(str(o.filter_system)),
+        technician: cleanText(str(o.technician)),
+        note: cleanText(str(o.note)),
+      };
+    })
+    .filter((r) => Object.values(r).some((v) => v !== null));
+
+  return {
+    basic: {
+      customer_name: str(b.customer_name),
+      serial_no: str(b.serial_no),
+      card_no: str(b.card_no),
+      location: str(b.location),
+      purchased_at: str(b.purchased_at),
+      model: str(b.model),
+      horsepower: str(b.horsepower),
+      voltage: str(b.voltage),
+    },
+    records,
+  };
+}
