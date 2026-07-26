@@ -18,9 +18,9 @@
 
 | Issue | 標題 | 產出 | 相依 |
 |---|---|---|---|
-| **#A** | office 角色 + 資料表 + RLS 骨架 | 行政帳號登入只見「保養記錄卡」；admin 讀不到；空資料表就緒 | — |
-| **#B** | 保養卡手動 CRUD（列表 / 建卡 / 詳情 / 維護列） | 純手動輸入的完整女生卡（不含 AI） | #A |
-| **#C** | 拍照 AI 辨識 + Review 匯入 | 拍男生卡 → Gemini 擷取 → review 編輯 → 存檔匯入 | #B |
+| **#A（[#117](https://github.com/myduotopia/airexpert_website/issues/117)）** | office 角色 + 資料表 + RLS 骨架 | 行政帳號登入只見「保養記錄卡」；admin 讀不到；空資料表就緒 | — |
+| **#B（[#118](https://github.com/myduotopia/airexpert_website/issues/118)）** | 保養卡手動 CRUD（列表 / 建卡 / 詳情 / 維護列） | 純手動輸入的完整女生卡（不含 AI） | #117 |
+| **#C（[#119](https://github.com/myduotopia/airexpert_website/issues/119)）** | 拍照 AI 辨識 + Review 匯入 | 拍男生卡 → Gemini 擷取 → review 編輯 → 存檔匯入 | #118 |
 
 > 檔案結構總覽：
 > - Migration：`supabase/migrations/0011_office_maintenance.sql`（#A）
