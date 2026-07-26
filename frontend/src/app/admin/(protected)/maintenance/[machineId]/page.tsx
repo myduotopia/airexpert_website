@@ -33,9 +33,17 @@ export default async function MachineDetailPage({
     {
       header: "",
       cell: (r) => (
-        <DeleteButton
-          onDelete={deleteRecordAction.bind(null, r.id, machineId)}
-        />
+        <div className="flex items-center justify-end gap-1">
+          <Link
+            href={`/admin/maintenance/${machineId}/records/${r.id}/edit`}
+            className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
+          >
+            編輯
+          </Link>
+          <DeleteButton
+            onDelete={deleteRecordAction.bind(null, r.id, machineId)}
+          />
+        </div>
       ),
       className: "text-right whitespace-nowrap",
     },
@@ -43,12 +51,20 @@ export default async function MachineDetailPage({
 
   return (
     <div className="mx-auto max-w-[1100px]">
-      <h1 className="text-ink text-[24px] font-bold">
-        {machine.serial_no}
-        <span className="text-text-muted ml-2 text-[16px] font-normal">
-          {customer.name}
-        </span>
-      </h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-ink text-[24px] font-bold">
+          {machine.serial_no}
+          <span className="text-text-muted ml-2 text-[16px] font-normal">
+            {customer.name}
+          </span>
+        </h1>
+        <Link
+          href={`/admin/maintenance/${machineId}/edit`}
+          className="border-border hover:bg-surface-muted inline-flex h-9 items-center rounded-lg border px-4 text-[14px] font-medium"
+        >
+          編輯基本資訊
+        </Link>
+      </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-[14px] sm:grid-cols-4">
         <div>
           <dt className="text-text-muted">機型</dt>
