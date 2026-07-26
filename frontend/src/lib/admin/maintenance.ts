@@ -1,6 +1,7 @@
 // 保養卡 DAL — SERVER ONLY。讀寫走登入者 session，靠 mx_* 的 office RLS 擋。
 import "server-only";
 import { getServerSupabase } from "../supabase-server";
+import { normalizeSerial } from "./maintenance-normalize";
 
 export interface MxCustomer {
   id: string;
@@ -101,5 +102,36 @@ export async function getMachine(id: string): Promise<{
     machine: machine as MxMachine,
     customer: (customer as MxCustomer) ?? { id: "", name: "（未命名客戶）" },
     records: (records as MxRecord[]) ?? [],
+  };
+}
+
+/** 依機號（正規化後）找現有卡；命中回 {id, serial_no, customer_name}，否則 null。 */
+export async function findMachineBySerial(
+  serial: string,
+): Promise<{ id: string; serial_no: string; customer_name: string } | null> {
+  const norm = normalizeSerial(serial);
+  if (!norm) return null;
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("mx_machines")
+    .select("id, serial_no, mx_customers(name)")
+    .ilike("serial_no", serial.trim());
+  if (error) throw new Error(`查詢機號失敗：${error.message}`);
+  const hit = (data ?? []).find(
+    (m: { serial_no: string }) => normalizeSerial(m.serial_no) === norm,
+  );
+  if (!hit) return null;
+  const h = hit as {
+    id: string;
+    serial_no: string;
+    mx_customers: { name: string } | { name: string }[] | null;
+  };
+  const customer = Array.isArray(h.mx_customers)
+    ? h.mx_customers[0]
+    : h.mx_customers;
+  return {
+    id: h.id,
+    serial_no: h.serial_no,
+    customer_name: customer?.name ?? "",
   };
 }

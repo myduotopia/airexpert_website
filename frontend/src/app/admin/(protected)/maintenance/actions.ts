@@ -9,7 +9,12 @@ import type { ActionResult } from "@/lib/admin/crud";
 import {
   machinePayloadFromForm,
   recordPayloadFromForm,
+  parseExtraction,
+  type ExtractedDraft,
+  type RecordPayload,
 } from "@/lib/admin/maintenance-normalize";
+import { extractMaintenanceCard } from "@/lib/ai/gemini";
+import { findMachineBySerial } from "@/lib/admin/maintenance";
 
 /** 找或建客戶（依 name 完全比對；不強制唯一）。回傳 customer id。 */
 async function findOrCreateCustomer(
@@ -134,4 +139,129 @@ export async function deleteRecordAction(
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/admin/maintenance/${machineId}`);
   return { ok: true };
+}
+
+export type ExtractResult =
+  | {
+      ok: true;
+      draft: ExtractedDraft;
+      match: { id: string; serial_no: string; customer_name: string } | null;
+      draftId: string;
+    }
+  | { ok: false; error: string };
+
+/** 拍照辨識：Gemini 擷取 → 稽核草稿 → 機號比對。photoPath 為已存 Storage 的原圖 path。 */
+export async function extractCardFromImageAction(input: {
+  imageBase64: string;
+  mimeType: string;
+  photoPath: string;
+}): Promise<ExtractResult> {
+  await requireRole(["office"]);
+  const supabase = await getServerSupabase();
+  try {
+    const { raw } = await extractMaintenanceCard(
+      input.imageBase64,
+      input.mimeType,
+    );
+    const draft = parseExtraction(raw);
+
+    const { data: user } = await supabase.auth.getUser();
+    const { data: draftRow } = await supabase
+      .from("mx_import_drafts")
+      .insert({
+        created_by: user.user?.id ?? null,
+        photo_path: input.photoPath,
+        raw_output: raw,
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    const match = await findMachineBySerial(draft.basic.serial_no);
+    return {
+      ok: true,
+      draft,
+      match,
+      draftId: (draftRow as { id: string } | null)?.id ?? "",
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export interface CommitImportInput {
+  draftId: string;
+  machineId: string | null; // 命中既有卡則帶 id；否則 null → 依 basic 建卡
+  basic: {
+    customer_name: string;
+    serial_no: string;
+    card_no: string;
+    location: string;
+    purchased_at: string;
+    model: string;
+    horsepower: string;
+    voltage: string;
+  };
+  records: RecordPayload[];
+}
+
+export async function commitImportAction(
+  input: CommitImportInput,
+): Promise<ActionResult & { machineId?: string }> {
+  await requireRole(["office"]);
+  const supabase = await getServerSupabase();
+  try {
+    let machineId = input.machineId;
+
+    if (!machineId) {
+      const serial = input.basic.serial_no.trim();
+      if (!serial) return { ok: false, error: "機號為必填。" };
+      const customerId = await findOrCreateCustomer(
+        supabase,
+        input.basic.customer_name || "（未命名客戶）",
+      );
+      const { data: machine, error: mErr } = await supabase
+        .from("mx_machines")
+        .insert({
+          customer_id: customerId,
+          serial_no: serial,
+          card_no: input.basic.card_no || null,
+          location: input.basic.location || null,
+          purchased_at: input.basic.purchased_at || null,
+          model: input.basic.model || null,
+          horsepower: input.basic.horsepower || null,
+          voltage: input.basic.voltage || null,
+        })
+        .select("id")
+        .single();
+      if (mErr) {
+        if (mErr.code === "23505")
+          return { ok: false, error: "此機號已存在，請改為附加到現有卡。" };
+        return { ok: false, error: mErr.message };
+      }
+      machineId = (machine as { id: string }).id;
+    }
+
+    if (input.records.length > 0) {
+      const { error: rErr } = await supabase.from("mx_records").insert(
+        input.records.map((r) => ({
+          ...r,
+          machine_id: machineId,
+          source: "photo" as const,
+        })),
+      );
+      if (rErr)
+        return { ok: false, error: `匯入維護紀錄失敗：${rErr.message}` };
+    }
+
+    await supabase
+      .from("mx_import_drafts")
+      .update({ status: "committed", machine_id: machineId })
+      .eq("id", input.draftId);
+
+    revalidatePath("/admin/maintenance");
+    return { ok: true, machineId };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
