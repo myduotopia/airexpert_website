@@ -414,3 +414,61 @@ export async function fillSeoFromContent(input: {
   });
   return { seo: shapeSeoResult(text), model: usedModel };
 }
+
+/**
+ * 以 Gemini vision 從「男生卡」照片擷取保養資料，回傳原始 JSON 物件。
+ * imageBase64 為不含 data: 前綴的 base64；mimeType 例 "image/jpeg"。
+ * 解析/清洗交給 lib/admin/maintenance-normalize.parseExtraction。
+ */
+export async function extractMaintenanceCard(
+  imageBase64: string,
+  mimeType: string,
+): Promise<{ raw: unknown; model: string }> {
+  const { apiKey, model } = await getAiConfig();
+  if (!apiKey) throw new Error(NO_KEY_ERROR);
+
+  const prompt = `你是資料輸入助理。這是一張手寫的「空壓機保養記錄卡」照片(繁體中文 + 數字)。
+請擷取內容並回傳「純 JSON 物件」，格式：
+{
+  "basic": {
+    "customer_name": "客戶名稱", "serial_no": "機號", "card_no": "卡號(如KC054)",
+    "location": "使用地點", "purchased_at": "購買時間(YYYY-MM-DD，不確定就留空)",
+    "model": "機型", "horsepower": "馬力", "voltage": "電壓"
+  },
+  "records": [
+    { "service_date": "日期(YYYY-MM-DD)", "hours": "時數", "oil": "專用油",
+      "oil_filter": "機油濾清器", "air_filter": "空氣濾清器", "oil_separator": "油氣分離器",
+      "inverter": "變頻器", "filter_system": "過濾系統", "technician": "維護員", "note": "備註" }
+  ]
+}
+規則：
+- 看不清楚或空白的欄位一律回空字串 ""，絕對不要猜測或編造。
+- records 逐列輸出(表格每一橫列一筆)，保留原始順序。
+- 日期盡量正規化為 YYYY-MM-DD；無法判斷則原樣填字串。`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType, data: imageBase64 } },
+        ],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.1,
+    },
+  };
+
+  const data = await fetchGeminiWithRetry(url, body);
+  const text = extractGeminiText(data);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error("辨識結果非 JSON，無法解析，請改用手動輸入。");
+  }
+  return { raw, model };
+}
