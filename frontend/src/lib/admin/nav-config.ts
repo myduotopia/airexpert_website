@@ -64,6 +64,13 @@ export const ADMIN_NAV: AdminNavItem[] = [
     enabled: true,
     roles: ["admin"],
   },
+  {
+    key: "maintenance",
+    label: "保養記錄卡",
+    href: "/admin/maintenance",
+    enabled: true,
+    roles: ["office"],
+  },
 ];
 
 /** 依角色過濾側欄項目（未指定 roles → 全角色可見）。 */

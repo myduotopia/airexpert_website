@@ -11,7 +11,7 @@ export default async function AdminProtectedLayout({
 }: {
   children: ReactNode;
 }) {
-  const role = await requireRole(["admin", "seo_manager"]);
+  const role = await requireRole(["admin", "seo_manager", "office"]);
   // requireRole 已確保是後台人員；取 session user 的 email 顯示於側欄。
   const user = await getSessionUser();
   const email = user?.email ?? "";

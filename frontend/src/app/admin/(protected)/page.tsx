@@ -1,13 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { navForRole } from "@/lib/admin/nav-config";
 import { getCurrentUserRole } from "@/lib/admin/auth";
 
 export const metadata = { title: "後台總覽" };
 
 export default async function AdminDashboardPage() {
-  // 依角色挑可見區段（seo_manager 不顯示網站設定 / 人員管理 / 聯絡來信）。
   // 角色由 layout 的 requireRole 確保非 null；保險起見退回 seo_manager（最小權限）。
+  // office 角色只看得到「保養記錄卡」，總覽頁對其無意義，直接導向。
   const role = (await getCurrentUserRole()) ?? "seo_manager";
+  if (role === "office") redirect("/admin/maintenance");
+
+  // 依角色挑可見區段（seo_manager 不顯示網站設定 / 人員管理 / 聯絡來信）。
   const sections = navForRole(role).filter(
     (i) => i.key !== "dashboard" && i.key !== "settings",
   );
