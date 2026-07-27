@@ -14,7 +14,7 @@ interface AdminProfileRow {
   created_at: string;
 }
 
-// 列出所有後台帳號（admin + seo_manager）。走 service_role（0002 RLS 僅允許讀自己的列），
+// 列出所有後台帳號（admin + seo_manager + office）。走 service_role（0002 RLS 僅允許讀自己的列），
 // 依 created_at 由舊到新排序，admin 通常最先建立。
 async function getProfiles(): Promise<AdminProfileRow[]> {
   const { data, error } = await getAdminSupabase()
@@ -39,13 +39,14 @@ function formatDate(iso: string | null): string {
 function roleLabel(role: string): string {
   if (role === "admin") return "管理員";
   if (role === "seo_manager") return "SEO 代管";
+  if (role === "office") return "行政";
   return role;
 }
 
 export default async function AdminStaffPage() {
   await requireAdmin();
   const profiles = await getProfiles();
-  const managers = profiles.filter((p) => p.role === "seo_manager");
+  const managers = profiles.filter((p) => p.role !== "admin");
 
   return (
     <div className="mx-auto max-w-[900px]">
@@ -53,7 +54,8 @@ export default async function AdminStaffPage() {
         <h1 className="text-ink text-[24px] font-bold">人員管理</h1>
         <p className="text-text-muted mt-1 text-[15px]">
           管理後台帳號。SEO 代管帳號只能編輯各內容的 SEO
-          meta，看不到內文、帳號與網站設定。 共 {managers.length} 個代管帳號。
+          meta，行政帳號僅能操作保養記錄卡相關功能，皆看不到內文、帳號與網站設定。
+          共 {managers.length} 個代管 / 行政帳號。
         </p>
       </div>
 
@@ -96,11 +98,11 @@ export default async function AdminStaffPage() {
               header: "",
               className: "text-right",
               cell: (p) =>
-                p.role === "seo_manager" ? (
+                p.role !== "admin" ? (
                   <DeleteButton
                     onDelete={removeSeoManager.bind(null, p.id)}
                     label="移除"
-                    confirmText="確定移除此 SEO 代管帳號？移除後該帳號將無法登入。"
+                    confirmText="確定移除此帳號？移除後該帳號將無法登入。"
                   />
                 ) : (
                   <span className="text-text-muted text-[12px]">
@@ -112,11 +114,14 @@ export default async function AdminStaffPage() {
         />
       </div>
 
-      {/* 新增 SEO 代管 */}
+      {/* 新增 SEO 代管 / 行政帳號 */}
       <div className="mt-10">
-        <h2 className="text-ink text-[20px] font-bold">新增 SEO 代管帳號</h2>
+        <h2 className="text-ink text-[20px] font-bold">
+          新增 SEO 代管 / 行政帳號
+        </h2>
         <p className="text-text-muted mt-1 text-[15px]">
-          建立後，代管人員即可用此 Email 與密碼登入後台維護 SEO。
+          建立後，該人員即可用此 Email 與密碼登入後台，依角色維護 SEO
+          或保養記錄卡。
         </p>
         <div className="border-border mt-4 rounded-xl border bg-white p-6">
           <CreateSeoManagerForm />

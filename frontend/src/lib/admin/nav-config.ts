@@ -16,8 +16,10 @@ export interface AdminNavItem {
   /** 該後台路由是否已存在；false → 側欄顯示為 disabled，避免連到尚未建立的 404。
    *  各 tab 上線時把自己那行改 true（同前台 nav 的 ready flag）。 */
   enabled: boolean;
-  /** 哪些角色看得到此項。預設（未指定）= admin + seo_manager 皆可見。
-   *  admin-only 的項目（網站設定 / 人員管理）標 roles: ['admin']。 */
+  /** 哪些角色看得到此項。預設（未指定）= admin + seo_manager 皆可見（內容團隊）。
+   *  admin-only 的項目（網站設定 / 人員管理）標 roles: ['admin']。
+   *  office（行政）是獨立 persona，只看得到明確標 roles: ['office'] 的項目
+   *  （保養記錄卡），不會因「未指定」而看到 CMS 內容區。 */
   roles?: AdminRole[];
 }
 
@@ -64,9 +66,22 @@ export const ADMIN_NAV: AdminNavItem[] = [
     enabled: true,
     roles: ["admin"],
   },
+  {
+    key: "maintenance",
+    label: "保養記錄卡",
+    href: "/admin/maintenance",
+    enabled: true,
+    roles: ["office"],
+  },
 ];
 
-/** 依角色過濾側欄項目（未指定 roles → 全角色可見）。 */
+// 未指定 roles 的項目預設可見角色 = 內容團隊（admin + seo_manager）。
+// office 為獨立 persona，不含在預設內，故只會看到明確標 roles:['office'] 的項目。
+const DEFAULT_ROLES: AdminRole[] = ["admin", "seo_manager"];
+
+/** 依角色過濾側欄項目（未指定 roles → 內容團隊 admin + seo_manager 可見，office 除外）。 */
 export function navForRole(role: AdminRole): AdminNavItem[] {
-  return ADMIN_NAV.filter((item) => !item.roles || item.roles.includes(role));
+  return ADMIN_NAV.filter((item) =>
+    (item.roles ?? DEFAULT_ROLES).includes(role),
+  );
 }

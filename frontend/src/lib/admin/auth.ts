@@ -8,7 +8,7 @@ import type { User } from "@supabase/supabase-js";
 import { getServerSupabase } from "../supabase-server";
 
 /** 後台角色。null = 未登入或非後台人員。 */
-export type AdminRole = "admin" | "seo_manager";
+export type AdminRole = "admin" | "seo_manager" | "office";
 
 /**
  * 取得目前登入且為 admin 的使用者；否則回 null。
@@ -42,7 +42,7 @@ export const getSessionUser = cache(async (): Promise<User | null> => {
 });
 
 /**
- * 取得目前登入者的後台角色（'admin' | 'seo_manager'），非後台人員回 null。
+ * 取得目前登入者的後台角色（'admin' | 'seo_manager' | 'office'），非後台人員回 null。
  * 走 admin_profiles.role（以登入者 session 讀；0002「admin reads own profile」policy
  * 允許讀自己的列）。以 React cache 在單次 render 內去重。
  */
@@ -59,7 +59,9 @@ export const getCurrentUserRole = cache(async (): Promise<AdminRole | null> => {
   if (error || !data) return null;
 
   const role = data.role as string;
-  return role === "admin" || role === "seo_manager" ? role : null;
+  return role === "admin" || role === "seo_manager" || role === "office"
+    ? (role as AdminRole)
+    : null;
 });
 
 /** 保護 server component / layout：非 admin 一律導向登入頁。 */
