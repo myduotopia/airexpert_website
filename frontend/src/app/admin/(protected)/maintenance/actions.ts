@@ -307,7 +307,15 @@ export async function restoreMachineAction(machineId: string): Promise<void> {
     .from("mx_machines")
     .update({ archived_at: null })
     .eq("id", machineId);
-  if (error) throw new Error(`復原失敗：${error.message}`);
+  if (error) {
+    // 邊界：封存後又用同機號建了新的使用中卡片，復原會撞部分唯一索引（23505）。
+    if (error.code === "23505") {
+      throw new Error(
+        "同機號已有使用中的卡片，無法復原。請先處理該卡，或改為永久刪除此封存卡。",
+      );
+    }
+    throw new Error(`復原失敗：${error.message}`);
+  }
   revalidatePath("/admin/maintenance");
   revalidatePath("/admin/maintenance/archive");
 }
