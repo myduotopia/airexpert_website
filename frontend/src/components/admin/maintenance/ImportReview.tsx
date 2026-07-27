@@ -108,6 +108,7 @@ export function ImportReview() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [zoomed, setZoomed] = useState(false);
   const [result, setResult] = useState<Extract<
     ExtractResult,
     { ok: true }
@@ -199,12 +200,45 @@ export function ImportReview() {
   return (
     <form action={onSave} className="flex flex-col gap-6">
       {preview && (
-        // eslint-disable-next-line @next/next/no-img-element -- 預覽是 data URL，非靜態資產。
-        <img
-          src={preview}
-          alt="保養卡"
-          className="max-h-64 self-start rounded-lg border"
-        />
+        <button
+          type="button"
+          onClick={() => setZoomed(true)}
+          className="focus:ring-primary self-start rounded-lg focus:ring-2 focus:outline-none"
+          title="點擊放大"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- 預覽是 data URL，非靜態資產。 */}
+          <img
+            src={preview}
+            alt="保養卡（點擊放大）"
+            className="max-h-64 cursor-zoom-in rounded-lg border"
+          />
+        </button>
+      )}
+
+      {/* 放大檢視：點擊任意處或按鈕關閉。核對 AI 擷取欄位與手寫原稿時用。 */}
+      {zoomed && preview && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="保養卡放大檢視"
+          onClick={() => setZoomed(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- 預覽是 data URL，非靜態資產。 */}
+          <img
+            src={preview}
+            alt="保養卡放大"
+            className="max-h-full max-w-full cursor-zoom-out rounded-lg object-contain"
+          />
+          <button
+            type="button"
+            onClick={() => setZoomed(false)}
+            aria-label="關閉放大檢視"
+            className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[20px] font-bold text-black"
+          >
+            ✕
+          </button>
+        </div>
       )}
       <div className="bg-surface-muted rounded-lg p-3 text-[14px]">
         {result.match
