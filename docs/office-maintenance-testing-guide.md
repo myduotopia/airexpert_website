@@ -10,11 +10,12 @@
 
 | # | 事項 | 說明 | 沒做的後果 |
 |---|---|---|---|
-| 0-1 | **執行 migration** | Supabase Dashboard → SQL Editor 貼上 `supabase/migrations/0011_office_maintenance.sql` **整檔照跑（含 RLS，勿拆掉）** | 資料表不存在，功能一行都動不了 |
-| 0-2 | **設定 Gemini API key** | 後台 → 網站設定 ▸ AI，貼上 Gemini key（建議付費層：不限流、內容不被訓練）| 手動輸入可用；**拍照辨識**會回「尚未設定 key」|
+| 0-1 | **執行 migration 0011** | Supabase → SQL Editor 貼上 `supabase/migrations/0011_office_maintenance.sql` **整檔照跑（含 RLS，勿拆掉）** | 資料表不存在，功能一行都動不了 |
+| 0-2 | **執行 migration 0012** | 同上貼 `supabase/migrations/0012_maintenance_soft_delete.sql`（封存區軟刪除所需） | 封存 / 復原 / 永久刪除會報 `archived_at` 欄位不存在 |
+| 0-3 | **設定 Gemini API key** | 後台 → 網站設定 ▸ AI，貼上 Gemini key（建議付費層：不限流、內容不被訓練；model 需為 `gemini-2.5-flash` 或 `gemini-2.5-pro`）| 手動輸入可用；**拍照辨識**會回「尚未設定 key」|
 
-### 0-1 驗證 migration 是否套用成功
-在 SQL Editor 執行，三項都要符合預期：
+### 0-1 / 0-2 驗證 migration 是否套用成功
+在 SQL Editor 執行，四項都要符合預期：
 
 ```sql
 -- 應回 4 張表：mx_customers / mx_import_drafts / mx_machines / mx_records
@@ -25,6 +26,10 @@ select proname from pg_proc where proname = 'is_office';
 
 -- 應對每張 mx_ 表各回一條 "office all ..." policy（共 4 條）
 select tablename, policyname from pg_policies where tablename like 'mx_%' order by 1;
+
+-- 0012：mx_machines 應有 archived_at 欄位
+select column_name from information_schema.columns
+where table_name = 'mx_machines' and column_name = 'archived_at';
 ```
 
 ---
@@ -117,8 +122,13 @@ select tablename, policyname from pg_policies where tablename like 'mx_%' order 
    - 顯示「辨識中…」後出現 review 畫面
    - 上方顯示照片預覽 + 「未比對到既有卡，將建立新卡」
    - 基本資訊與維護列**已被 AI 預填**，可逐欄修改、逐列增刪
-4. 修正辨識錯誤的欄位 → 按「確認並儲存」
+   - **點照片預覽可全螢幕放大**（點任意處或右上 ✕ 關閉），方便對照手寫原稿
+4. 修正辨識錯誤的欄位 → 按「確認並匯入保養卡」
 5. **預期：** 導向新卡詳情，維護列已匯入（這些列的 `source` 為 `photo`）
+
+> **辨識準確度提醒：** 手寫繁中 + 稀疏表格，欄位對齊本就是 AI 的難點。prompt 已加強
+> 民國年換算與對欄規則，但**仍會偶爾錯位**，review 就是為此而設。若對欄常錯，可到
+> 「網站設定 ▸ AI」把 model 換成 `gemini-2.5-pro`（視覺 / 表格推理較強）再試。
 
 ### 4-2 命中 → 附加到既有卡
 1. 再次「拍照辨識」，這次用**已存在機號**（例 4-1 或 3-1 建過的機號）的照片
@@ -134,14 +144,42 @@ from mx_import_drafts order by created_at desc limit 5;
 **預期：** 成功匯入的列 `status = 'committed'` 且 `machine_id` 有值；`photo_path` 指向已存的原圖。
 
 ### 4-4 錯誤情境
-- **未設 key 時**（若尚未做 0-2）：辨識應回友善訊息，提示改用手動輸入，且不崩潰
+- **未設 key 時**（若尚未做 0-3）：辨識應回友善訊息，提示改用手動輸入，且不崩潰
 - **辨識品質**：手寫繁中 + 數字辨識不會 100% 準，review 為**強制**、永不自動寫入 —— 感受一下準確度，若某欄（時數 / 日期）常錯，回報給開發者可再調 prompt
 
 **✅ 驗收：** 新機號建卡、既有機號附加、稽核留痕皆正常；辨識結果一律經人工確認才寫入。
 
 ---
 
-## 5. 資料隔離覆核（選作，進階）
+## 5. 封存區（軟刪除）測試
+
+> 需先完成 0-2（migration 0012）。以 office 帳號操作。
+
+### 5-1 刪除（封存）
+1. `/admin/maintenance` 列表 → 某列右側「刪除」→ **二次確認**（提示「將移到封存區，可再復原」）
+2. **預期：** 該卡從列表消失；點右上「封存區」→ 該卡出現在封存清單，含「封存時間」
+
+### 5-2 封存後同機號可重用
+1. 封存某張卡（機號例 `B072303002`）後，回列表 → 新增保養卡，用**同一機號**建立
+2. **預期：** 可成功建立，不會被封存區的舊卡擋住（部分唯一索引生效）。拍照辨識同機號時，也只會比對到「未封存」的那張
+
+### 5-3 復原
+1. 封存區 → 某列「復原」
+2. **預期：** 卡回到正常列表，封存區不再顯示它
+
+### 5-4 永久刪除
+1. 封存區 → 某列「永久刪除」→ **更強的二次確認**（提示不可復原）
+2. **預期：** 卡從封存區消失；該卡的所有維護紀錄一併刪除（FK cascade）。用 SQL 覆核：
+```sql
+-- 應查不到該機號的卡與其維護列
+select * from mx_machines where serial_no = '<剛永久刪除的機號>';
+```
+
+**✅ 驗收：** 刪除→封存區、復原、永久刪除（連維護紀錄）皆正常；封存後同機號可重用。
+
+---
+
+## 6. 資料隔離覆核（選作，進階）
 
 確認 RLS 真的擋住非 office：在 Supabase SQL Editor（以 service_role 執行，會看得到資料，屬正常），若要驗證 RLS，改用「以某使用者身分」的方式測試較準；一般情況信任 migration 的 policy 即可。快速心智檢查：
 
@@ -152,6 +190,6 @@ from mx_import_drafts order by created_at desc limit 5;
 
 ## 附錄：本階段 MVP 範圍界線
 
-**包含（測完即達成）：** office 角色 + 資料隔離、手動 CRUD（含編輯）、拍照辨識匯入（機號比對）、最小稽核。
+**包含（測完即達成）：** office 角色 + 資料隔離、手動 CRUD（含編輯）、拍照辨識匯入（機號比對）、封存區（軟刪除 / 復原 / 永久刪除）、最小稽核。
 
 **不包含（後續版本）：** 到期提醒 / 預警、報表匯出（PDF / Excel）、師傅端 App / 男生卡數位化、客戶自助查詢、多張批次辨識。
