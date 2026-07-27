@@ -19,6 +19,7 @@ export interface MxMachine {
   horsepower: string | null;
   voltage: string | null;
   created_at: string;
+  archived_at: string | null;
 }
 
 export interface MxRecord {
@@ -44,31 +45,47 @@ export interface MxMachineListItem extends MxMachine {
   last_service_date: string | null;
 }
 
+/** 將 select("*, mx_customers(name), mx_records(service_date)") 的原始列 map 成列表項目。 */
+function mapMachineListRow(m: Record<string, unknown>): MxMachineListItem {
+  const records = (m.mx_records as { service_date: string | null }[]) ?? [];
+  const last =
+    records
+      .map((r) => r.service_date)
+      .filter((d): d is string => !!d)
+      .sort()
+      .at(-1) ?? null;
+  // mx_records 已於上方取出計算 last，此處僅需從 machine 物件中排除掉。
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { mx_customers, mx_records, ...machine } = m;
+  return {
+    ...(machine as unknown as MxMachine),
+    customer_name:
+      (mx_customers as { name: string } | null)?.name ?? "（未命名客戶）",
+    last_service_date: last,
+  };
+}
+
 export async function listMachines(): Promise<MxMachineListItem[]> {
   const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("mx_machines")
     .select("*, mx_customers(name), mx_records(service_date)")
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
   if (error) throw new Error(`讀取保養卡失敗：${error.message}`);
-  return (data ?? []).map((m: Record<string, unknown>) => {
-    const records = (m.mx_records as { service_date: string | null }[]) ?? [];
-    const last =
-      records
-        .map((r) => r.service_date)
-        .filter((d): d is string => !!d)
-        .sort()
-        .at(-1) ?? null;
-    // mx_records 已於上方取出計算 last，此處僅需從 machine 物件中排除掉。
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { mx_customers, mx_records, ...machine } = m;
-    return {
-      ...(machine as unknown as MxMachine),
-      customer_name:
-        (mx_customers as { name: string } | null)?.name ?? "（未命名客戶）",
-      last_service_date: last,
-    };
-  });
+  return (data ?? []).map(mapMachineListRow);
+}
+
+/** 封存區列表：僅已封存的卡，依封存時間新到舊排序。 */
+export async function listArchivedMachines(): Promise<MxMachineListItem[]> {
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("mx_machines")
+    .select("*, mx_customers(name), mx_records(service_date)")
+    .not("archived_at", "is", null)
+    .order("archived_at", { ascending: false });
+  if (error) throw new Error(`讀取封存區失敗：${error.message}`);
+  return (data ?? []).map(mapMachineListRow);
 }
 
 export async function getMachine(id: string): Promise<{
@@ -115,6 +132,7 @@ export async function findMachineBySerial(
   const { data, error } = await supabase
     .from("mx_machines")
     .select("id, serial_no, mx_customers(name)")
+    .is("archived_at", null)
     .ilike("serial_no", serial.trim());
   if (error) throw new Error(`查詢機號失敗：${error.message}`);
   const hit = (data ?? []).find(

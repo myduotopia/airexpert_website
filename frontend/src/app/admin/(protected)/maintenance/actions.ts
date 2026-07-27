@@ -282,3 +282,47 @@ export async function commitImportAction(
     return { ok: false, error: (e as Error).message };
   }
 }
+
+/** 封存（軟刪除）一張卡：從正常列表移到封存區。DeleteButton 以 bind 帶入 id。 */
+export async function archiveMachineAction(
+  machineId: string,
+): Promise<ActionResult> {
+  await requireRole(["office"]);
+  const supabase = await getServerSupabase();
+  const { error } = await supabase
+    .from("mx_machines")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", machineId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/maintenance");
+  revalidatePath("/admin/maintenance/archive");
+  return { ok: true };
+}
+
+/** 從封存區復原一張卡（form action）。 */
+export async function restoreMachineAction(machineId: string): Promise<void> {
+  await requireRole(["office"]);
+  const supabase = await getServerSupabase();
+  const { error } = await supabase
+    .from("mx_machines")
+    .update({ archived_at: null })
+    .eq("id", machineId);
+  if (error) throw new Error(`復原失敗：${error.message}`);
+  revalidatePath("/admin/maintenance");
+  revalidatePath("/admin/maintenance/archive");
+}
+
+/** 永久刪除一張卡（連同維護紀錄，FK cascade）。DeleteButton 以 bind 帶入 id。 */
+export async function deleteMachinePermanentlyAction(
+  machineId: string,
+): Promise<ActionResult> {
+  await requireRole(["office"]);
+  const supabase = await getServerSupabase();
+  const { error } = await supabase
+    .from("mx_machines")
+    .delete()
+    .eq("id", machineId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/maintenance/archive");
+  return { ok: true };
+}

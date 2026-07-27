@@ -6,6 +6,8 @@ import {
   type AdminColumn,
   type AdminRow,
 } from "@/components/admin/AdminTable";
+import { DeleteButton } from "@/components/admin/DeleteButton";
+import { archiveMachineAction } from "./actions";
 
 export const metadata = { title: "保養記錄卡 · 後台" };
 
@@ -28,6 +30,7 @@ export default async function MaintenanceListPage() {
     { header: "客戶", sortable: true },
     { header: "機型", sortable: true },
     { header: "最後保養日", sortable: true },
+    { header: "操作", className: "text-right whitespace-nowrap" },
   ];
   const rows: AdminRow[] = machines.map((m) => ({
     key: m.id,
@@ -42,8 +45,21 @@ export default async function MaintenanceListPage() {
       m.customer_name,
       m.model ?? "—",
       fmtDate(m.last_service_date),
+      <div key="actions" className="flex justify-end">
+        <DeleteButton
+          onDelete={archiveMachineAction.bind(null, m.id)}
+          label="刪除"
+          confirmText="確定刪除此保養卡？將移到封存區，可再復原。"
+        />
+      </div>,
     ],
-    sortValues: [m.serial_no, m.customer_name, m.model, m.last_service_date],
+    sortValues: [
+      m.serial_no,
+      m.customer_name,
+      m.model,
+      m.last_service_date,
+      null,
+    ],
     search: `${m.serial_no} ${m.customer_name} ${m.model ?? ""}`.toLowerCase(),
   }));
 
@@ -57,6 +73,12 @@ export default async function MaintenanceListPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href="/admin/maintenance/archive"
+            className="border-border hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border px-4 text-[14px] font-semibold"
+          >
+            封存區
+          </Link>
           <Link
             href="/admin/maintenance/import"
             className="border-border hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border px-4 text-[14px] font-semibold"
