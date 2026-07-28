@@ -3,7 +3,7 @@
 // 首頁設定 server action：以「友善表單欄位」逐欄組出 value，再 upsert 單一
 // site_settings key。site_settings PK 是 `key`（非 id），故以 service_role
 // 直接 upsert by key。安全邊界：先 requireAdmin() 驗證身分。
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
 import { CACHE_TAGS } from "@/lib/data/cache";
@@ -56,8 +56,8 @@ export async function saveHomeSection(
     sectionImageUrls(key, value),
   );
 
-  // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
-  revalidateTag(CACHE_TAGS.siteSettings, "max");
+  // updateTag（read-your-own-writes）：存檔後前台立即取得新首頁內容，不回舊快取。
+  updateTag(CACHE_TAGS.siteSettings);
   return { ok: true };
 }
 
@@ -99,6 +99,6 @@ export async function saveBranding(
     [value.logo_url, value.favicon_url],
   );
 
-  revalidateTag(CACHE_TAGS.siteSettings, "max");
+  updateTag(CACHE_TAGS.siteSettings);
   return { ok: true };
 }

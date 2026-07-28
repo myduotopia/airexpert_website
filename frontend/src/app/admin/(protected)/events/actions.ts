@@ -6,7 +6,7 @@
 //  - photo_albums（活動相簿）：通用 CRUD bind 到 "photo_albums" 表。
 //  - photos（相簿照片，無 status 欄位）：自寫 insert / delete by album_id。
 // 失效前台快取：CACHE_TAGS.events / CACHE_TAGS.photoAlbums。
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
 import {
@@ -59,7 +59,7 @@ export async function saveEvent(
     : await supabase.from("events").insert(values);
   if (error) return { ok: false, error: error.message };
 
-  for (const tag of EVENTS_TAGS) revalidateTag(tag, "max");
+  for (const tag of EVENTS_TAGS) updateTag(tag);
   return { ok: true };
 }
 
@@ -114,7 +114,7 @@ export async function saveAlbum(
     : await supabase.from("photo_albums").insert(values);
   if (error) return { ok: false, error: error.message };
 
-  for (const tag of ALBUM_TAGS) revalidateTag(tag, "max");
+  for (const tag of ALBUM_TAGS) updateTag(tag);
   return { ok: true };
 }
 
@@ -149,7 +149,7 @@ export async function addPhoto(
     sort_order: sortOrder,
   });
   if (error) return { ok: false, error: error.message };
-  for (const tag of ALBUM_TAGS) revalidateTag(tag, "max");
+  for (const tag of ALBUM_TAGS) updateTag(tag);
   return { ok: true };
 }
 
@@ -160,7 +160,7 @@ export async function deletePhoto(photoId: string): Promise<ActionResult> {
     .delete()
     .eq("id", photoId);
   if (error) return { ok: false, error: error.message };
-  for (const tag of ALBUM_TAGS) revalidateTag(tag, "max");
+  for (const tag of ALBUM_TAGS) updateTag(tag);
   return { ok: true };
 }
 
@@ -174,6 +174,6 @@ export async function updatePhotoSort(
     .update({ sort_order: sortOrder })
     .eq("id", photoId);
   if (error) return { ok: false, error: error.message };
-  for (const tag of ALBUM_TAGS) revalidateTag(tag, "max");
+  for (const tag of ALBUM_TAGS) updateTag(tag);
   return { ok: true };
 }

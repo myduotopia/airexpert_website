@@ -4,7 +4,10 @@
 // 安全邊界：每個 action 先 requireAdmin() 驗證身分，再操作；非 admin 會被導回登入。
 // 各 tab 以 bind 包成自己的具型別 action，例如：
 //   const create = createRow.bind(null, "products");
-import { revalidateTag } from "next/cache";
+// 快取失效用 updateTag（read-your-own-writes）：後台存檔後，下一個 request 立即取得
+// 新資料，不像 revalidateTag(tag,"max") 的 stale-while-revalidate 會先回舊內容。
+// updateTag 僅能在 Server Action 內呼叫——本檔全為 Server Action，皆由後台 action 轉呼。
+import { updateTag } from "next/cache";
 import { getAdminSupabase } from "../supabase-admin";
 import { requireAdmin } from "./auth";
 import type { ContentStatus } from "../types";
@@ -19,8 +22,7 @@ export async function createRow(
   await requireAdmin();
   const { error } = await getAdminSupabase().from(table).insert(values);
   if (error) return { ok: false, error: error.message };
-  // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
-  for (const tag of revalidate) revalidateTag(tag, "max");
+  for (const tag of revalidate) updateTag(tag);
   return { ok: true };
 }
 
@@ -36,8 +38,7 @@ export async function updateRow(
     .update(values)
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
-  // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
-  for (const tag of revalidate) revalidateTag(tag, "max");
+  for (const tag of revalidate) updateTag(tag);
   return { ok: true };
 }
 
@@ -49,8 +50,7 @@ export async function deleteRow(
   await requireAdmin();
   const { error } = await getAdminSupabase().from(table).delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
-  // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
-  for (const tag of revalidate) revalidateTag(tag, "max");
+  for (const tag of revalidate) updateTag(tag);
   return { ok: true };
 }
 
@@ -74,7 +74,7 @@ export async function reorderRows(
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return { ok: false, error: failed.error.message };
-  for (const tag of revalidate) revalidateTag(tag, "max");
+  for (const tag of revalidate) updateTag(tag);
   return { ok: true };
 }
 
@@ -90,7 +90,6 @@ export async function setStatus(
     .update({ status })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
-  // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
-  for (const tag of revalidate) revalidateTag(tag, "max");
+  for (const tag of revalidate) updateTag(tag);
   return { ok: true };
 }

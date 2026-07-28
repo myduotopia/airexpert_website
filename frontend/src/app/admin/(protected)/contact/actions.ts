@@ -3,7 +3,7 @@
 // 聯絡資訊設定 server action：upsert 單一 site_settings key（contact_info）。
 // site_settings PK 是 `key`（非 id），故不能用 @/lib/admin/crud 的 updateRow（.eq("id")）；
 // 此處以 service_role 直接 upsert by key。安全邊界：先 requireAdmin() 驗證身分。
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
 import { CACHE_TAGS } from "@/lib/data/cache";
@@ -40,7 +40,7 @@ export async function saveContactInfo(
 
   if (error) return { ok: false, error: error.message };
 
-  // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
-  revalidateTag(CACHE_TAGS.siteSettings, "max");
+  // updateTag（read-your-own-writes）：存檔後前台立即取得新聯絡資訊，不回舊快取。
+  updateTag(CACHE_TAGS.siteSettings);
   return { ok: true };
 }
