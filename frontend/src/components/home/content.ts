@@ -45,6 +45,100 @@ export const HOME_CASE: HomeCaseStudy = {
   ],
 };
 
+// ---------- 首頁客戶實績：後台可編輯（多個案 + 切換）----------
+// 後台以「扁平數字欄位」編輯每筆個案（指標的標籤與圖示為設計固定值，僅數字/圖片/名稱/標籤可改）。
+// site_settings 以 collection 形狀（selectedIndex + cases[]）儲存；前台 render 時 resolve
+// 成上方 HomeCaseStudy 形狀（CasesSection 結構與動畫維持不變）。
+
+/** 後台可編輯的單筆個案（扁平欄位；指標標籤/圖示不在此，於映射時補上固定值）。 */
+export interface HomeCaseInput {
+  /** 個案名稱（標題「◯◯◯節能改造」＋右側面板名稱）。 */
+  client: string;
+  /** 情境標籤 chips。 */
+  tags: string[];
+  /** 改善前照片（collage 左上）。 */
+  beforeImage: string;
+  /** 改善後照片（collage 右下）。 */
+  afterImage: string;
+  /** 去背 logo（壓改善後右下；可留空）。 */
+  logo: string;
+  /** 節電率高達（主打大數字），如 "32.68%"。 */
+  energyRate: string;
+  /** 年省電費，如 "約 385 萬"。 */
+  annualSaving: string;
+  /** 投資回收期 (ROI)，如 "1.5 年"；同時帶動左下浮動亮點徽章。 */
+  roi: string;
+  /** 綠色減碳效益，如 "年減約 476 噸 CO₂e"。 */
+  carbon: string;
+}
+
+/** 首頁客戶實績整體設定：多筆個案 + 目前展示哪一筆（cases 內的索引）。 */
+export interface HomeCaseCollection {
+  selectedIndex: number;
+  cases: HomeCaseInput[];
+}
+
+/** 目前設計預設的單筆個案（數字與 HOME_CASE 對齊）。 */
+export const HOME_CASE_DEFAULT_INPUT: HomeCaseInput = {
+  client: "機械製造廠",
+  tags: ["製造業", "變頻空壓系統", "ESG 減碳"],
+  beforeImage: "/cases/1_0.jpg",
+  afterImage: "/cases/2_0.jpg",
+  logo: "/cases/logo.png",
+  energyRate: "32.68%",
+  annualSaving: "約 385 萬",
+  roi: "1.5 年",
+  carbon: "年減約 476 噸 CO₂e",
+};
+
+/** DB 未 seed 時的預設 collection（單筆，視覺與現況一致）。 */
+export const HOME_CASE_DEFAULT_COLLECTION: HomeCaseCollection = {
+  selectedIndex: 0,
+  cases: [HOME_CASE_DEFAULT_INPUT],
+};
+
+/** 扁平個案 → render 用的 HomeCaseStudy（補上設計固定的指標標籤與圖示）。 */
+export function toCaseStudy(input: HomeCaseInput): HomeCaseStudy {
+  return {
+    client: input.client,
+    tags: input.tags,
+    beforeImage: input.beforeImage,
+    afterImage: input.afterImage,
+    logo: input.logo,
+    spotlight: { icon: "clock", label: "投資回收", value: input.roi },
+    metrics: [
+      { icon: "zap", label: "節電率高達", value: input.energyRate },
+      { icon: "wallet", label: "年省電費", value: input.annualSaving },
+      { icon: "clock", label: "投資回收期 (ROI)", value: input.roi },
+      { icon: "leaf", label: "綠色減碳效益", value: input.carbon },
+    ],
+  };
+}
+
+/**
+ * 由 collection 取出目前要展示的個案並映射成 HomeCaseStudy。
+ * 容錯：cases 非陣列 / 空集合、索引越界、選中個案缺改善前後圖 → 退回設計預設 HOME_CASE，
+ * 確保前台 server render 不因後台壞資料而崩潰（CollagePhoto 以 next/image 全幅渲染，空 src 會崩）。
+ */
+export function resolveHomeCase(collection: HomeCaseCollection): HomeCaseStudy {
+  const cases = Array.isArray(collection?.cases) ? collection.cases : [];
+  if (cases.length === 0) return HOME_CASE;
+  const raw = collection?.selectedIndex;
+  const idx =
+    typeof raw === "number" &&
+    Number.isInteger(raw) &&
+    raw >= 0 &&
+    raw < cases.length
+      ? raw
+      : 0;
+  const input = cases[idx];
+  if (!input || !input.beforeImage || !input.afterImage) return HOME_CASE;
+  return toCaseStudy({
+    ...input,
+    tags: Array.isArray(input.tags) ? input.tags : [],
+  });
+}
+
 /**
  * 指標性客戶。卡片內只顯示 logo（name 僅供 alt）；有股票代號者於 logo 下方
  * 加一行「上市公司股票代號：xxxx」，未上市者不顯示該行。

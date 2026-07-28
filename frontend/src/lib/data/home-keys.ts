@@ -4,6 +4,7 @@
 export const HOME_KEYS = {
   carousel: "home_carousel",
   stats: "home_stats",
+  caseStudy: "home_case",
   tech: "home_tech",
   news: "home_news",
   products: "home_products",

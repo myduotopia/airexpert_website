@@ -40,7 +40,8 @@ beforeEach(() => {
   vi.mocked(getSupabaseClient).mockReset();
 });
 
-describe("getHomeContent（首頁 7 區段 fallback）", () => {
+describe("getHomeContent（首頁區段 fallback）", () => {
+  // key === `home_${name}` 的 7 個區段（caseStudy 例外，其 key 為 home_case）。
   const FRONT_KEYS = [
     "carousel",
     "stats",
@@ -50,13 +51,14 @@ describe("getHomeContent（首頁 7 區段 fallback）", () => {
     "features",
     "social",
   ] as const;
+  // getHomeContent 實際回傳的所有欄位（含 caseStudy）。
+  const ALL_KEYS = [...FRONT_KEYS, "caseStudy"] as const;
 
-  it("DB 全空（每個 key value=null）→ 前台 7 區段皆退回 HOME_DEFAULTS", async () => {
+  it("DB 全空（每個 key value=null）→ 前台各區段皆退回 HOME_DEFAULTS", async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(clientByKey({}));
     const home = await getHomeContent();
-    // getHomeContent 只回傳前台實際 render 的 7 區段。
-    expect(Object.keys(home).sort()).toEqual([...FRONT_KEYS].sort());
-    for (const key of FRONT_KEYS) {
+    expect(Object.keys(home).sort()).toEqual([...ALL_KEYS].sort());
+    for (const key of ALL_KEYS) {
       expect(home[key]).toEqual(HOME_DEFAULTS[key]);
     }
   });
@@ -65,6 +67,118 @@ describe("getHomeContent（首頁 7 區段 fallback）", () => {
     for (const key of FRONT_KEYS) {
       expect(HOME_KEYS[key]).toBe(`home_${key}`);
     }
+    // caseStudy 的 key 為 home_case（非 home_caseStudy）。
+    expect(HOME_KEYS.caseStudy).toBe("home_case");
+  });
+
+  it("客戶實績：DB 存 collection（多個案 + selectedIndex）→ 解析出被選中個案並映射成 render 形狀", async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(
+      clientByKey({
+        [HOME_KEYS.caseStudy]: {
+          selectedIndex: 1,
+          cases: [
+            {
+              client: "甲廠",
+              tags: ["A"],
+              beforeImage: "/b1.jpg",
+              afterImage: "/a1.jpg",
+              logo: "",
+              energyRate: "10%",
+              annualSaving: "約 100 萬",
+              roi: "3 年",
+              carbon: "年減約 100 噸 CO₂e",
+            },
+            {
+              client: "乙廠",
+              tags: ["B", "C"],
+              beforeImage: "/b2.jpg",
+              afterImage: "/a2.jpg",
+              logo: "/logo2.png",
+              energyRate: "50%",
+              annualSaving: "約 500 萬",
+              roi: "1 年",
+              carbon: "年減約 500 噸 CO₂e",
+            },
+          ],
+        },
+      }),
+    );
+    const home = await getHomeContent();
+    expect(home.caseStudy.client).toBe("乙廠");
+    expect(home.caseStudy.tags).toEqual(["B", "C"]);
+    expect(home.caseStudy.beforeImage).toBe("/b2.jpg");
+    expect(home.caseStudy.logo).toBe("/logo2.png");
+    // 指標標籤/圖示為固定值，數字來自被選中個案。
+    expect(home.caseStudy.metrics[0]).toEqual({
+      icon: "zap",
+      label: "節電率高達",
+      value: "50%",
+    });
+    expect(home.caseStudy.spotlight).toEqual({
+      icon: "clock",
+      label: "投資回收",
+      value: "1 年",
+    });
+  });
+
+  it("客戶實績：selectedIndex 越界 → 退回第 0 筆（不 crash）", async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(
+      clientByKey({
+        [HOME_KEYS.caseStudy]: {
+          selectedIndex: 9,
+          cases: [
+            {
+              client: "只有一筆",
+              tags: [],
+              beforeImage: "/b.jpg",
+              afterImage: "/a.jpg",
+              logo: "",
+              energyRate: "1%",
+              annualSaving: "約 1 萬",
+              roi: "9 年",
+              carbon: "年減約 1 噸 CO₂e",
+            },
+          ],
+        },
+      }),
+    );
+    const home = await getHomeContent();
+    expect(home.caseStudy.client).toBe("只有一筆");
+  });
+
+  it("客戶實績：空集合 / 壞形狀 → 退回設計預設 HOME_CASE", async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(
+      clientByKey({
+        [HOME_KEYS.caseStudy]: { selectedIndex: 0, cases: [] },
+      }),
+    );
+    const home = await getHomeContent();
+    expect(home.caseStudy).toEqual(HOME_DEFAULTS.caseStudy);
+  });
+
+  it("客戶實績：被選中個案缺圖 → 退回設計預設（避免 next/image 空 src 崩潰）", async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(
+      clientByKey({
+        [HOME_KEYS.caseStudy]: {
+          selectedIndex: 0,
+          cases: [
+            {
+              client: "缺圖廠",
+              tags: [],
+              beforeImage: "/b.jpg",
+              afterImage: "",
+              logo: "",
+              energyRate: "1%",
+              annualSaving: "約 1 萬",
+              roi: "1 年",
+              carbon: "年減約 1 噸 CO₂e",
+            },
+          ],
+        },
+      }),
+    );
+    const home = await getHomeContent();
+    expect(home.caseStudy).toEqual(HOME_DEFAULTS.caseStudy);
   });
 
   it("僅覆寫部分 key → 該 key 採用 DB 值、其餘退回預設", async () => {

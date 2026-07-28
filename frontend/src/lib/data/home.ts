@@ -3,13 +3,21 @@
 // 本檔集中定義各 key 的 value 形狀、預設值（DB 尚未 seed 時的 fallback）與一個
 // 聚合 loader（getHomeContent），讓 page.tsx 一次取得整頁內容並型別安全。
 //
-// 首頁（改版後）共 7 個區段，依序：
-//   輪播圖(carousel) → 數據列(stats) → 永續節能(tech) → 最新消息(news)
-//   → 產品系列(products) → 產品特色(features) → 追蹤我們(social)
+// 首頁各區段依序：
+//   輪播圖(carousel) → 數據列(stats) → 客戶實績(caseStudy) → 永續節能(tech)
+//   → 最新消息(news) → 產品系列(products) → 產品特色(features) → 追蹤我們(social)
+// 客戶實績以 collection 形狀（多個案 + selectedIndex）存於 site_settings，
+// getHomeContent 讀出後 resolve 成目前展示的單筆 HomeCaseStudy 再回傳。
 import "server-only";
 
 import { getSiteSetting } from "./site";
 import { HOME_KEYS } from "./home-keys";
+import {
+  HOME_CASE,
+  HOME_CASE_DEFAULT_COLLECTION,
+  resolveHomeCase,
+  type HomeCaseStudy,
+} from "@/components/home/content";
 
 // ---------- value 形狀 ----------
 
@@ -97,6 +105,8 @@ export interface HomeSocial {
 export interface HomeContent {
   carousel: HomeCarousel;
   stats: HomeStats;
+  /** 客戶實績（已 resolve 成目前展示的單筆個案）。 */
+  caseStudy: HomeCaseStudy;
   tech: HomeTech;
   news: HomeNews;
   products: HomeProducts;
@@ -105,7 +115,7 @@ export interface HomeContent {
 }
 
 // ---------- site_settings key 常數 ----------
-// 改版後前台首頁實際 render 的 7 個區段，皆可於後台逐欄編輯。
+// 前台首頁各區段皆可於後台逐欄編輯。
 // HOME_KEYS 定義移至 client-safe 的 ./home-keys（避免 client 表單連帶載入本檔的
 // "server-only"）；此處 import 供本檔內部使用、並 re-export 維持既有
 // `from "@/lib/data/home"` 匯入相容。
@@ -113,6 +123,7 @@ export { HOME_KEYS };
 
 // ---------- 預設值（DB 未 seed 時的 fallback；與目前硬編內容一致，確保視覺不變） ----------
 export const HOME_DEFAULTS: HomeContent = {
+  caseStudy: HOME_CASE,
   carousel: {
     slides: [
       {
@@ -320,16 +331,35 @@ async function settingOr<T>(key: string, fallback: T): Promise<T> {
  * 任一 key 缺漏不影響其他區段。回傳值供 page.tsx 直接 render。
  */
 export async function getHomeContent(): Promise<HomeContent> {
-  const [carousel, stats, tech, news, products, features, social] =
-    await Promise.all([
-      settingOr(HOME_KEYS.carousel, HOME_DEFAULTS.carousel),
-      settingOr(HOME_KEYS.stats, HOME_DEFAULTS.stats),
-      settingOr(HOME_KEYS.tech, HOME_DEFAULTS.tech),
-      settingOr(HOME_KEYS.news, HOME_DEFAULTS.news),
-      settingOr(HOME_KEYS.products, HOME_DEFAULTS.products),
-      settingOr(HOME_KEYS.features, HOME_DEFAULTS.features),
-      settingOr(HOME_KEYS.social, HOME_DEFAULTS.social),
-    ]);
+  const [
+    carousel,
+    stats,
+    caseCollection,
+    tech,
+    news,
+    products,
+    features,
+    social,
+  ] = await Promise.all([
+    settingOr(HOME_KEYS.carousel, HOME_DEFAULTS.carousel),
+    settingOr(HOME_KEYS.stats, HOME_DEFAULTS.stats),
+    settingOr(HOME_KEYS.caseStudy, HOME_CASE_DEFAULT_COLLECTION),
+    settingOr(HOME_KEYS.tech, HOME_DEFAULTS.tech),
+    settingOr(HOME_KEYS.news, HOME_DEFAULTS.news),
+    settingOr(HOME_KEYS.products, HOME_DEFAULTS.products),
+    settingOr(HOME_KEYS.features, HOME_DEFAULTS.features),
+    settingOr(HOME_KEYS.social, HOME_DEFAULTS.social),
+  ]);
 
-  return { carousel, stats, tech, news, products, features, social };
+  return {
+    carousel,
+    stats,
+    // collection（多個案 + selectedIndex）→ 取出目前展示個案；壞資料自動 fallback。
+    caseStudy: resolveHomeCase(caseCollection),
+    tech,
+    news,
+    products,
+    features,
+    social,
+  };
 }

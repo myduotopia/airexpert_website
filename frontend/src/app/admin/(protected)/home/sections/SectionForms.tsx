@@ -14,6 +14,7 @@ import type {
   HomeFeatures,
   HomeSocial,
 } from "@/lib/data/home";
+import type { HomeCaseCollection } from "@/components/home/content";
 import {
   TECH_ICON_OPTIONS,
   FEATURE_ICON_OPTIONS,
@@ -112,6 +113,99 @@ export function StatsForm({ value }: { value: HomeStats }) {
                   placeholder="例：平均節能效益"
                 />
               </div>
+            </div>
+          );
+        }}
+      />
+    </SectionForm>
+  );
+}
+
+// 2.5 客戶實績（ROI）------------------------------------------------------
+// 多個案 + 切換展示：每列一筆個案（改善前/後 + 去背 LOGO + 名稱 + 標籤 + 四項數字）。
+// 指標的標籤與圖示為設計固定值，此處只填數字；以「設為首頁展示」單選鈕挑目前展示哪一筆。
+export function CaseStudyForm({ value }: { value: HomeCaseCollection }) {
+  return (
+    <SectionForm
+      settingKey={HOME_KEYS.caseStudy}
+      heading="客戶實績（ROI）"
+      description="首頁「數字會說話」區段。可建立多筆個案，並以「設為首頁展示」挑選目前要顯示的一筆。指標文字（節電率高達／年省電費…）為固定樣式，僅需填數字。改善前、後兩張圖都要有才會顯示。"
+    >
+      <RepeatableList
+        prefix="cases"
+        label="個案"
+        addLabel="新增個案"
+        initialCount={value.cases.length}
+        renderRow={(i) => {
+          const c = value.cases[i];
+          return (
+            <div className="flex flex-col gap-3">
+              <label className="border-primary/40 bg-primary-soft/10 flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-[13px] font-medium">
+                <input
+                  type="radio"
+                  name="selectedIndex"
+                  value={i}
+                  defaultChecked={i === value.selectedIndex}
+                  className="accent-primary h-4 w-4"
+                />
+                設為首頁展示
+              </label>
+              <ImageField
+                name={`cases[${i}].beforeImage`}
+                label="改善前照片"
+                folder="home"
+                initialUrl={c?.beforeImage ?? ""}
+              />
+              <ImageField
+                name={`cases[${i}].afterImage`}
+                label="改善後照片"
+                folder="home"
+                initialUrl={c?.afterImage ?? ""}
+              />
+              <ImageField
+                name={`cases[${i}].logo`}
+                label="去背 LOGO（壓在改善後照片右下；可留空）"
+                folder="home"
+                initialUrl={c?.logo ?? ""}
+              />
+              <Field
+                name={`cases[${i}].client`}
+                label="個案名稱"
+                defaultValue={c?.client}
+                placeholder="例：機械製造廠"
+                help="顯示為標題「◯◯◯節能改造」與右側面板名稱。"
+              />
+              <Field
+                name={`cases[${i}].tags`}
+                label="情境標籤（以逗號分隔）"
+                defaultValue={c?.tags?.join("、")}
+                placeholder="例：製造業、變頻空壓系統、ESG 減碳"
+              />
+              <Field
+                name={`cases[${i}].energyRate`}
+                label="節電率高達"
+                defaultValue={c?.energyRate}
+                placeholder="例：32.68%"
+              />
+              <Field
+                name={`cases[${i}].annualSaving`}
+                label="年省電費"
+                defaultValue={c?.annualSaving}
+                placeholder="例：約 385 萬"
+              />
+              <Field
+                name={`cases[${i}].roi`}
+                label="投資回收期 (ROI)"
+                defaultValue={c?.roi}
+                placeholder="例：1.5 年"
+                help="同時帶動改善前後照片左下的浮動亮點徽章。"
+              />
+              <Field
+                name={`cases[${i}].carbon`}
+                label="綠色減碳效益"
+                defaultValue={c?.carbon}
+                placeholder="例：年減約 476 噸 CO₂e"
+              />
             </div>
           );
         }}
