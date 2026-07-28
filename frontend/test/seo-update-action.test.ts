@@ -4,8 +4,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   * 拒絕非 allowlist 表名
 //   * 寫入只含 SEO 白名單欄位（夾帶的 body_html / status / role 被丟棄）
 // vi.mock 會被提升到檔首，故用 vi.hoisted 取得可在 factory 內安全引用的 spy。
-const { revalidateTag } = vi.hoisted(() => ({ revalidateTag: vi.fn() }));
-vi.mock("next/cache", () => ({ revalidateTag }));
+const { updateTag } = vi.hoisted(() => ({ updateTag: vi.fn() }));
+vi.mock("next/cache", () => ({ updateTag }));
 vi.mock("@/lib/admin/auth", () => ({
   requireRole: vi.fn(async () => "seo_manager"),
 }));
@@ -49,7 +49,7 @@ function seoForm(extra: Record<string, string> = {}): FormData {
 beforeEach(() => {
   vi.mocked(getAdminSupabase).mockReset();
   vi.mocked(requireRole).mockClear();
-  revalidateTag.mockClear();
+  updateTag.mockClear();
 });
 
 describe("updateContentSeo — table allowlist", () => {
@@ -123,13 +123,13 @@ describe("updateContentSeo — pickSeoWritable 收斂", () => {
     }
   });
 
-  it("成功後 revalidate 該表 cache tag（Next 16 兩參）", async () => {
+  it("成功後 updateTag 該表 cache tag（read-your-own-writes，立即可見）", async () => {
     const { admin } = fakeAdmin();
     vi.mocked(getAdminSupabase).mockReturnValue(
       admin as unknown as ReturnType<typeof getAdminSupabase>,
     );
     await updateContentSeo("articles", "id-1", seoForm());
-    expect(revalidateTag).toHaveBeenCalledWith("articles", "max");
+    expect(updateTag).toHaveBeenCalledWith("articles");
   });
 
   it("JSON-LD 格式錯誤 → 回 ok:false，不寫入", async () => {

@@ -19,7 +19,7 @@ vi.mock("@/lib/admin/crud", () => ({
   deleteRow: vi.fn(),
   reorderRows: vi.fn(),
 }));
-vi.mock("next/cache", () => ({ revalidateTag: vi.fn() }));
+vi.mock("next/cache", () => ({ updateTag: vi.fn() }));
 vi.mock("@/lib/admin/auth", () => ({ requireAdmin: vi.fn(async () => {}) }));
 vi.mock("@/lib/supabase-admin", () => ({ getAdminSupabase: vi.fn() }));
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("next/cache", () => ({ revalidateTag: () => {} }));
+vi.mock("next/cache", () => ({ updateTag: () => {} }));
 vi.mock("@/lib/admin/auth", () => ({ requireAdmin: vi.fn(async () => ({})) }));
 vi.mock("@/lib/supabase-admin", () => ({ getAdminSupabase: vi.fn() }));
 
