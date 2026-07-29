@@ -4,6 +4,7 @@
 //   輪播圖 → 數據列 → 永續節能 → 最新消息 → 產品系列 → 產品特色 → 追蹤我們。
 // 每個區段以 SectionForm 包裝（含隱藏 key / 送出 / 狀態），內部用 primitives 組欄位。
 // 所有現值由 page.tsx 以 service_role 讀出後 prefill（缺漏退回 HOME_DEFAULTS）。
+import { useState } from "react";
 import { HOME_KEYS } from "@/lib/data/home-keys";
 import type {
   HomeCarousel,
@@ -125,6 +126,8 @@ export function StatsForm({ value }: { value: HomeStats }) {
 // 多個案 + 切換展示：每列一筆個案（改善前/後 + 去背 LOGO + 名稱 + 標籤 + 四項數字）。
 // 指標的標籤與圖示為設計固定值，此處只填數字；以「設為首頁展示」單選鈕挑目前展示哪一筆。
 export function CaseStudyForm({ value }: { value: HomeCaseCollection }) {
+  // 受控 radio：React 19 送出後會 reset 表單，非受控 radio 會跳回初值（重整才對）。
+  const [selected, setSelected] = useState(value.selectedIndex);
   return (
     <SectionForm
       settingKey={HOME_KEYS.caseStudy}
@@ -145,7 +148,8 @@ export function CaseStudyForm({ value }: { value: HomeCaseCollection }) {
                   type="radio"
                   name="selectedIndex"
                   value={i}
-                  defaultChecked={i === value.selectedIndex}
+                  checked={i === selected}
+                  onChange={() => setSelected(i)}
                   className="accent-primary h-4 w-4"
                 />
                 設為首頁展示

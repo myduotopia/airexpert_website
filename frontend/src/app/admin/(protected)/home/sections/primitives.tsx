@@ -14,6 +14,10 @@ const inputCls =
 const areaCls =
   "border-border focus:border-primary w-full rounded-lg border bg-white px-3 py-2 text-[14px] outline-none";
 
+// 這些欄位一律「受控」（useState 種入初值）而非 defaultValue：React 19 的
+// <form action={fn}> 送出成功後會自動 reset 表單，非受控欄位會被清回初值，
+// 造成「按儲存後剛打的字/選擇消失（重整才看到已存的值）」。受控欄位不受 reset 影響。
+
 // ---------- 有標籤的單行輸入 ----------
 export function Field({
   name,
@@ -28,12 +32,14 @@ export function Field({
   placeholder?: string;
   help?: string;
 }) {
+  const [value, setValue] = useState(defaultValue ?? "");
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelCls}>{label}</span>
       <input
         name={name}
-        defaultValue={defaultValue ?? ""}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         className={inputCls}
       />
@@ -60,12 +66,14 @@ export function TextareaField({
   rows?: number;
   help?: string;
 }) {
+  const [value, setValue] = useState(defaultValue ?? "");
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelCls}>{label}</span>
       <textarea
         name={name}
-        defaultValue={defaultValue ?? ""}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         rows={rows}
         className={areaCls}
@@ -93,10 +101,16 @@ export function IconSelect({
   const initial = options.some((o) => o.value === defaultValue)
     ? (defaultValue as string)
     : fallback;
+  const [value, setValue] = useState(initial);
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelCls}>{label}</span>
-      <select name={name} defaultValue={initial} className={inputCls}>
+      <select
+        name={name}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className={inputCls}
+      >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
