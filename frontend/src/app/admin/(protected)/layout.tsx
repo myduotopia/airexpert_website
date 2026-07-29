@@ -19,7 +19,10 @@ export default async function AdminProtectedLayout({
   return (
     <div className="flex min-h-dvh">
       <AdminSidebar email={email} role={role} />
-      <main className="flex-1 overflow-x-hidden px-8 py-7">{children}</main>
+      {/* 行動版：上方留白避開固定漢堡鈕、左右縮排較小；lg 以上恢復原本間距。 */}
+      <main className="flex-1 overflow-x-hidden px-4 pt-16 pb-8 lg:px-8 lg:py-7">
+        {children}
+      </main>
     </div>
   );
 }
