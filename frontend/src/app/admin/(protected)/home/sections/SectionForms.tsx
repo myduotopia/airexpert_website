@@ -134,6 +134,9 @@ export function CaseStudyForm({ value }: { value: HomeCaseCollection }) {
       heading="客戶實績（ROI）"
       description="首頁「數字會說話」區段。可建立多筆個案，並以「設為首頁展示」挑選目前要顯示的一筆。指標文字（節電率高達／年省電費…）為固定樣式，僅需填數字。改善前、後兩張圖都要有才會顯示。"
     >
+      {/* 目前展示的個案索引，以隱藏 value 送出（受控 value 於 React 19 送出後 reset
+          仍會被重新套用；native radio 的 checked 則不會，故不用 radio 避免閃回）。 */}
+      <input type="hidden" name="selectedIndex" value={selected} readOnly />
       <RepeatableList
         prefix="cases"
         label="個案"
@@ -141,19 +144,29 @@ export function CaseStudyForm({ value }: { value: HomeCaseCollection }) {
         initialCount={value.cases.length}
         renderRow={(i) => {
           const c = value.cases[i];
+          const isSelected = i === selected;
           return (
             <div className="flex flex-col gap-3">
-              <label className="border-primary/40 bg-primary-soft/10 flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-[13px] font-medium">
-                <input
-                  type="radio"
-                  name="selectedIndex"
-                  value={i}
-                  checked={i === selected}
-                  onChange={() => setSelected(i)}
-                  className="accent-primary h-4 w-4"
+              <button
+                type="button"
+                onClick={() => setSelected(i)}
+                aria-pressed={isSelected}
+                className={
+                  isSelected
+                    ? "border-primary bg-primary-soft/20 text-primary-deep flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px] font-semibold"
+                    : "border-border text-text-muted hover:bg-surface-muted flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-[13px] font-medium"
+                }
+              >
+                <span
+                  aria-hidden="true"
+                  className={
+                    isSelected
+                      ? "bg-primary h-3.5 w-3.5 rounded-full"
+                      : "border-border h-3.5 w-3.5 rounded-full border"
+                  }
                 />
-                設為首頁展示
-              </label>
+                {isSelected ? "首頁展示中" : "設為首頁展示"}
+              </button>
               <ImageField
                 name={`cases[${i}].beforeImage`}
                 label="改善前照片"
