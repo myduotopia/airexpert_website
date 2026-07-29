@@ -33,6 +33,7 @@ export function AdminSidebar({
         onClick={() => setOpen(true)}
         aria-label="開啟選單"
         aria-expanded={open}
+        aria-controls="admin-sidebar-drawer"
         className="border-border bg-surface text-ink fixed top-3 left-3 z-40 flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm lg:hidden"
       >
         <svg
@@ -61,6 +62,7 @@ export function AdminSidebar({
       )}
 
       <aside
+        id="admin-sidebar-drawer"
         className={`border-border bg-surface fixed inset-y-0 left-0 z-50 flex w-[230px] shrink-0 flex-col border-r transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 lg:transition-none ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
