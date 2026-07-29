@@ -19,7 +19,10 @@ export default function ServicesTestingPage() {
   return (
     <>
       {/* 測試預覽提示 */}
-      <div className="bg-primary/10 text-primary-deep border-primary/20 border-b px-6 py-2.5 text-center font-mono text-[12.5px]">
+      <div
+        id="top"
+        className="bg-primary/10 text-primary-deep border-primary/20 border-b px-6 py-2.5 text-center font-mono text-[12.5px]"
+      >
         測試預覽 · 此頁為服務項目改版預覽，正式 /services 不受影響。
       </div>
 
@@ -86,17 +89,6 @@ export default function ServicesTestingPage() {
         const gallery = service.images.slice(1);
         return (
           <div key={service.slug} id={service.slug} className="scroll-mt-4">
-            {/* 麵包屑 */}
-            <section className="bg-surface-muted border-border border-y">
-              <div className="text-text-muted mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-6 py-4 font-mono text-[12px] md:px-20">
-                <span>首頁</span>
-                <span aria-hidden="true">/</span>
-                <span>服務項目</span>
-                <span aria-hidden="true">/</span>
-                <span className="text-ink">{service.title}</span>
-              </div>
-            </section>
-
             {/* Hero */}
             <section className="bg-surface">
               <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-10 px-6 py-14 md:grid-cols-[1fr_560px] md:px-20 md:py-16">
@@ -170,11 +162,11 @@ export default function ServicesTestingPage() {
 
                 <div className="border-border mt-12 border-t pt-8">
                   <a
-                    href="#services-index"
+                    href="#top"
                     className="text-primary-deep inline-flex items-center gap-2 text-[15px] font-semibold"
                   >
                     <ArrowLeft className="h-4 w-4" />
-                    回到服務項目
+                    回到最上方
                   </a>
                 </div>
               </div>
