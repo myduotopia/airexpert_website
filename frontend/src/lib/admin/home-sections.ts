@@ -15,6 +15,10 @@ import type {
   HomeFeatures,
   HomeSocial,
 } from "@/lib/data/home";
+import type {
+  HomeCaseCollection,
+  HomeCaseInput,
+} from "@/components/home/content";
 // 用 client-safe 的 home-keys（本檔的 icon options 會被 client 表單匯入，
 // 不可經由 home.ts 連帶拉進 "server-only"）。
 import { HOME_KEYS } from "@/lib/data/home-keys";
@@ -99,6 +103,49 @@ export function parseCarousel(fd: FormData): HomeCarousel {
     (r) => r.image_url !== "",
   );
   return { slides };
+}
+
+/** 情境標籤：以逗號（半形/全形）或頓號分隔 → 去空白、濾空。 */
+function splitTags(raw: string): string[] {
+  return raw
+    .split(/[,、，]/)
+    .map((t) => t.trim())
+    .filter((t) => t !== "");
+}
+
+/**
+ * 客戶實績（多個案 + 切換展示）。每列一筆扁平個案；`selectedIndex` 由隱藏欄位
+ * 帶入「視覺列索引」，解析時對應到被保留列的實際位置（跳過的空/缺圖列不佔位）。
+ * 保留條件：改善前、後兩張圖都要有（CollagePhoto 以 next/image 全幅渲染，空 src 會崩）。
+ */
+export function parseCaseStudy(fd: FormData): HomeCaseCollection {
+  const n = count(fd, "cases");
+  const selectedRaw = Number.parseInt(
+    String(fd.get("selectedIndex") ?? ""),
+    10,
+  );
+  const selectedVisual = Number.isFinite(selectedRaw) ? selectedRaw : -1;
+
+  const cases: HomeCaseInput[] = [];
+  let selectedIndex = 0;
+  for (let i = 0; i < n; i += 1) {
+    const c: HomeCaseInput = {
+      client: str(fd, `cases[${i}].client`),
+      tags: splitTags(str(fd, `cases[${i}].tags`)),
+      beforeImage: str(fd, `cases[${i}].beforeImage`),
+      afterImage: str(fd, `cases[${i}].afterImage`),
+      logo: str(fd, `cases[${i}].logo`),
+      energyRate: str(fd, `cases[${i}].energyRate`),
+      annualSaving: str(fd, `cases[${i}].annualSaving`),
+      roi: str(fd, `cases[${i}].roi`),
+      carbon: str(fd, `cases[${i}].carbon`),
+    };
+    if (c.beforeImage === "" || c.afterImage === "") continue;
+    if (i === selectedVisual) selectedIndex = cases.length;
+    cases.push(c);
+  }
+  if (selectedIndex >= cases.length) selectedIndex = 0;
+  return { selectedIndex: cases.length > 0 ? selectedIndex : 0, cases };
 }
 
 export function parseStats(fd: FormData): HomeStats {
@@ -208,6 +255,8 @@ export function parseHomeSection(key: string, fd: FormData): unknown | null {
       return parseCarousel(fd);
     case HOME_KEYS.stats:
       return parseStats(fd);
+    case HOME_KEYS.caseStudy:
+      return parseCaseStudy(fd);
     case HOME_KEYS.tech:
       return parseTech(fd);
     case HOME_KEYS.news:

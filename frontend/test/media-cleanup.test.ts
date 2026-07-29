@@ -89,6 +89,22 @@ describe("sectionImageUrls — 取區段內圖片 URL", () => {
     const v = { categories: [{ image_url: "/x.jpg", name: "n" }] };
     expect(sectionImageUrls("home_products", v)).toEqual(["/x.jpg"]);
   });
+  it("客戶實績取每筆個案的 before/after/logo（略過空值）", () => {
+    const v = {
+      cases: [
+        { beforeImage: "/b0.jpg", afterImage: "/a0.jpg", logo: "/l0.png" },
+        { beforeImage: "/b1.jpg", afterImage: "/a1.jpg", logo: "" },
+      ],
+    };
+    expect(sectionImageUrls("home_case", v)).toEqual([
+      "/b0.jpg",
+      "/a0.jpg",
+      "/l0.png",
+      "/b1.jpg",
+      "/a1.jpg",
+    ]);
+    expect(sectionImageUrls("home_case", { cases: "nope" })).toEqual([]);
+  });
   it("無圖區段 / 壞形狀 → 空陣列", () => {
     expect(sectionImageUrls("home_stats", { items: [] })).toEqual([]);
     expect(sectionImageUrls("home_carousel", null)).toEqual([]);

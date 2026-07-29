@@ -85,7 +85,26 @@ export function sectionImageUrls(key: string, value: unknown): string[] {
   if (key === HOME_KEYS.products) {
     return extractUrls(v.categories);
   }
+  if (key === HOME_KEYS.caseStudy) {
+    return extractCaseUrls(v.cases);
+  }
   return [];
+}
+
+/** 客戶實績每筆個案有三個圖片欄位（改善前 / 改善後 / 去背 LOGO）。 */
+function extractCaseUrls(rows: unknown): string[] {
+  if (!Array.isArray(rows)) return [];
+  const out: string[] = [];
+  for (const row of rows) {
+    if (row && typeof row === "object") {
+      const r = row as Record<string, unknown>;
+      for (const key of ["beforeImage", "afterImage", "logo"]) {
+        const u = r[key];
+        if (typeof u === "string" && u !== "") out.push(u);
+      }
+    }
+  }
+  return out;
 }
 
 function extractUrls(rows: unknown): string[] {

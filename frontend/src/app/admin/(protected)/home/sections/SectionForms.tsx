@@ -4,6 +4,7 @@
 //   輪播圖 → 數據列 → 永續節能 → 最新消息 → 產品系列 → 產品特色 → 追蹤我們。
 // 每個區段以 SectionForm 包裝（含隱藏 key / 送出 / 狀態），內部用 primitives 組欄位。
 // 所有現值由 page.tsx 以 service_role 讀出後 prefill（缺漏退回 HOME_DEFAULTS）。
+import { useState } from "react";
 import { HOME_KEYS } from "@/lib/data/home-keys";
 import type {
   HomeCarousel,
@@ -14,6 +15,7 @@ import type {
   HomeFeatures,
   HomeSocial,
 } from "@/lib/data/home";
+import type { HomeCaseCollection } from "@/components/home/content";
 import {
   TECH_ICON_OPTIONS,
   FEATURE_ICON_OPTIONS,
@@ -112,6 +114,115 @@ export function StatsForm({ value }: { value: HomeStats }) {
                   placeholder="例：平均節能效益"
                 />
               </div>
+            </div>
+          );
+        }}
+      />
+    </SectionForm>
+  );
+}
+
+// 2.5 客戶實績（ROI）------------------------------------------------------
+// 多個案 + 切換展示：每列一筆個案（改善前/後 + 去背 LOGO + 名稱 + 標籤 + 四項數字）。
+// 指標的標籤與圖示為設計固定值，此處只填數字；以「設為首頁展示」單選鈕挑目前展示哪一筆。
+export function CaseStudyForm({ value }: { value: HomeCaseCollection }) {
+  // 受控 radio：React 19 送出後會 reset 表單，非受控 radio 會跳回初值（重整才對）。
+  const [selected, setSelected] = useState(value.selectedIndex);
+  return (
+    <SectionForm
+      settingKey={HOME_KEYS.caseStudy}
+      heading="客戶實績（ROI）"
+      description="首頁「數字會說話」區段。可建立多筆個案，並以「設為首頁展示」挑選目前要顯示的一筆。指標文字（節電率高達／年省電費…）為固定樣式，僅需填數字。改善前、後兩張圖都要有才會顯示。"
+    >
+      {/* 目前展示的個案索引，以隱藏 value 送出（受控 value 於 React 19 送出後 reset
+          仍會被重新套用；native radio 的 checked 則不會，故不用 radio 避免閃回）。 */}
+      <input type="hidden" name="selectedIndex" value={selected} readOnly />
+      <RepeatableList
+        prefix="cases"
+        label="個案"
+        addLabel="新增個案"
+        initialCount={value.cases.length}
+        renderRow={(i) => {
+          const c = value.cases[i];
+          const isSelected = i === selected;
+          return (
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setSelected(i)}
+                aria-pressed={isSelected}
+                className={
+                  isSelected
+                    ? "border-primary bg-primary-soft/20 text-primary-deep flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px] font-semibold"
+                    : "border-border text-text-muted hover:bg-surface-muted flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-[13px] font-medium"
+                }
+              >
+                <span
+                  aria-hidden="true"
+                  className={
+                    isSelected
+                      ? "bg-primary h-3.5 w-3.5 rounded-full"
+                      : "border-border h-3.5 w-3.5 rounded-full border"
+                  }
+                />
+                {isSelected ? "首頁展示中" : "設為首頁展示"}
+              </button>
+              <ImageField
+                name={`cases[${i}].beforeImage`}
+                label="改善前照片"
+                folder="home"
+                initialUrl={c?.beforeImage ?? ""}
+              />
+              <ImageField
+                name={`cases[${i}].afterImage`}
+                label="改善後照片"
+                folder="home"
+                initialUrl={c?.afterImage ?? ""}
+              />
+              <ImageField
+                name={`cases[${i}].logo`}
+                label="去背 LOGO（壓在改善後照片右下；可留空）"
+                folder="home"
+                initialUrl={c?.logo ?? ""}
+              />
+              <Field
+                name={`cases[${i}].client`}
+                label="個案名稱"
+                defaultValue={c?.client}
+                placeholder="例：機械製造廠"
+                help="顯示為標題「◯◯◯節能改造」與右側面板名稱。"
+              />
+              <Field
+                name={`cases[${i}].tags`}
+                label="情境標籤（以逗號分隔）"
+                defaultValue={c?.tags?.join("、")}
+                placeholder="例：製造業、變頻空壓系統、ESG 減碳"
+              />
+              <Field
+                name={`cases[${i}].energyRate`}
+                label="節電率高達"
+                defaultValue={c?.energyRate}
+                placeholder="例：32.68%"
+              />
+              <Field
+                name={`cases[${i}].annualSaving`}
+                label="年省電費"
+                defaultValue={c?.annualSaving}
+                placeholder="例：約 385 萬"
+              />
+              <Field
+                name={`cases[${i}].roi`}
+                label="投資回收期 (ROI)"
+                defaultValue={c?.roi}
+                placeholder="例：1.5 年"
+                help="同時帶動改善前後照片左下的浮動亮點徽章。"
+              />
+              <Field
+                name={`cases[${i}].carbon`}
+                label="綠色減碳效益"
+                defaultValue={c?.carbon}
+                placeholder="例：年減約 476 噸 CO₂e"
+              />
             </div>
           );
         }}

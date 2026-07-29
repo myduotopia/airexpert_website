@@ -39,7 +39,7 @@ export default async function Home() {
       <PainCarousel slides={home.carousel.slides} />
       <StatBar content={home.stats} />
       <ServiceProcess />
-      <CasesSection />
+      <CasesSection content={home.caseStudy} />
       <ProductShowcase content={home.products} />
       <NewsTeaser content={home.news} items={newsItems} />
       <ClientLogos />

@@ -14,6 +14,10 @@ const inputCls =
 const areaCls =
   "border-border focus:border-primary w-full rounded-lg border bg-white px-3 py-2 text-[14px] outline-none";
 
+// 這些欄位一律「受控」（useState 種入初值）而非 defaultValue：React 19 的
+// <form action={fn}> 送出成功後會自動 reset 表單，非受控欄位會被清回初值，
+// 造成「按儲存後剛打的字/選擇消失（重整才看到已存的值）」。受控欄位不受 reset 影響。
+
 // ---------- 有標籤的單行輸入 ----------
 export function Field({
   name,
@@ -28,12 +32,14 @@ export function Field({
   placeholder?: string;
   help?: string;
 }) {
+  const [value, setValue] = useState(defaultValue ?? "");
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelCls}>{label}</span>
       <input
         name={name}
-        defaultValue={defaultValue ?? ""}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         className={inputCls}
       />
@@ -60,12 +66,14 @@ export function TextareaField({
   rows?: number;
   help?: string;
 }) {
+  const [value, setValue] = useState(defaultValue ?? "");
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelCls}>{label}</span>
       <textarea
         name={name}
-        defaultValue={defaultValue ?? ""}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         rows={rows}
         className={areaCls}
@@ -93,10 +101,16 @@ export function IconSelect({
   const initial = options.some((o) => o.value === defaultValue)
     ? (defaultValue as string)
     : fallback;
+  const [value, setValue] = useState(initial);
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelCls}>{label}</span>
-      <select name={name} defaultValue={initial} className={inputCls}>
+      <select
+        name={name}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className={inputCls}
+      >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -109,6 +123,9 @@ export function IconSelect({
 
 // ---------- 圖片欄位（手填 URL + 上傳 + 預覽）----------
 // 受控以便上傳完成可回填 URL；對應 server 端讀取的 name=`...image_url`。
+// 注意：用 type="text" 而非 type="url"——內建預設圖多為站內相對路徑（/cases/1_0.jpg），
+// type="url" 的瀏覽器內建驗證會把相對路徑判為無效而擋下整個表單送出（跳「Please enter a URL.」）。
+// 相對路徑是本站合法資產路徑，故此處不做 URL 格式驗證。
 export function ImageField({
   name,
   label,
@@ -142,10 +159,10 @@ export function ImageField({
       </div>
       <input
         name={name}
-        type="url"
+        type="text"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://… 或上傳後自動填入"
+        placeholder="/圖片路徑 或 https://… 或上傳後自動填入"
         className={inputCls}
       />
     </div>

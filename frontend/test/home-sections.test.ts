@@ -4,6 +4,7 @@ import {
   HOME_SECTION_KEYS,
   parseCarousel,
   parseStats,
+  parseCaseStudy,
   parseTech,
   parseNews,
   parseProducts,
@@ -20,12 +21,107 @@ function fd(entries: Record<string, string>): FormData {
 }
 
 describe("白名單 HOME_SECTION_KEYS", () => {
-  it("涵蓋 7 個首頁 key、不含已退場的 legacy key", () => {
+  it("涵蓋全部首頁 key（含 home_case）、不含已退場的 legacy key", () => {
     expect([...HOME_SECTION_KEYS].sort()).toEqual(
       Object.values(HOME_KEYS).sort(),
     );
+    expect(HOME_SECTION_KEYS.has("home_case")).toBe(true);
     expect(HOME_SECTION_KEYS.has("home_hero")).toBe(false);
     expect(HOME_SECTION_KEYS.has("home_cta")).toBe(false);
+  });
+});
+
+describe("parseCaseStudy（多個案 + selectedIndex）", () => {
+  const base = (i: number) => ({
+    [`cases[${i}].client`]: `廠 ${i}`,
+    [`cases[${i}].tags`]: "製造業、ESG 減碳",
+    [`cases[${i}].beforeImage`]: `/b${i}.jpg`,
+    [`cases[${i}].afterImage`]: `/a${i}.jpg`,
+    [`cases[${i}].logo`]: `/logo${i}.png`,
+    [`cases[${i}].energyRate`]: `${i}0%`,
+    [`cases[${i}].annualSaving`]: `約 ${i}00 萬`,
+    [`cases[${i}].roi`]: `${i} 年`,
+    [`cases[${i}].carbon`]: `年減約 ${i}00 噸 CO₂e`,
+  });
+
+  it("逐列解析、tags 以逗號/頓號拆分、selectedIndex 帶入", () => {
+    const result = parseCaseStudy(
+      fd({
+        "cases.count": "2",
+        selectedIndex: "1",
+        ...base(0),
+        ...base(1),
+      }),
+    );
+    expect(result.cases).toHaveLength(2);
+    expect(result.selectedIndex).toBe(1);
+    expect(result.cases[0].client).toBe("廠 0");
+    expect(result.cases[0].tags).toEqual(["製造業", "ESG 減碳"]);
+    expect(result.cases[1].roi).toBe("1 年");
+  });
+
+  it("缺改善前或改善後圖的列會被略過，selectedIndex 對應到保留後的實際位置", () => {
+    const result = parseCaseStudy(
+      fd({
+        "cases.count": "3",
+        // 選第 2 列（視覺索引 2）為展示；但第 1 列缺圖會被略過。
+        selectedIndex: "2",
+        ...base(0),
+        // 第 1 列缺 afterImage → 略過
+        "cases[1].client": "缺圖廠",
+        "cases[1].beforeImage": "/b1.jpg",
+        "cases[1].afterImage": "",
+        ...base(2),
+      }),
+    );
+    expect(result.cases).toHaveLength(2);
+    expect(result.cases.map((c) => c.client)).toEqual(["廠 0", "廠 2"]);
+    // 視覺索引 2 的個案在保留後位於位置 1。
+    expect(result.selectedIndex).toBe(1);
+  });
+
+  it("selectedIndex 指向被略過的列 → 退回 0", () => {
+    const result = parseCaseStudy(
+      fd({
+        "cases.count": "2",
+        selectedIndex: "1",
+        ...base(0),
+        // 第 1 列缺圖被略過，但它被選為展示 → selectedIndex 退回 0
+        "cases[1].beforeImage": "",
+        "cases[1].afterImage": "",
+      }),
+    );
+    expect(result.cases).toHaveLength(1);
+    expect(result.selectedIndex).toBe(0);
+  });
+
+  it("無任何有效個案 → 空集合、selectedIndex 0", () => {
+    const result = parseCaseStudy(fd({ "cases.count": "0" }));
+    expect(result.cases).toEqual([]);
+    expect(result.selectedIndex).toBe(0);
+  });
+
+  it("經 parseHomeSection 以 home_case 分派", () => {
+    const value = parseHomeSection(
+      HOME_KEYS.caseStudy,
+      fd({ "cases.count": "1", selectedIndex: "0", ...base(0) }),
+    );
+    expect(value).toEqual({
+      selectedIndex: 0,
+      cases: [
+        {
+          client: "廠 0",
+          tags: ["製造業", "ESG 減碳"],
+          beforeImage: "/b0.jpg",
+          afterImage: "/a0.jpg",
+          logo: "/logo0.png",
+          energyRate: "00%",
+          annualSaving: "約 000 萬",
+          roi: "0 年",
+          carbon: "年減約 000 噸 CO₂e",
+        },
+      ],
+    });
   });
 });
 

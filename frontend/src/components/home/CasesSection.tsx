@@ -11,7 +11,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { HOME_CASE, type RoiMetric } from "@/components/home/content";
+import type { HomeCaseStudy, RoiMetric } from "@/components/home/content";
 import {
   AnimatedNumber,
   Reveal,
@@ -149,10 +149,10 @@ function MetricRow({ metric, run }: { metric: RoiMetric; run: boolean }) {
   );
 }
 
-export function CasesSection() {
+export function CasesSection({ content }: { content: HomeCaseStudy }) {
   // 進入視窗（約 100px 進場）才啟動照片滑入與右側數字 count-up。
   const { ref, inView } = useInViewOnce<HTMLDivElement>("0px 0px -100px 0px");
-  const c = HOME_CASE;
+  const c = content;
   const hero = c.metrics[0];
   const rest = c.metrics.slice(1);
 

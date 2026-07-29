@@ -1,11 +1,16 @@
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { HOME_KEYS, HOME_DEFAULTS, type HomeContent } from "@/lib/data/home";
+import {
+  HOME_CASE_DEFAULT_COLLECTION,
+  type HomeCaseCollection,
+} from "@/components/home/content";
 import { getBranding } from "@/lib/data/site";
 import { BrandingForm } from "./BrandingForm";
 import {
   CarouselForm,
   StatsForm,
+  CaseStudyForm,
   TechForm,
   NewsForm,
   ProductsForm,
@@ -46,12 +51,20 @@ export default async function AdminHomePage() {
   const home: HomeContent = {
     carousel: prefill(current.get(HOME_KEYS.carousel), HOME_DEFAULTS.carousel),
     stats: prefill(current.get(HOME_KEYS.stats), HOME_DEFAULTS.stats),
+    // caseStudy 於前台是「已 resolve 的單筆」，後台則需編輯整個 collection（見下方 caseCollection）。
+    caseStudy: HOME_DEFAULTS.caseStudy,
     tech: prefill(current.get(HOME_KEYS.tech), HOME_DEFAULTS.tech),
     news: prefill(current.get(HOME_KEYS.news), HOME_DEFAULTS.news),
     products: prefill(current.get(HOME_KEYS.products), HOME_DEFAULTS.products),
     features: prefill(current.get(HOME_KEYS.features), HOME_DEFAULTS.features),
     social: prefill(current.get(HOME_KEYS.social), HOME_DEFAULTS.social),
   };
+
+  // 客戶實績以 collection 形狀（多個案 + selectedIndex）編輯，故獨立 prefill。
+  const caseCollection: HomeCaseCollection = prefill(
+    current.get(HOME_KEYS.caseStudy),
+    HOME_CASE_DEFAULT_COLLECTION,
+  );
 
   const branding = await getBranding();
 
@@ -92,6 +105,7 @@ export default async function AdminHomePage() {
         <div className="mt-5 flex flex-col gap-5">
           <CarouselForm value={home.carousel} />
           <StatsForm value={home.stats} />
+          <CaseStudyForm value={caseCollection} />
           <TechForm value={home.tech} />
           <NewsForm value={home.news} />
           <ProductsForm value={home.products} />
