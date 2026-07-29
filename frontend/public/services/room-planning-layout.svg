@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="'Inter','PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif">
+  <rect width="800" height="500" fill="#ffffff"/>
+  <text x="48" y="60" fill="#2f8f5c" font-size="15" font-weight="700" letter-spacing="2">AIR ROOM LAYOUT · 設備配置</text>
+  <text x="48" y="94" fill="#16201a" font-size="27" font-weight="700">後處理設備的建議配置順序</text>
+
+  <!-- flow chips (2 rows of 3, snake) -->
+  <!-- row 1 -->
+  <g>
+    <rect x="60" y="150" width="180" height="86" rx="14" fill="#2f8f5c"/>
+    <text x="150" y="188" text-anchor="middle" fill="#ffffff" font-size="17" font-weight="700">空壓機</text>
+    <text x="150" y="212" text-anchor="middle" fill="#d8f0e2" font-size="13">壓縮空氣產生</text>
+
+    <rect x="310" y="150" width="180" height="86" rx="14" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="400" y="188" text-anchor="middle" fill="#16201a" font-size="17" font-weight="700">儲氣桶</text>
+    <text x="400" y="212" text-anchor="middle" fill="#5c6b61" font-size="13">初步排水 · 降溫</text>
+
+    <rect x="560" y="150" width="180" height="86" rx="14" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="650" y="188" text-anchor="middle" fill="#16201a" font-size="17" font-weight="700">前置精密過濾器</text>
+    <text x="650" y="212" text-anchor="middle" fill="#5c6b61" font-size="13">減少熱交換器阻塞</text>
+  </g>
+  <!-- row 2 -->
+  <g>
+    <rect x="560" y="300" width="180" height="86" rx="14" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="650" y="338" text-anchor="middle" fill="#16201a" font-size="17" font-weight="700">冷凍乾燥機</text>
+    <text x="650" y="362" text-anchor="middle" fill="#5c6b61" font-size="13">除水乾燥</text>
+
+    <rect x="310" y="300" width="180" height="86" rx="14" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="400" y="338" text-anchor="middle" fill="#16201a" font-size="17" font-weight="700">後製精密過濾器</text>
+    <text x="400" y="362" text-anchor="middle" fill="#5c6b61" font-size="13">去除油氣與顆粒</text>
+
+    <rect x="60" y="300" width="180" height="86" rx="14" fill="#2f8f5c"/>
+    <text x="150" y="338" text-anchor="middle" fill="#ffffff" font-size="17" font-weight="700">儲氣桶 → 供氣</text>
+    <text x="150" y="362" text-anchor="middle" fill="#d8f0e2" font-size="13">穩定末端壓力</text>
+  </g>
+
+  <!-- arrows -->
+  <path d="M240 193 h56 l-12 -7 v14 z" fill="#5fbf86"/>
+  <path d="M490 193 h56 l-12 -7 v14 z" fill="#5fbf86"/>
+  <path d="M650 236 v50 l7 -12 h-14 z" fill="#5fbf86"/>
+  <path d="M540 343 h-36 l12 -7 v14 z" fill="#5fbf86"/>
+  <path d="M290 343 h-36 l12 -7 v14 z" fill="#5fbf86"/>
+
+  <text x="400" y="452" text-anchor="middle" fill="#5c6b61" font-size="14.5">每一段環環相扣，少一環就多一分洩漏、腐蝕與壓降的風險。</text>
+</svg>

@@ -105,8 +105,8 @@ export default async function ServiceDetailPage(props: DetailPageProps) {
           </div>
 
           {hero ? (
-            <div className="border-border bg-surface aspect-[560/460] w-full overflow-hidden rounded-[16px] border p-4">
-              {/* 白底 + 留白 + object-contain：主圖完整顯示、不裁切。 */}
+            <div className="border-border bg-surface aspect-[16/9] w-full overflow-hidden rounded-[16px] border">
+              {/* 實拍 Hero 照片：object-cover 填滿框、圓角裁切。 */}
               <div className="relative h-full w-full">
                 <Image
                   src={hero.url}
@@ -114,7 +114,7 @@ export default async function ServiceDetailPage(props: DetailPageProps) {
                   fill
                   sizes="(max-width: 768px) 100vw, 560px"
                   priority
-                  className="object-contain"
+                  className="object-cover"
                 />
               </div>
             </div>

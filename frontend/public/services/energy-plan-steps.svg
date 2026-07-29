@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="'Inter','PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif">
+  <rect width="800" height="500" fill="#ffffff"/>
+  <!-- header -->
+  <text x="48" y="60" fill="#2f8f5c" font-size="15" font-weight="700" letter-spacing="2">STEP BY STEP · 節能規劃</text>
+  <text x="48" y="94" fill="#16201a" font-size="27" font-weight="700">三步驟量身打造省電方案</text>
+
+  <!-- connecting line -->
+  <line x1="150" y1="300" x2="650" y2="300" stroke="#dce8dd" stroke-width="3"/>
+
+  <!-- Step 1 -->
+  <g>
+    <circle cx="180" cy="300" r="52" fill="#f1f6f1" stroke="#2f8f5c" stroke-width="3"/>
+    <text x="180" y="292" text-anchor="middle" fill="#2f8f5c" font-size="34" font-weight="800">1</text>
+    <text x="180" y="322" text-anchor="middle" fill="#5c6b61" font-size="13" font-weight="600">CONSULT</text>
+    <text x="180" y="392" text-anchor="middle" fill="#16201a" font-size="18" font-weight="700">洽談諮詢</text>
+    <text x="180" y="418" text-anchor="middle" fill="#5c6b61" font-size="14">觀念釐清 · 初步評估</text>
+  </g>
+  <!-- Step 2 -->
+  <g>
+    <circle cx="400" cy="300" r="52" fill="#f1f6f1" stroke="#2f8f5c" stroke-width="3"/>
+    <text x="400" y="292" text-anchor="middle" fill="#2f8f5c" font-size="34" font-weight="800">2</text>
+    <text x="400" y="322" text-anchor="middle" fill="#5c6b61" font-size="13" font-weight="600">MEASURE</text>
+    <text x="400" y="392" text-anchor="middle" fill="#16201a" font-size="18" font-weight="700">現場勘查</text>
+    <text x="400" y="418" text-anchor="middle" fill="#5c6b61" font-size="14">效能檢測 · 數據佐證</text>
+  </g>
+  <!-- Step 3 -->
+  <g>
+    <circle cx="620" cy="300" r="52" fill="#2f8f5c" stroke="#1f6b43" stroke-width="3"/>
+    <text x="620" y="292" text-anchor="middle" fill="#ffffff" font-size="34" font-weight="800">3</text>
+    <text x="620" y="322" text-anchor="middle" fill="#d8f0e2" font-size="13" font-weight="600">REPORT</text>
+    <text x="620" y="392" text-anchor="middle" fill="#16201a" font-size="18" font-weight="700">報告製作</text>
+    <text x="620" y="418" text-anchor="middle" fill="#5c6b61" font-size="14">會議討論 · 最佳方案</text>
+  </g>
+
+  <!-- arrowheads -->
+  <path d="M290 300 l-14 -7 v14 z" fill="#5fbf86"/>
+  <path d="M510 300 l-14 -7 v14 z" fill="#5fbf86"/>
+</svg>

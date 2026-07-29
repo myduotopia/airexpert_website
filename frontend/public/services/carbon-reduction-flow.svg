@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="'Inter','PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif">
+  <rect width="800" height="500" fill="#ffffff"/>
+  <text x="48" y="60" fill="#2f8f5c" font-size="15" font-weight="700" letter-spacing="2">CARBON AUDIT · 碳盤查</text>
+  <text x="48" y="94" fill="#16201a" font-size="27" font-weight="700">空壓設備碳盤查六步驟</text>
+
+  <!-- 6 steps: 2 rows x 3 -->
+  <!-- row 1 -->
+  <g>
+    <rect x="60" y="150" width="200" height="96" rx="14" fill="#2f8f5c"/>
+    <text x="84" y="186" fill="#d8f0e2" font-size="22" font-weight="800">01</text>
+    <text x="84" y="216" fill="#ffffff" font-size="18" font-weight="700">數據收集</text>
+    <text x="84" y="238" fill="#d8f0e2" font-size="12.5">最優先 · 最關鍵</text>
+
+    <rect x="300" y="150" width="200" height="96" rx="14" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="324" y="186" fill="#5fbf86" font-size="22" font-weight="800">02</text>
+    <text x="324" y="216" fill="#16201a" font-size="18" font-weight="700">能源來源分析</text>
+
+    <rect x="540" y="150" width="200" height="96" rx="14" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="564" y="186" fill="#5fbf86" font-size="22" font-weight="800">03</text>
+    <text x="564" y="216" fill="#16201a" font-size="18" font-weight="700">碳排放計算</text>
+  </g>
+  <!-- row 2 -->
+  <g>
+    <rect x="540" y="290" width="200" height="96" rx="14" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="564" y="326" fill="#5fbf86" font-size="22" font-weight="800">04</text>
+    <text x="564" y="356" fill="#16201a" font-size="18" font-weight="700">效率評估</text>
+
+    <rect x="300" y="290" width="200" height="96" rx="14" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="324" y="326" fill="#5fbf86" font-size="22" font-weight="800">05</text>
+    <text x="324" y="356" fill="#16201a" font-size="18" font-weight="700">改善措施</text>
+
+    <rect x="60" y="290" width="200" height="96" rx="14" fill="#1f6b43"/>
+    <text x="84" y="326" fill="#d8f0e2" font-size="22" font-weight="800">06</text>
+    <text x="84" y="356" fill="#ffffff" font-size="18" font-weight="700">監測與報告</text>
+  </g>
+
+  <!-- arrows -->
+  <path d="M260 198 h40 l-12 -7 v14 z" fill="#5fbf86"/>
+  <path d="M500 198 h40 l-12 -7 v14 z" fill="#5fbf86"/>
+  <path d="M640 246 v44 l7 -12 h-14 z" fill="#5fbf86"/>
+  <path d="M540 338 h-40 l12 -7 v14 z" fill="#5fbf86"/>
+  <path d="M300 338 h-40 l12 -7 v14 z" fill="#5fbf86"/>
+
+  <text x="400" y="452" text-anchor="middle" fill="#5c6b61" font-size="14.5">減碳無法憑感覺，必須建立在完整、可追溯的數據之上。</text>
+</svg>

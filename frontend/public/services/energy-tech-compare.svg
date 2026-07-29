@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="'Inter','PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif">
+  <rect width="800" height="500" fill="#ffffff"/>
+  <text x="48" y="60" fill="#2f8f5c" font-size="15" font-weight="700" letter-spacing="2">ENERGY SAVING · 能耗對比</text>
+  <text x="48" y="94" fill="#16201a" font-size="27" font-weight="700">雙段壓縮 vs 單段壓縮</text>
+
+  <!-- baseline -->
+  <line x1="120" y1="400" x2="720" y2="400" stroke="#dce8dd" stroke-width="2"/>
+
+  <!-- single-stage bar (100%) -->
+  <rect x="200" y="170" width="140" height="230" rx="8" fill="#c8d2cc"/>
+  <text x="270" y="150" text-anchor="middle" fill="#16201a" font-size="30" font-weight="800">100%</text>
+  <text x="270" y="432" text-anchor="middle" fill="#16201a" font-size="17" font-weight="700">單段壓縮</text>
+  <text x="270" y="456" text-anchor="middle" fill="#5c6b61" font-size="14">基準耗電量</text>
+
+  <!-- two-stage bar (~82%) -->
+  <rect x="470" y="215" width="140" height="185" rx="8" fill="#2f8f5c"/>
+  <text x="540" y="195" text-anchor="middle" fill="#1f6b43" font-size="30" font-weight="800">↓15~20%</text>
+  <text x="540" y="432" text-anchor="middle" fill="#16201a" font-size="17" font-weight="700">雙段壓縮</text>
+  <text x="540" y="456" text-anchor="middle" fill="#5c6b61" font-size="14">同馬力更低負荷</text>
+
+  <!-- saving callout -->
+  <rect x="628" y="230" width="150" height="70" rx="12" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+  <text x="703" y="262" text-anchor="middle" fill="#2f8f5c" font-size="20" font-weight="800">82,685 kW</text>
+  <text x="703" y="284" text-anchor="middle" fill="#5c6b61" font-size="12.5">100HP／年可省</text>
+</svg>
