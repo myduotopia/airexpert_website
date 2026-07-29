@@ -1,10 +1,10 @@
 "use server";
 
 // 商品後台的具型別 server actions。
-// 共用寫入邏輯（service_role + requireAdmin + revalidateTag）集中在 @/lib/admin/crud，
+// 共用寫入邏輯（service_role + requireAdmin + updateTag）集中在 @/lib/admin/crud，
 // 這裡只負責：把表單欄位整理成 products 列、解析 spec/images 兩個 jsonb 欄位、
 // 並在成功後導回列表。table = "products"，PK = id。
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 import { createRow, updateRow, deleteRow, reorderRows } from "@/lib/admin/crud";
 import { CACHE_TAGS } from "@/lib/data/cache";
 import { requireAdmin } from "@/lib/admin/auth";
@@ -180,5 +180,5 @@ export async function getProductForAdmin(id: string) {
 /** 預留：列表頁日後若要單獨失效（目前由各 action 內建 revalidate 處理）。 */
 export async function revalidateProducts() {
   await requireAdmin();
-  revalidateTag(CACHE_TAGS.products, "max");
+  updateTag(CACHE_TAGS.products);
 }

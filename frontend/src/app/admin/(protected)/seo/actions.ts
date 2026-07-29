@@ -9,9 +9,9 @@
 //      body_html / status / role 等鍵，也只有 SEO_WRITABLE_COLUMNS 會被寫入。
 //   4. 走 service_role（getAdminSupabase）寫入：seo_manager 依設計無內容表 write RLS，
 //      欄位級限制改由上述白名單在此層強制。
-//   5. revalidateTag（Next 16 兩參形式）讓前台 detail 頁的 metadata 立即更新。
+//   5. updateTag（read-your-own-writes）讓前台 detail 頁的 metadata 立即更新。
 
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 import { requireRole } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { parseSeoFields } from "@/lib/admin/seo-fields";
@@ -56,9 +56,9 @@ export async function updateContentSeo(
     return { ok: false, error: error.message };
   }
 
-  // Next 16：revalidateTag 需第二參數；"max" = stale-while-revalidate。
+  // updateTag（read-your-own-writes）：存檔後前台 metadata 立即更新，不回舊快取。
   const cfg = getSeoTableConfig(table);
-  if (cfg) revalidateTag(cfg.cacheTag, "max");
+  if (cfg) updateTag(cfg.cacheTag);
 
   return { ok: true };
 }

@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { encryptSecret } from "@/lib/crypto";
@@ -64,7 +64,7 @@ export async function saveAiConfig(
     );
   if (error) return { error: error.message };
 
-  revalidateTag("site_settings", "max");
+  updateTag("site_settings");
   return { ok: true };
 }
 
@@ -100,7 +100,7 @@ export async function saveAiPrompts(
     );
   if (error) return { error: error.message };
 
-  revalidateTag("site_settings", "max");
+  updateTag("site_settings");
   return { ok: true };
 }
 
@@ -170,7 +170,7 @@ export async function saveContactNotifyConfig(
     );
   if (error) return { error: error.message };
 
-  revalidateTag("site_settings", "max");
+  updateTag("site_settings");
   return { ok: true };
 }
 
@@ -211,7 +211,7 @@ export async function saveAnalyticsConfig(
     );
   if (error) return { error: error.message };
 
-  revalidateTag("site_settings", "max");
+  updateTag("site_settings");
   return { ok: true };
 }
 

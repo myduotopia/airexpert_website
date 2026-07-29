@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // 讓資料層快取包裝在測試中透傳，直接執行查詢邏輯。
 vi.mock("next/cache", () => ({
   unstable_cache: (fn: unknown) => fn,
-  revalidateTag: () => {},
+  updateTag: () => {},
 }));
 vi.mock("react", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),

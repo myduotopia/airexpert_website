@@ -229,7 +229,7 @@ export default async function ProductDetailPage(props: DetailPageProps) {
               SPECIFICATIONS · 技術規格
             </p>
             <h2 className="text-ink text-[26px] font-bold sm:text-[32px]">
-              完整機種規格比較
+              完整機種規格
             </h2>
           </div>
           {product.category === VFD_COMPRESSOR &&
