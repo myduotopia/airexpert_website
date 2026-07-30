@@ -3,6 +3,7 @@ import Image from "next/image";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 import { sanitizeBodyHtml } from "@/lib/sanitize";
 import { ServiceCtaBanner } from "@/components/services/ServiceCtaBanner";
+import { ServiceGallery } from "@/components/services/ServiceGallery";
 import { previewServices } from "./data";
 
 // 服務項目改版「測試預覽」頁：內容鏡射 seed、圖片走 /public 靜態檔，完全不讀 DB，
@@ -143,26 +144,7 @@ export default function ServicesTestingPage() {
                   }}
                 />
 
-                {gallery.length > 0 ? (
-                  <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    {gallery.map((img, i) => (
-                      <div
-                        key={img.url}
-                        className="border-border bg-surface aspect-[16/10] w-full overflow-hidden rounded-[12px] border p-3"
-                      >
-                        <div className="relative h-full w-full">
-                          <Image
-                            src={img.url}
-                            alt={img.alt || `${service.title} 圖 ${i + 2}`}
-                            fill
-                            sizes="(max-width: 640px) 100vw, 400px"
-                            className="object-contain"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
+                <ServiceGallery images={gallery} fallbackAlt={service.title} />
 
                 <div className="border-border mt-12 border-t pt-8">
                   <a
