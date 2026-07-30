@@ -8,6 +8,7 @@ import { sanitizeBodyHtml } from "@/lib/sanitize";
 import { buildSeoMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { ServiceCtaBanner } from "@/components/services/ServiceCtaBanner";
+import { ServiceGallery } from "@/components/services/ServiceGallery";
 
 // Next 16：dynamic `params` 為 Promise，須 await（見 node_modules/next/dist/docs）。
 type DetailPageProps = {
@@ -105,8 +106,8 @@ export default async function ServiceDetailPage(props: DetailPageProps) {
           </div>
 
           {hero ? (
-            <div className="border-border bg-surface aspect-[560/460] w-full overflow-hidden rounded-[16px] border p-4">
-              {/* 白底 + 留白 + object-contain：主圖完整顯示、不裁切。 */}
+            <div className="border-border bg-surface aspect-[16/9] w-full overflow-hidden rounded-[16px] border">
+              {/* 實拍 Hero 照片：object-cover 填滿框、圓角裁切。 */}
               <div className="relative h-full w-full">
                 <Image
                   src={hero.url}
@@ -114,7 +115,7 @@ export default async function ServiceDetailPage(props: DetailPageProps) {
                   fill
                   sizes="(max-width: 768px) 100vw, 560px"
                   priority
-                  className="object-contain"
+                  className="object-cover"
                 />
               </div>
             </div>
@@ -136,28 +137,11 @@ export default async function ServiceDetailPage(props: DetailPageProps) {
             <p className="text-text-muted text-[16px]">內容建置中。</p>
           )}
 
-          {/* 內文圖庫（images jsonb；第一張作 hero，其餘列於此） */}
-          {gallery.length > 1 ? (
-            <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2">
-              {gallery.slice(1).map((img, i) => (
-                <div
-                  key={img.url}
-                  className="border-border bg-surface aspect-[16/10] w-full overflow-hidden rounded-[12px] border p-3"
-                >
-                  {/* 白底 + 留白 + object-contain：內文圖完整顯示、不裁切。 */}
-                  <div className="relative h-full w-full">
-                    <Image
-                      src={img.url}
-                      alt={img.alt ?? `${service.title} 圖 ${i + 2}`}
-                      fill
-                      sizes="(max-width: 640px) 100vw, 400px"
-                      className="object-contain"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
+          {/* 內文圖庫（images jsonb；第一張作 hero，其餘列於此，點擊可放大） */}
+          <ServiceGallery
+            images={gallery.slice(1)}
+            fallbackAlt={service.title}
+          />
 
           <div className="border-border mt-12 border-t pt-8">
             <Link

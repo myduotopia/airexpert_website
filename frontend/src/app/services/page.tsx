@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import { getPublishedServices } from "@/lib/data";
 import { ServiceHeader } from "@/components/services/ServiceHeader";
@@ -26,29 +27,43 @@ export default async function ServicesIndexPage() {
       <ServiceSection>
         {services.length > 0 ? (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {services.map((service) => (
-              <Link
-                key={service.id}
-                href={`/services/${service.slug}`}
-                className="border-border bg-surface focus-visible:ring-primary hover:border-primary group flex flex-col gap-4 rounded-[16px] border p-6 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-              >
-                <h2 className="text-ink text-[20px] font-semibold">
-                  {service.title}
-                </h2>
-                {service.summary ? (
-                  <p className="text-text-muted text-[16px] leading-[1.65]">
-                    {service.summary}
-                  </p>
-                ) : null}
-                <span className="text-primary-deep mt-auto inline-flex items-center gap-1 text-[16px] font-medium">
-                  了解更多
-                  <ArrowRight
-                    className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
-                    aria-hidden="true"
-                  />
-                </span>
-              </Link>
-            ))}
+            {services.map((service) => {
+              const thumb = (service.images ?? []).find((img) => img?.url);
+              return (
+                <Link
+                  key={service.id}
+                  href={`/services/${service.slug}`}
+                  className="border-border bg-surface focus-visible:ring-primary hover:border-primary group flex flex-col gap-4 rounded-[16px] border p-6 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  {thumb ? (
+                    <div className="border-border relative aspect-[16/10] w-full overflow-hidden rounded-[10px] border">
+                      <Image
+                        src={thumb.url}
+                        alt={thumb.alt ?? service.title}
+                        fill
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 320px"
+                        className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                      />
+                    </div>
+                  ) : null}
+                  <h2 className="text-ink text-[20px] font-semibold">
+                    {service.title}
+                  </h2>
+                  {service.summary ? (
+                    <p className="text-text-muted text-[16px] leading-[1.65]">
+                      {service.summary}
+                    </p>
+                  ) : null}
+                  <span className="text-primary-deep mt-auto inline-flex items-center gap-1 text-[16px] font-medium">
+                    了解更多
+                    <ArrowRight
+                      className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+                      aria-hidden="true"
+                    />
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         ) : (
           <p className="text-text-muted text-[16px]">服務項目建置中。</p>

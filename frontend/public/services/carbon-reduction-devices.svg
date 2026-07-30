@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="'Inter','PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif">
+  <rect width="800" height="500" fill="#ffffff"/>
+  <text x="48" y="60" fill="#2f8f5c" font-size="15" font-weight="700" letter-spacing="2">SMART MONITORING · 即時監控</text>
+  <text x="48" y="94" fill="#16201a" font-size="27" font-weight="700">智能量測設備生態</text>
+
+  <!-- spokes: hub -> card inner edges -->
+  <g stroke="#dce8dd" stroke-width="2.5">
+    <line x1="400" y1="300" x2="260" y2="201"/>
+    <line x1="400" y1="300" x2="260" y2="399"/>
+    <line x1="400" y1="300" x2="540" y2="201"/>
+    <line x1="400" y1="300" x2="540" y2="399"/>
+  </g>
+
+  <!-- central hub -->
+  <circle cx="400" cy="300" r="78" fill="#2f8f5c"/>
+  <circle cx="400" cy="300" r="78" fill="none" stroke="#1f6b43" stroke-width="3"/>
+  <text x="400" y="292" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="800">智能群控箱</text>
+  <text x="400" y="318" text-anchor="middle" fill="#d8f0e2" font-size="13">整合能耗·流量·露點</text>
+  <text x="400" y="338" text-anchor="middle" fill="#d8f0e2" font-size="13">自動調控啟停</text>
+
+  <!-- device nodes -->
+  <g>
+    <rect x="60" y="168" width="200" height="66" rx="12" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="160" y="200" text-anchor="middle" fill="#16201a" font-size="16" font-weight="700">智能電表</text>
+    <text x="160" y="222" text-anchor="middle" fill="#5c6b61" font-size="12.5">紀錄用電量 kWh</text>
+
+    <rect x="60" y="366" width="200" height="66" rx="12" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="160" y="398" text-anchor="middle" fill="#16201a" font-size="16" font-weight="700">差壓式流量計</text>
+    <text x="160" y="420" text-anchor="middle" fill="#5c6b61" font-size="12.5">單台排氣量 · 衰退評估</text>
+
+    <rect x="540" y="168" width="200" height="66" rx="12" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="640" y="200" text-anchor="middle" fill="#16201a" font-size="16" font-weight="700">露點計</text>
+    <text x="640" y="222" text-anchor="middle" fill="#5c6b61" font-size="12.5">乾燥後含水量</text>
+
+    <rect x="540" y="366" width="200" height="66" rx="12" fill="#f1f6f1" stroke="#dce8dd" stroke-width="1.5"/>
+    <text x="640" y="398" text-anchor="middle" fill="#16201a" font-size="16" font-weight="700">熱質式流量計</text>
+    <text x="640" y="420" text-anchor="middle" fill="#5c6b61" font-size="12.5">全廠總需求用氣量</text>
+  </g>
+
+  <!-- node dots at card inner edges -->
+  <g fill="#37b89b">
+    <circle cx="260" cy="201" r="6"/>
+    <circle cx="260" cy="399" r="6"/>
+    <circle cx="540" cy="201" r="6"/>
+    <circle cx="540" cy="399" r="6"/>
+  </g>
+</svg>

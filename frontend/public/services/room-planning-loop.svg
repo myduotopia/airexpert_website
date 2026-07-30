@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="'Inter','PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif">
+  <rect width="800" height="500" fill="#ffffff"/>
+  <text x="48" y="60" fill="#2f8f5c" font-size="15" font-weight="700" letter-spacing="2">RING MAIN · 管路佈置</text>
+  <text x="48" y="94" fill="#16201a" font-size="27" font-weight="700">環狀主幹管，全廠壓力更穩定</text>
+
+  <!-- ring main -->
+  <rect x="200" y="180" width="400" height="200" rx="26" fill="none" stroke="#2f8f5c" stroke-width="10"/>
+
+  <!-- source on top edge -->
+  <rect x="330" y="152" width="140" height="56" rx="12" fill="#2f8f5c"/>
+  <text x="400" y="187" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="700">氣源機房</text>
+
+  <!-- side usage taps -->
+  <g stroke="#5fbf86" stroke-width="5">
+    <line x1="200" y1="250" x2="150" y2="250"/>
+    <line x1="600" y1="250" x2="650" y2="250"/>
+  </g>
+  <circle cx="140" cy="250" r="16" fill="#f1f6f1" stroke="#2f8f5c" stroke-width="2"/>
+  <circle cx="660" cy="250" r="16" fill="#f1f6f1" stroke="#2f8f5c" stroke-width="2"/>
+  <text x="140" y="290" text-anchor="middle" fill="#5c6b61" font-size="13">用氣點</text>
+  <text x="660" y="290" text-anchor="middle" fill="#5c6b61" font-size="13">用氣點</text>
+
+  <!-- labels inside -->
+  <text x="400" y="272" text-anchor="middle" fill="#16201a" font-size="18" font-weight="700">環狀主幹管</text>
+  <text x="400" y="300" text-anchor="middle" fill="#5c6b61" font-size="14">依壓降目標計算 · 管徑一致</text>
+
+  <!-- low-point drain on bottom edge -->
+  <line x1="400" y1="380" x2="400" y2="410" stroke="#37b89b" stroke-width="5"/>
+  <circle cx="400" cy="424" r="18" fill="#37b89b"/>
+  <text x="400" y="430" text-anchor="middle" fill="#ffffff" font-size="16">▼</text>
+  <text x="400" y="466" text-anchor="middle" fill="#5c6b61" font-size="13.5">低點：卻水管 + 無耗氣式卻水器</text>
+
+  <!-- leak checkpoints note -->
+  <rect x="560" y="404" width="220" height="34" rx="17" fill="#f1f6f1" stroke="#dce8dd"/>
+  <text x="670" y="426" text-anchor="middle" fill="#5c6b61" font-size="12.5">接頭／法蘭／閥件 定期檢漏</text>
+</svg>
