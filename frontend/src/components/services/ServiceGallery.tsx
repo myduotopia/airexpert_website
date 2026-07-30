@@ -6,7 +6,7 @@ import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
 export type GalleryImage = { url: string; alt?: string | null };
 
-// 服務內文圖庫 + 點擊放大燈箱。正式 /services/[slug] 與 /services-testing 共用。
+// 服務內文圖庫 + 點擊放大燈箱。/services（一頁式）與 /services/[slug] 共用。
 // 圖片以 object-contain 呈現（示意圖/表格/截圖不裁切）；點縮圖開全螢幕檢視。
 export function ServiceGallery({
   images,
