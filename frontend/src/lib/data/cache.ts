@@ -14,6 +14,7 @@ export const CACHE_TAGS = {
   brands: "brands",
   services: "services",
   siteSettings: "site_settings",
+  analytics: "analytics",
 } as const;
 
 export function throwOnError(
