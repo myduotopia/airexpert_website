@@ -7,9 +7,14 @@ export const metadata = { title: "SEO 總覽 · 後台" };
 // 統一 SEO 總覽（V3-4）：跨五區（商品 / 最新消息 / 服務 / 節能實績 / 公司活動）列出 SEO 狀態、
 // 標示缺漏並快速編輯 meta。為 seo_manager 的主要工作區（admin 亦可進）。
 // requireRole 在任何 service_role 讀取前先守門。
-export default async function AdminSeoOverviewPage() {
+export default async function AdminSeoOverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   await requireRole(["admin", "seo_manager"]);
   const rows = await getAllForSeo();
+  const { q } = await searchParams;
 
   return (
     <div className="mx-auto max-w-[1200px]">
@@ -21,7 +26,7 @@ export default async function AdminSeoOverviewPage() {
         </p>
       </div>
 
-      <SeoOverviewClient rows={rows} />
+      <SeoOverviewClient rows={rows} initialQuery={q ?? ""} />
     </div>
   );
 }

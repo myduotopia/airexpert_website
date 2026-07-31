@@ -53,9 +53,15 @@ function StatusPill({ status }: { status: SeoRow["status"] }) {
   );
 }
 
-export function SeoOverviewClient({ rows }: { rows: SeoRow[] }) {
+export function SeoOverviewClient({
+  rows,
+  initialQuery = "",
+}: {
+  rows: SeoRow[];
+  initialQuery?: string;
+}) {
   const [table, setTable] = useState<SeoTable | "all">("all");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null);
 
