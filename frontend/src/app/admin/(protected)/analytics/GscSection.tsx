@@ -49,7 +49,12 @@ export async function GscSection({
         <KpiCard label="總點擊" metric={d.kpis.clicks} />
         <KpiCard label="總曝光" metric={d.kpis.impressions} />
         <KpiCard label="平均 CTR" metric={d.kpis.ctr} format={pct} />
-        <KpiCard label="平均排名" metric={d.kpis.position} format={pos} />
+        <KpiCard
+          label="平均排名"
+          metric={d.kpis.position}
+          format={pos}
+          lowerIsBetter
+        />
       </div>
       <div className="border-border rounded-xl border bg-white p-4">
         <p className="text-ink mb-3 text-[14px] font-semibold">
