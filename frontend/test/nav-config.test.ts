@@ -52,6 +52,16 @@ describe("navForRole（後台側欄角色 gating）", () => {
     expect(navForRole("seo_manager").some((i) => i.key === "seo")).toBe(true);
   });
 
+  it("包含『流量分析』且 admin 與 seo_manager 皆可見", () => {
+    const item = ADMIN_NAV.find((i) => i.key === "analytics");
+    expect(item).toBeTruthy();
+    expect(item?.enabled).toBe(true);
+    expect(navForRole("seo_manager").some((i) => i.key === "analytics")).toBe(
+      true,
+    );
+    expect(navForRole("admin").some((i) => i.key === "analytics")).toBe(true);
+  });
+
   it("admin-only 項目皆以 roles:['admin'] 標記", () => {
     for (const key of ["settings", "staff", "contact"]) {
       const item = ADMIN_NAV.find((i) => i.key === key);

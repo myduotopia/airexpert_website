@@ -27,6 +27,12 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: "dashboard", label: "總覽", href: "/admin", enabled: true },
   // SEO 總覽：跨五區檢視缺漏 + 快速編輯 meta。seo_manager 的主要工作區，admin 亦可進。
   { key: "seo", label: "SEO 總覽", href: "/admin/seo", enabled: true },
+  {
+    key: "analytics",
+    label: "流量分析",
+    href: "/admin/analytics",
+    enabled: true,
+  },
   // 首頁與品牌設定：品牌資產（LOGO / favicon）全站即時生效，故列入側欄；
   // 首頁區段內容因前台採過渡版面暫未顯示（頁內已標示），仍可預先編輯。
   { key: "home", label: "首頁與品牌", href: "/admin/home", enabled: true },

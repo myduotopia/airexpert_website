@@ -190,6 +190,8 @@ export async function saveAnalyticsConfig(
   const parsed = parseAnalyticsConfig({
     ga4_id: String(fd.get("ga4_id") ?? ""),
     gsc_verification: String(fd.get("gsc_verification") ?? ""),
+    ga4_property_id: String(fd.get("ga4_property_id") ?? ""),
+    gsc_site_url: String(fd.get("gsc_site_url") ?? ""),
   });
 
   // 強制 GA4 id 格式（G-XXXX…）：ga4_id 會以原樣插入 layout 的 inline gtag script，
@@ -197,10 +199,15 @@ export async function saveAnalyticsConfig(
   if (parsed.ga4Id && !isLikelyGa4Id(parsed.ga4Id)) {
     return { error: "GA4 測量 ID 格式不正確（應為 G- 開頭的英數字）。" };
   }
+  if (parsed.ga4PropertyId && !/^\d+$/.test(parsed.ga4PropertyId)) {
+    return { error: "GA4 資源 ID 應為純數字。" };
+  }
 
   const value: AnalyticsValue = {};
   if (parsed.ga4Id) value.ga4_id = parsed.ga4Id;
   if (parsed.gscVerification) value.gsc_verification = parsed.gscVerification;
+  if (parsed.ga4PropertyId) value.ga4_property_id = parsed.ga4PropertyId;
+  if (parsed.gscSiteUrl) value.gsc_site_url = parsed.gscSiteUrl;
 
   const admin = getAdminSupabase();
   const { error } = await admin

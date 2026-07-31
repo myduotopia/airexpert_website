@@ -68,6 +68,8 @@ export default async function AdminSettingsPage() {
         <AnalyticsSettingsForm
           ga4Id={analytics.ga4Id ?? ""}
           gscVerification={analytics.gscVerification ?? ""}
+          ga4PropertyId={analytics.ga4PropertyId ?? ""}
+          gscSiteUrl={analytics.gscSiteUrl ?? ""}
         />
       </section>
     </div>
