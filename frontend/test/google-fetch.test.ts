@@ -37,6 +37,19 @@ describe("googleApiPost", () => {
     expect(sleep).toHaveBeenCalledTimes(1);
   });
 
+  it("連 3 次皆 503 → 用盡重試，sleep 只呼叫 2 次（最後一次失敗不再 sleep）", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(err(503)));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await expect(
+      googleApiPost("https://x?k=1", "SECRET_TOKEN", {}, { sleep }),
+    ).rejects.toThrow(/503/);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    await expect(
+      googleApiPost("https://x?k=1", "SECRET_TOKEN", {}, { sleep: vi.fn() }),
+    ).rejects.toThrow(/^(?!.*SECRET_TOKEN).*$/);
+  });
+
   it("403 → 不重試、立即丟錯（訊息含 403、不含 token）", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(err(403)));
     await expect(
