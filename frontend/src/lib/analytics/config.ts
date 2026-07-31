@@ -5,6 +5,8 @@
 export interface AnalyticsValue {
   ga4_id?: string;
   gsc_verification?: string;
+  ga4_property_id?: string;
+  gsc_site_url?: string;
 }
 
 /** 正規化後的分析設定：空字串 / 非字串一律收斂為 null（未設定）。 */
@@ -13,6 +15,10 @@ export interface AnalyticsConfig {
   ga4Id: string | null;
   /** Google Search Console 驗證碼（content 值）。null → 不輸出 verification meta。 */
   gscVerification: string | null;
+  /** GA4 資源 ID（純數字字串），供 Data API `properties/{id}`。null → 無法查 GA4。 */
+  ga4PropertyId: string | null;
+  /** GSC 資源網址（如 `sc-domain:example.com`）。null → 無法查 GSC。 */
+  gscSiteUrl: string | null;
 }
 
 /** 非空字串才採用，否則回 null。trim 後判斷。 */
@@ -30,6 +36,8 @@ export function parseAnalyticsConfig(
   return {
     ga4Id: strOrNull(value?.ga4_id),
     gscVerification: strOrNull(value?.gsc_verification),
+    ga4PropertyId: strOrNull(value?.ga4_property_id),
+    gscSiteUrl: strOrNull(value?.gsc_site_url),
   };
 }
 
