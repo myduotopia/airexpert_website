@@ -1,9 +1,9 @@
 import type { DailyPoint } from "@/lib/analytics/types";
 
-/** 把 YYYY-MM-DD 轉為 M/D（x 軸標籤用）。 */
-function shortDate(ymd: string): string {
-  const [, m, d] = ymd.split("-");
-  return m && d ? `${Number(m)}/${Number(d)}` : ymd;
+/** 把 YYYY-MM-DD 轉為 YYYY/MM/DD（x 軸標籤用）。 */
+function fmtDate(ymd: string): string {
+  const [y, m, d] = ymd.split("-");
+  return y && m && d ? `${y}/${m}/${d}` : ymd;
 }
 
 /** 取「漂亮」的 y 軸上限（1/2/2.5/5/10 × 10^n），讓刻度是整數好讀。 */
@@ -18,22 +18,23 @@ function niceMax(m: number): number {
 
 /**
  * 手寫 SVG 折線：本期（實線）vs 上期（灰虛線）。無外部套件。
- * 含 y 軸（使用者數，附水平格線）與 x 軸（日期）刻度標示。
+ * 含 y 軸（數量，附水平格線）與 x 軸（時間 / 日期）刻度與軸標題。
  */
 export function LineChart({ points }: { points: DailyPoint[] }) {
   if (points.length === 0) {
     return <p className="text-text-muted text-[13px]">此區間無資料。</p>;
   }
 
-  // 版面：左側留給 y 軸數字、底部留給 x 軸日期。
+  // 版面：左側留給 y 軸標題＋數字、底部留給 x 軸日期＋標題。
   const W = 640,
-    H = 210,
-    PL = 40, // 左內距（y 軸標籤）
-    PR = 14, // 右內距
-    PT = 10, // 上內距
-    PB = 24; // 下內距（x 軸標籤）
+    H = 220,
+    PL = 50, // 左內距（y 軸標題 + 數字）
+    PR = 16, // 右內距
+    PT = 12, // 上內距
+    PB = 42; // 下內距（x 軸日期 + 標題）
   const plotW = W - PL - PR;
   const plotH = H - PT - PB;
+  const plotBottom = PT + plotH;
 
   const cur = points.map((p) => p.current);
   const prev = points.map((p) => p.previous ?? 0);
@@ -69,9 +70,9 @@ export function LineChart({ points }: { points: DailyPoint[] }) {
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="h-[210px] w-full"
+        className="h-[220px] w-full"
         role="img"
-        aria-label={`每日使用者趨勢：${shortDate(points[0].date)} 至 ${shortDate(points[points.length - 1].date)}，最高約 ${yMax.toLocaleString("zh-TW")} 人`}
+        aria-label={`每日使用者趨勢（y：數量、x：時間）：${fmtDate(points[0].date)} 至 ${fmtDate(points[points.length - 1].date)}，最高約 ${yMax.toLocaleString("zh-TW")} 人`}
       >
         {/* y 軸格線與數字 */}
         {yTicks.map((t) => (
@@ -97,21 +98,44 @@ export function LineChart({ points }: { points: DailyPoint[] }) {
           </g>
         ))}
 
+        {/* y 軸標題：數量（沿軸垂直） */}
+        <text
+          transform={`rotate(-90 12 ${PT + plotH / 2})`}
+          x={12}
+          y={PT + plotH / 2}
+          textAnchor="middle"
+          fill="#64748b"
+          fontSize={11}
+        >
+          數量
+        </text>
+
         {/* x 軸日期 */}
         {xIdx.map((i) => (
           <text
             key={i}
             x={x(i)}
-            y={H - 7}
+            y={plotBottom + 16}
             textAnchor={
               i === 0 ? "start" : i === points.length - 1 ? "end" : "middle"
             }
             fill="#94a3b8"
             fontSize={11}
           >
-            {shortDate(points[i].date)}
+            {fmtDate(points[i].date)}
           </text>
         ))}
+
+        {/* x 軸標題：時間 */}
+        <text
+          x={PL + plotW / 2}
+          y={H - 5}
+          textAnchor="middle"
+          fill="#64748b"
+          fontSize={11}
+        >
+          時間
+        </text>
 
         {/* 上期（灰虛線）與本期（實線） */}
         <path
