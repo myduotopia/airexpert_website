@@ -1,9 +1,14 @@
 import type { DailyPoint } from "@/lib/analytics/types";
 
-/** 把 YYYY-MM-DD 轉為 YYYY/MM/DD（x 軸標籤用）。 */
-function fmtDate(ymd: string): string {
-  const [y, m, d] = ymd.split("-");
-  return y && m && d ? `${y}/${m}/${d}` : ymd;
+/**
+ * 轉為 YYYY/MM/DD（x 軸標籤用）。
+ * GA4 date 維度為 YYYYMMDD（無分隔）；亦相容 YYYY-MM-DD。
+ */
+function fmtDate(raw: string): string {
+  const digits = raw.replace(/-/g, "");
+  return digits.length === 8
+    ? `${digits.slice(0, 4)}/${digits.slice(4, 6)}/${digits.slice(6, 8)}`
+    : raw;
 }
 
 /** 取「漂亮」的 y 軸上限（1/2/2.5/5/10 × 10^n），讓刻度是整數好讀。 */
@@ -18,7 +23,7 @@ function niceMax(m: number): number {
 
 /**
  * 手寫 SVG 折線：本期（實線）vs 上期（灰虛線）。無外部套件。
- * 含 y 軸（數量，附水平格線）與 x 軸（時間 / 日期）刻度與軸標題。
+ * 含 y 軸（使用者數，附水平格線）與 x 軸（日期）刻度與軸標題。
  */
 export function LineChart({ points }: { points: DailyPoint[] }) {
   if (points.length === 0) {
@@ -72,7 +77,7 @@ export function LineChart({ points }: { points: DailyPoint[] }) {
         viewBox={`0 0 ${W} ${H}`}
         className="h-[220px] w-full"
         role="img"
-        aria-label={`每日使用者趨勢（y：數量、x：時間）：${fmtDate(points[0].date)} 至 ${fmtDate(points[points.length - 1].date)}，最高約 ${yMax.toLocaleString("zh-TW")} 人`}
+        aria-label={`每日使用者趨勢（y：使用者數、x：日期）：${fmtDate(points[0].date)} 至 ${fmtDate(points[points.length - 1].date)}，最高約 ${yMax.toLocaleString("zh-TW")} 人`}
       >
         {/* y 軸格線與數字 */}
         {yTicks.map((t) => (
@@ -98,7 +103,7 @@ export function LineChart({ points }: { points: DailyPoint[] }) {
           </g>
         ))}
 
-        {/* y 軸標題：數量（沿軸垂直） */}
+        {/* y 軸標題：使用者數（沿軸垂直） */}
         <text
           transform={`rotate(-90 12 ${PT + plotH / 2})`}
           x={12}
@@ -107,7 +112,7 @@ export function LineChart({ points }: { points: DailyPoint[] }) {
           fill="#64748b"
           fontSize={11}
         >
-          數量
+          使用者數
         </text>
 
         {/* x 軸日期 */}
@@ -126,7 +131,7 @@ export function LineChart({ points }: { points: DailyPoint[] }) {
           </text>
         ))}
 
-        {/* x 軸標題：時間 */}
+        {/* x 軸標題：日期 */}
         <text
           x={PL + plotW / 2}
           y={H - 5}
@@ -134,7 +139,7 @@ export function LineChart({ points }: { points: DailyPoint[] }) {
           fill="#64748b"
           fontSize={11}
         >
-          時間
+          日期
         </text>
 
         {/* 上期（灰虛線）與本期（實線） */}
