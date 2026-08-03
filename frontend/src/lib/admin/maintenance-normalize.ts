@@ -9,7 +9,7 @@ export function cleanText(
 
 export interface MachinePayload {
   serial_no: string;
-  card_no: string | null;
+  machine_no: string | null;
   location: string | null;
   purchased_at: string | null;
   model: string | null;
@@ -22,7 +22,7 @@ export function machinePayloadFromForm(fd: FormData): MachinePayload {
   if (!serial) throw new Error("機號為必填。");
   return {
     serial_no: serial,
-    card_no: cleanText(fd.get("card_no")),
+    machine_no: cleanText(fd.get("machine_no")),
     location: cleanText(fd.get("location")),
     purchased_at: cleanText(fd.get("purchased_at")),
     model: cleanText(fd.get("model")),
@@ -67,8 +67,9 @@ export function normalizeSerial(v: string | null | undefined): string {
 export interface ExtractedDraft {
   basic: {
     customer_name: string;
+    customer_code: string;
     serial_no: string;
-    card_no: string;
+    machine_no: string;
     location: string;
     purchased_at: string;
     model: string;
@@ -109,8 +110,9 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
   return {
     basic: {
       customer_name: str(b.customer_name),
+      customer_code: str(b.customer_code),
       serial_no: str(b.serial_no),
-      card_no: str(b.card_no),
+      machine_no: str(b.machine_no),
       location: str(b.location),
       purchased_at: str(b.purchased_at),
       model: str(b.model),

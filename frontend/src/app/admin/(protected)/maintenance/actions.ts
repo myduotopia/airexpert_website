@@ -16,12 +16,35 @@ import {
 import { extractMaintenanceCard } from "@/lib/ai/gemini";
 import { findMachineBySerial } from "@/lib/admin/maintenance";
 
-/** 找或建客戶（依 name 完全比對；不強制唯一）。回傳 customer id。 */
+/**
+ * 找或建客戶。優先以「客戶編號 code」比對（不分大小寫）；無編號時退回以 name 完全比對。
+ * 回傳 customer id。
+ */
 async function findOrCreateCustomer(
   supabase: Awaited<ReturnType<typeof getServerSupabase>>,
-  name: string,
+  input: { code?: string | null; name?: string | null },
 ): Promise<string> {
-  const clean = name.trim();
+  const code = (input.code ?? "").trim();
+  const name = (input.name ?? "").trim();
+  if (code) {
+    const { data: byCode } = await supabase
+      .from("mx_customers")
+      .select("id")
+      .ilike("code", code)
+      .limit(1)
+      .maybeSingle();
+    if (byCode) return (byCode as { id: string }).id;
+    const { data: created, error } = await supabase
+      .from("mx_customers")
+      .insert({ code, name: name || "（未命名客戶）" })
+      .select("id")
+      .single();
+    if (error) throw new Error(`建立客戶失敗：${error.message}`);
+    return (created as { id: string }).id;
+  }
+  // 無客戶編號 → 沿用以名稱找/建。
+  const clean = name;
+  if (!clean) throw new Error("客戶名稱為必填。");
   const { data: existing } = await supabase
     .from("mx_customers")
     .select("id")
@@ -37,6 +60,23 @@ async function findOrCreateCustomer(
   return (created as { id: string }).id;
 }
 
+/** 依客戶編號查客戶名稱（供表單自動帶入）。查不到回 null。 */
+export async function lookupCustomerByCodeAction(
+  code: string,
+): Promise<{ name: string } | null> {
+  await requireRole(["office"]);
+  const clean = code.trim();
+  if (!clean) return null;
+  const supabase = await getServerSupabase();
+  const { data } = await supabase
+    .from("mx_customers")
+    .select("name")
+    .ilike("code", clean)
+    .limit(1)
+    .maybeSingle();
+  return data ? { name: (data as { name: string }).name } : null;
+}
+
 /** 建立新卡（含客戶）。表單需帶 customer_name + 機器欄位。成功後導向卡詳情。 */
 export async function createMachineAction(fd: FormData): Promise<void> {
   await requireRole(["office"]);
@@ -44,9 +84,13 @@ export async function createMachineAction(fd: FormData): Promise<void> {
 
   const customerName = String(fd.get("customer_name") ?? "").trim();
   if (!customerName) throw new Error("客戶名稱為必填。");
+  const customerCode = String(fd.get("customer_code") ?? "").trim();
   const payload = machinePayloadFromForm(fd);
 
-  const customerId = await findOrCreateCustomer(supabase, customerName);
+  const customerId = await findOrCreateCustomer(supabase, {
+    code: customerCode,
+    name: customerName,
+  });
   const { data, error } = await supabase
     .from("mx_machines")
     .insert({ ...payload, customer_id: customerId })
@@ -70,11 +114,15 @@ export async function updateMachineAction(
   const supabase = await getServerSupabase();
 
   const customerName = String(fd.get("customer_name") ?? "").trim();
+  const customerCode = String(fd.get("customer_code") ?? "").trim();
   try {
     const payload = machinePayloadFromForm(fd);
     const patch: Record<string, unknown> = { ...payload };
-    if (customerName) {
-      patch.customer_id = await findOrCreateCustomer(supabase, customerName);
+    if (customerName || customerCode) {
+      patch.customer_id = await findOrCreateCustomer(supabase, {
+        code: customerCode,
+        name: customerName,
+      });
     }
     const { error } = await supabase
       .from("mx_machines")
@@ -194,8 +242,9 @@ export interface CommitImportInput {
   machineId: string | null; // 命中既有卡則帶 id；否則 null → 依 basic 建卡
   basic: {
     customer_name: string;
+    customer_code: string;
     serial_no: string;
-    card_no: string;
+    machine_no: string;
     location: string;
     purchased_at: string;
     model: string;
@@ -219,16 +268,16 @@ export async function commitImportAction(
     if (!machineId) {
       const serial = input.basic.serial_no.trim();
       if (!serial) return { ok: false, error: "機號為必填。" };
-      const customerId = await findOrCreateCustomer(
-        supabase,
-        input.basic.customer_name || "（未命名客戶）",
-      );
+      const customerId = await findOrCreateCustomer(supabase, {
+        code: input.basic.customer_code,
+        name: input.basic.customer_name || "（未命名客戶）",
+      });
       const { data: machine, error: mErr } = await supabase
         .from("mx_machines")
         .insert({
           customer_id: customerId,
           serial_no: serial,
-          card_no: input.basic.card_no || null,
+          machine_no: input.basic.machine_no || null,
           location: input.basic.location || null,
           purchased_at: input.basic.purchased_at || null,
           model: input.basic.model || null,

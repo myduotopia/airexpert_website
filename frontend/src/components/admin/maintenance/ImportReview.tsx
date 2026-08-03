@@ -153,8 +153,9 @@ export function ImportReview() {
     try {
       const basic = {
         customer_name: String(fd.get("customer_name") ?? ""),
+        customer_code: String(fd.get("customer_code") ?? ""),
         serial_no: String(fd.get("serial_no") ?? ""),
-        card_no: String(fd.get("card_no") ?? ""),
+        machine_no: String(fd.get("machine_no") ?? ""),
         location: String(fd.get("location") ?? ""),
         purchased_at: String(fd.get("purchased_at") ?? ""),
         model: String(fd.get("model") ?? ""),

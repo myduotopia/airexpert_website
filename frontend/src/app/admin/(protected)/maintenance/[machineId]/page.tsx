@@ -87,8 +87,12 @@ export default async function MachineDetailPage({
           <dd className="text-ink">{machine.purchased_at ?? "—"}</dd>
         </div>
         <div>
-          <dt className="text-text-muted">卡號</dt>
-          <dd className="text-ink">{machine.card_no ?? "—"}</dd>
+          <dt className="text-text-muted">客戶編號</dt>
+          <dd className="text-ink">{customer.code ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-text-muted">機台編號</dt>
+          <dd className="text-ink">{machine.machine_no ?? "—"}</dd>
         </div>
       </dl>
 

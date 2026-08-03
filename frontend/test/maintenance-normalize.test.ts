@@ -19,10 +19,12 @@ describe("machinePayloadFromForm", () => {
   it("requires serial_no, cleans fields", () => {
     const fd = new FormData();
     fd.set("serial_no", " B072303002 ");
+    fd.set("machine_no", " M-01 ");
     fd.set("model", "PMV10");
     fd.set("horsepower", "");
     const out = machinePayloadFromForm(fd);
     expect(out.serial_no).toBe("B072303002");
+    expect(out.machine_no).toBe("M-01");
     expect(out.model).toBe("PMV10");
     expect(out.horsepower).toBeNull();
   });
@@ -56,7 +58,9 @@ describe("parseExtraction", () => {
     const raw = {
       basic: {
         customer_name: "念德鋼鐵",
+        customer_code: "KC054",
         serial_no: "B072303002",
+        machine_no: "M-01",
         model: "PMV10",
       },
       records: [
@@ -66,6 +70,8 @@ describe("parseExtraction", () => {
     };
     const out = parseExtraction(raw);
     expect(out.basic.serial_no).toBe("B072303002");
+    expect(out.basic.customer_code).toBe("KC054");
+    expect(out.basic.machine_no).toBe("M-01");
     expect(out.records).toHaveLength(1);
     expect(out.records[0].hours).toBe("8342");
   });
