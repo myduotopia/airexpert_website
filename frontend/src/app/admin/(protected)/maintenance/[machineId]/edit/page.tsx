@@ -22,9 +22,10 @@ export default async function EditMachinePage({
       <EditMachineForm
         machineId={machineId}
         values={{
+          customer_code: customer.code ?? undefined,
           customer_name: customer.name ?? undefined,
           serial_no: machine.serial_no ?? undefined,
-          card_no: machine.card_no ?? undefined,
+          machine_no: machine.machine_no ?? undefined,
           location: machine.location ?? undefined,
           purchased_at: machine.purchased_at ?? undefined,
           model: machine.model ?? undefined,

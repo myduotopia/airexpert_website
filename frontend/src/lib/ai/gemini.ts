@@ -431,7 +431,8 @@ export async function extractMaintenanceCard(
 請擷取內容並回傳「純 JSON 物件」，格式：
 {
   "basic": {
-    "customer_name": "客戶名稱", "serial_no": "機號", "card_no": "卡號(如KC054)",
+    "customer_name": "客戶名稱", "customer_code": "客戶編號(卡片左上代號，如KC054)",
+    "serial_no": "機號", "machine_no": "機台編號(若卡上有)",
     "location": "使用地點", "purchased_at": "購買時間(YYYY-MM-DD)",
     "model": "機型", "horsepower": "馬力", "voltage": "電壓"
   },

@@ -6,12 +6,13 @@ import { normalizeSerial } from "./maintenance-normalize";
 export interface MxCustomer {
   id: string;
   name: string;
+  code: string | null;
 }
 
 export interface MxMachine {
   id: string;
   customer_id: string;
-  card_no: string | null;
+  machine_no: string | null;
   serial_no: string;
   location: string | null;
   purchased_at: string | null; // yyyy-mm-dd
@@ -105,7 +106,7 @@ export async function getMachine(id: string): Promise<{
   const [{ data: customer }, { data: records }] = await Promise.all([
     supabase
       .from("mx_customers")
-      .select("id, name")
+      .select("id, name, code")
       .eq("id", (machine as MxMachine).customer_id)
       .maybeSingle(),
     supabase
@@ -117,7 +118,11 @@ export async function getMachine(id: string): Promise<{
 
   return {
     machine: machine as MxMachine,
-    customer: (customer as MxCustomer) ?? { id: "", name: "（未命名客戶）" },
+    customer: (customer as MxCustomer) ?? {
+      id: "",
+      name: "（未命名客戶）",
+      code: null,
+    },
     records: (records as MxRecord[]) ?? [],
   };
 }
