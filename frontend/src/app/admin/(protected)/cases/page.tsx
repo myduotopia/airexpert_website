@@ -78,6 +78,7 @@ export default async function AdminCasesPage() {
     search: `${c.title} ${c.category} ${c.region ?? ""} ${
       c.industry ?? ""
     }`.toLowerCase(),
+    label: c.title,
   }));
 
   return (

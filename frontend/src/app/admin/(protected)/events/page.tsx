@@ -90,6 +90,7 @@ export default async function AdminEventsPage() {
     ],
     sortValues: [e.title, null, e.event_date, e.published_at, e.status, null],
     search: `${e.title}`.toLowerCase(),
+    label: e.title,
   }));
 
   const albumColumns: AdminColumn[] = [
