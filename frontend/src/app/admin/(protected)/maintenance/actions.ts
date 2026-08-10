@@ -60,21 +60,106 @@ async function findOrCreateCustomer(
   return (created as { id: string }).id;
 }
 
-/** 依客戶編號查客戶名稱（供表單自動帶入）。查不到回 null。 */
-export async function lookupCustomerByCodeAction(
-  code: string,
-): Promise<{ name: string } | null> {
+// ── 表單 autocomplete（typeahead）搜尋 ─────────────────────────────
+// 皆走登入者 session（office RLS）；以逐欄 .ilike(column, %q%) 查詢，值由 client
+// 參數化，避免 PostgREST or-filter 的字串注入（客戶名含「(股)」等字元亦安全）。
+
+export interface CustomerHit {
+  id: string;
+  code: string | null;
+  name: string;
+}
+
+/** 依客戶編號或名稱模糊搜尋客戶（供表單自動完成）。上限 8 筆。 */
+export async function searchCustomersAction(
+  query: string,
+): Promise<CustomerHit[]> {
   await requireRole(["office"]);
-  const clean = code.trim();
-  if (!clean) return null;
+  const q = query.trim();
+  if (!q) return [];
   const supabase = await getServerSupabase();
-  const { data } = await supabase
-    .from("mx_customers")
-    .select("name")
-    .ilike("code", clean)
-    .limit(1)
-    .maybeSingle();
-  return data ? { name: (data as { name: string }).name } : null;
+  const pattern = `%${q}%`;
+  const [byCode, byName] = await Promise.all([
+    supabase
+      .from("mx_customers")
+      .select("id, code, name")
+      .ilike("code", pattern)
+      .limit(8),
+    supabase
+      .from("mx_customers")
+      .select("id, code, name")
+      .ilike("name", pattern)
+      .limit(8),
+  ]);
+  const merged = new Map<string, CustomerHit>();
+  for (const row of [...(byCode.data ?? []), ...(byName.data ?? [])]) {
+    const r = row as CustomerHit;
+    if (!merged.has(r.id)) merged.set(r.id, r);
+  }
+  return Array.from(merged.values()).slice(0, 8);
+}
+
+export interface MachineHit {
+  id: string;
+  serial_no: string;
+  machine_no: string | null;
+  customer_code: string | null;
+  customer_name: string;
+}
+
+type MachineRow = {
+  id: string;
+  serial_no: string;
+  machine_no: string | null;
+  mx_customers:
+    | { code: string | null; name: string }
+    | { code: string | null; name: string }[]
+    | null;
+};
+
+function toMachineHit(row: MachineRow): MachineHit {
+  const c = Array.isArray(row.mx_customers)
+    ? (row.mx_customers[0] ?? null)
+    : row.mx_customers;
+  return {
+    id: row.id,
+    serial_no: row.serial_no,
+    machine_no: row.machine_no,
+    customer_code: c?.code ?? null,
+    customer_name: c?.name ?? "",
+  };
+}
+
+/** 依機號或機台編號模糊搜尋機台（排除已封存），join 客戶。上限 8 筆。 */
+export async function searchMachinesAction(
+  query: string,
+): Promise<MachineHit[]> {
+  await requireRole(["office"]);
+  const q = query.trim();
+  if (!q) return [];
+  const supabase = await getServerSupabase();
+  const pattern = `%${q}%`;
+  const select = "id, serial_no, machine_no, mx_customers(code, name)";
+  const [bySerial, byMachineNo] = await Promise.all([
+    supabase
+      .from("mx_machines")
+      .select(select)
+      .is("archived_at", null)
+      .ilike("serial_no", pattern)
+      .limit(8),
+    supabase
+      .from("mx_machines")
+      .select(select)
+      .is("archived_at", null)
+      .ilike("machine_no", pattern)
+      .limit(8),
+  ]);
+  const merged = new Map<string, MachineHit>();
+  for (const row of [...(bySerial.data ?? []), ...(byMachineNo.data ?? [])]) {
+    const hit = toMachineHit(row as MachineRow);
+    if (!merged.has(hit.id)) merged.set(hit.id, hit);
+  }
+  return Array.from(merged.values()).slice(0, 8);
 }
 
 /** 建立新卡（含客戶）。表單需帶 customer_name + 機器欄位。成功後導向卡詳情。 */
