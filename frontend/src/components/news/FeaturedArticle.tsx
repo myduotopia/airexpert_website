@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { CoverImage } from "@/components/CoverImage";
 import { ArrowRight, ImageIcon } from "lucide-react";
 import type { Article } from "@/lib/types";
 import { HOME_COLORS } from "@/components/home/tokens";
@@ -16,13 +16,11 @@ export function FeaturedArticle({ article }: { article: Article }) {
         className="bg-surface-muted relative block aspect-[760/360] w-full overflow-hidden"
       >
         {article.cover_image ? (
-          <Image
+          <CoverImage
             src={article.cover_image}
             alt={article.title}
-            fill
             sizes="(max-width: 1024px) 100vw, 760px"
             priority
-            className="object-cover"
           />
         ) : (
           <span
