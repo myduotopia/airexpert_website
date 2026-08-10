@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { CoverImage } from "@/components/CoverImage";
 import { Sparkles, ImageIcon } from "lucide-react";
 import type { Article } from "@/lib/types";
 import { HOME_COLORS } from "@/components/home/tokens";
@@ -28,13 +28,7 @@ export function EditorPicks({ articles }: { articles: Article[] }) {
             >
               <span className="bg-surface relative h-16 w-16 shrink-0 overflow-hidden rounded-[10px]">
                 {a.cover_image ? (
-                  <Image
-                    src={a.cover_image}
-                    alt={a.title}
-                    fill
-                    sizes="64px"
-                    className="object-cover"
-                  />
+                  <CoverImage src={a.cover_image} alt={a.title} sizes="64px" />
                 ) : (
                   <span
                     className="flex h-full w-full items-center justify-center"

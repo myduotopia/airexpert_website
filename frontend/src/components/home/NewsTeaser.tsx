@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { CoverImage } from "@/components/CoverImage";
 import Link from "next/link";
 import type { NewsCardProps } from "@/components/NewsCard";
 import type { HomeNews } from "@/lib/data/home";
@@ -14,12 +14,11 @@ function NewsRailCard({ item }: { item: NewsCardProps }) {
     >
       <div className="bg-surface-muted relative h-[200px] w-full overflow-hidden">
         {item.image ? (
-          <Image
+          <CoverImage
             src={item.image}
             alt={item.title}
-            fill
             sizes="360px"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            className="transition-transform duration-300 group-hover:scale-105"
           />
         ) : null}
       </div>
