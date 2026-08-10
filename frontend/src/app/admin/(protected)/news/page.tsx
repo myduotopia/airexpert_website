@@ -64,6 +64,7 @@ export default async function AdminNewsPage() {
     ],
     sortValues: [a.title, a.category, a.published_at, a.status, null],
     search: `${a.title} ${a.category}`.toLowerCase(),
+    label: a.title,
   }));
 
   return (

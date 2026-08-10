@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import {
-  ReorderableTable,
-  type ReorderColumn,
-} from "@/components/admin/ReorderableTable";
+  AdminTable,
+  type AdminColumn,
+  type AdminRow,
+} from "@/components/admin/AdminTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { deleteService, reorderServicesAction } from "./actions";
@@ -25,15 +26,16 @@ async function getAllServices(): Promise<Service[]> {
 export default async function AdminServicesPage() {
   const services = await getAllServices();
 
-  // ReorderableTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode。
-  const columns: ReorderColumn[] = [
-    { header: "標題" },
-    { header: "slug" },
-    { header: "狀態" },
-    { header: "", className: "text-right" },
+  // AdminTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode；
+  // 排序 / 搜尋所需原始值另以 sortValues / search 附帶。
+  const columns: AdminColumn[] = [
+    { header: "標題", sortable: true },
+    { header: "slug", sortable: true },
+    { header: "狀態", sortable: true },
+    { header: "操作", className: "text-right whitespace-nowrap" },
   ];
 
-  const rows = services.map((s) => ({
+  const rows: AdminRow[] = services.map((s) => ({
     key: s.id,
     cells: [
       <Link
@@ -57,6 +59,9 @@ export default async function AdminServicesPage() {
         <DeleteButton onDelete={deleteService.bind(null, s.id)} />
       </span>,
     ],
+    sortValues: [s.title, s.slug, s.status, null],
+    search: `${s.title} ${s.slug}`.toLowerCase(),
+    label: s.title,
   }));
 
   return (
@@ -77,10 +82,11 @@ export default async function AdminServicesPage() {
       </div>
 
       <div className="mt-6">
-        <ReorderableTable
+        <AdminTable
           rows={rows}
           columns={columns}
           onReorder={reorderServicesAction}
+          searchPlaceholder="搜尋標題 / Slug…"
           empty="尚無服務項目，點右上角「新增服務」開始建立。"
         />
       </div>

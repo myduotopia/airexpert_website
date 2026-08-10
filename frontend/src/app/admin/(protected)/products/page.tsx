@@ -56,6 +56,7 @@ export default async function AdminProductsPage() {
     ],
     sortValues: [p.name, p.category, null, p.status, null],
     search: `${p.name} ${p.slug} ${p.category}`.toLowerCase(),
+    label: p.name,
   }));
 
   return (
