@@ -7,19 +7,10 @@ import {
   type AdminRow,
 } from "@/components/admin/AdminTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
+import { rocDate } from "@/lib/admin/minguo";
 import { archiveMachineAction } from "./actions";
 
 export const metadata = { title: "保養記錄卡 · 後台" };
-
-const DATE_FMT = new Intl.DateTimeFormat("zh-TW", {
-  dateStyle: "medium",
-  timeZone: "Asia/Taipei",
-});
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : DATE_FMT.format(d);
-}
 
 export default async function MaintenanceListPage() {
   await requireRole(["office"]);
@@ -44,7 +35,7 @@ export default async function MaintenanceListPage() {
       </Link>,
       m.customer_name,
       m.model ?? "—",
-      fmtDate(m.last_service_date),
+      rocDate(m.last_service_date),
       <div key="actions" className="flex justify-end">
         <DeleteButton
           onDelete={archiveMachineAction.bind(null, m.id)}

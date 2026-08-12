@@ -7,10 +7,12 @@ export interface CompressedImage {
   dataUrl: string; // 供預覽
 }
 
+// 辨識用：長邊上限拉高到 2400、品質 0.9，保留手寫細節（小數字 / 例 / 〃 等記號）。
+// serverActions.bodySizeLimit 已設 25mb，base64 走 Server Action 無虞。
 export async function compressImage(
   file: File,
-  maxEdge = 1600,
-  quality = 0.8,
+  maxEdge = 2400,
+  quality = 0.9,
 ): Promise<CompressedImage> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));

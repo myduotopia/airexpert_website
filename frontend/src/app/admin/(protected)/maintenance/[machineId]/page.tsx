@@ -5,6 +5,7 @@ import { getMachine } from "@/lib/admin/maintenance";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import type { MxRecord } from "@/lib/admin/maintenance";
+import { rocDate } from "@/lib/admin/minguo";
 import { deleteRecordAction } from "../actions";
 
 export const metadata = { title: "保養卡 · 後台" };
@@ -21,7 +22,7 @@ export default async function MachineDetailPage({
   const { machine, customer, records } = data;
 
   const columns: Column<MxRecord>[] = [
-    { header: "日期", cell: (r) => r.service_date ?? "—" },
+    { header: "日期", cell: (r) => rocDate(r.service_date) },
     { header: "時數", cell: (r) => r.hours ?? "—" },
     { header: "專用油", cell: (r) => r.oil ?? "—" },
     { header: "機油濾", cell: (r) => r.oil_filter ?? "—" },
@@ -84,7 +85,7 @@ export default async function MachineDetailPage({
         </div>
         <div>
           <dt className="text-text-muted">購買時間</dt>
-          <dd className="text-ink">{machine.purchased_at ?? "—"}</dd>
+          <dd className="text-ink">{rocDate(machine.purchased_at)}</dd>
         </div>
         <div>
           <dt className="text-text-muted">客戶編號</dt>

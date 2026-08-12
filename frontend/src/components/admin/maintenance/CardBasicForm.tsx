@@ -10,6 +10,7 @@ import {
   type CustomerHit,
   type MachineHit,
 } from "@/app/admin/(protected)/maintenance/actions";
+import { MinguoDateInput } from "./MinguoDateInput";
 
 export interface CardBasicValues {
   customer_code?: string;
@@ -23,14 +24,15 @@ export interface CardBasicValues {
   voltage?: string;
 }
 
-// 非受控（沿用 defaultValue）的其餘欄位。
+// 非受控（沿用 defaultValue）的其餘欄位；roc=true 者改用民國日期輸入。
 const PLAIN_FIELDS: {
   name: keyof CardBasicValues;
   label: string;
   type?: string;
+  roc?: boolean;
 }[] = [
   { name: "location", label: "使用地點" },
-  { name: "purchased_at", label: "購買時間", type: "date" },
+  { name: "purchased_at", label: "購買時間", roc: true },
   { name: "model", label: "機型" },
   { name: "horsepower", label: "馬力" },
   { name: "voltage", label: "電壓" },
@@ -204,13 +206,17 @@ export function CardBasicFields({
           <label htmlFor={f.name} className="text-ink text-[14px] font-medium">
             {f.label}
           </label>
-          <input
-            id={f.name}
-            name={f.name}
-            type={f.type ?? "text"}
-            defaultValue={values?.[f.name] ?? ""}
-            className={INPUT_CLASS}
-          />
+          {f.roc ? (
+            <MinguoDateInput name={f.name} defaultIso={values?.[f.name]} />
+          ) : (
+            <input
+              id={f.name}
+              name={f.name}
+              type={f.type ?? "text"}
+              defaultValue={values?.[f.name] ?? ""}
+              className={INPUT_CLASS}
+            />
+          )}
         </div>
       ))}
     </div>

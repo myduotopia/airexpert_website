@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { compressImage } from "@/lib/admin/image-compress";
 import { uploadMediaDirect } from "@/lib/admin/upload-client";
 import { CardBasicFields } from "./CardBasicForm";
+import { MinguoDateInput } from "./MinguoDateInput";
 import type { RecordValues } from "./RecordForm";
 import {
   extractCardFromImageAction,
@@ -68,12 +69,19 @@ function RecordFieldsIndexed({
           <label className="text-ink text-[14px] font-medium">
             {RECORD_LABELS[f]}
           </label>
-          <input
-            name={`records[${index}][${f}]`}
-            type={f === "service_date" ? "date" : "text"}
-            defaultValue={values?.[f] ?? ""}
-            className="border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none"
-          />
+          {f === "service_date" ? (
+            <MinguoDateInput
+              name={`records[${index}][${f}]`}
+              defaultIso={values?.[f]}
+            />
+          ) : (
+            <input
+              name={`records[${index}][${f}]`}
+              type="text"
+              defaultValue={values?.[f] ?? ""}
+              className="border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none"
+            />
+          )}
         </div>
       ))}
     </div>

@@ -11,6 +11,8 @@ import { getAiPrompts } from "./prompts-server";
 export const AI_CONFIG_KEY = "ai_config";
 // gemini-2.0-flash 已於 2026-06-01 停用；預設改用 2.5 Flash。
 const DEFAULT_MODEL = "gemini-2.5-flash";
+// 保養卡辨識（手寫稀疏表格、對欄難）獨立用較強的 2.5 Pro，不動設定頁其他 AI 功能的模型。
+const EXTRACT_MODEL = "gemini-2.5-pro";
 // 503 過載時的備援模型（較輕量、較不易過載）。
 export const FALLBACK_MODEL = "gemini-2.5-flash-lite";
 // 單一模型最多嘗試次數（含首次）。
@@ -424,8 +426,10 @@ export async function extractMaintenanceCard(
   imageBase64: string,
   mimeType: string,
 ): Promise<{ raw: unknown; model: string }> {
-  const { apiKey, model } = await getAiConfig();
+  const { apiKey } = await getAiConfig();
   if (!apiKey) throw new Error(NO_KEY_ERROR);
+  // 辨識固定用 EXTRACT_MODEL（2.5 Pro），不吃設定頁的 model。
+  const model = EXTRACT_MODEL;
 
   const prompt = `你是資料輸入助理。這是一張手寫的「空壓機保養記錄卡」照片(繁體中文 + 數字)。
 請擷取內容並回傳「純 JSON 物件」，格式：
@@ -453,16 +457,25 @@ export async function extractMaintenanceCard(
 注意「機油濾清器 / 空氣濾清器 / 油氣分離器」的表頭是兩行字、欄位較窄，容易數錯欄。
 - 判斷每個手寫記號屬於哪一欄，一律「以該記號的水平位置對準表頭欄位」為準，不可整列左右平移。
 - 某一格是空白就在對應欄位填 ""，不要把右邊的值往左借、也不要把左邊的值往右推。
-- 記號如「例 / 1 / ✓ / ○ / │」代表該項有更換或保養，原樣填入「它所在的那一欄」。
-- 若某段手寫文字(如「顯示電壓過低已排除」「研磨耗損…下次留意」)明顯是跨欄的整段註記、不屬於某個濾清器欄位，請放到 "note"(備註)，不要硬塞進某個濾清器/過濾系統欄。
-- 時數手寫常上下疊兩個數字(例上面 83、下面 42)，下方數字通常是累計時數，取較完整的那個填入 hours。
+
+【手寫符號語彙 — 請照此解讀】
+- 「例」= 例行更換（該項已更換），填「例」。
+- 「1」「/」「✓」「○」「│」= 該項已做/已更換，原樣填入它所在的那一欄。
+- 「〃」「"」「”」「同上」= 與「上一列同一欄」的內容相同 → 請「複製上一列該欄的值」填入，不要填符號本身。
+- 「NA」「N/A」= 不適用 / 該次未做該項，填「NA」。
+- 記號一律填在「它水平對到的那一欄」，不要挪欄。
+
+【時數欄】時數格常上下疊兩個數字（如上面小字「83 / NA」、下面「3474」）：
+- 下方（較大、較完整）的數字是「時數讀值」→ 填入 hours（例 3474、18760）。
+- 上方小字多為月份 / 代號，不是時數，忽略或不填。
+
+【備註歸屬】若某段手寫文字（如「沒在用」「未開」「桶下排水堵塞已處理」「顯示電壓過低已排除」「油濾至轉子油管×1件」）是跨欄的整段敘述、不屬於某個濾清器/系統欄位，請放到該列的 "note"(備註)，不要硬塞進濾清器 / 過濾系統欄。
 
 其他規則：
 - 看不清楚或確實空白的欄位回空字串 ""，絕不猜測或編造內容。
 - records 逐列輸出(表格每一橫列一筆)，保留原始由上到下順序；表格下方整片空白列不要輸出。
-- 卡片上方的「送500小時一次保養」「B」等註記屬背景資訊，不是維護列，勿當成一列。`;
+- 卡片上方的「送500小時一次保養」「B」「過濾 …」等註記屬背景資訊，不是維護列，勿當成一列。`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const body = {
     contents: [
       {
@@ -477,8 +490,19 @@ export async function extractMaintenanceCard(
       temperature: 0.1,
     },
   };
+  const buildUrl = (m: string) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const data = await fetchGeminiWithRetry(url, body);
+  // 優先用 2.5 Pro；若 Pro 不可用（配額 / 權限 / 過載用盡重試）則退回 2.5 Flash，
+  // 避免辨識因 Pro 問題整個失敗。實際產出的 model 一併回傳供稽核。
+  let data: unknown;
+  let usedModel = model;
+  try {
+    data = await fetchGeminiWithRetry(buildUrl(model), body);
+  } catch {
+    usedModel = DEFAULT_MODEL;
+    data = await fetchGeminiWithRetry(buildUrl(DEFAULT_MODEL), body);
+  }
   const text = extractGeminiText(data);
   let raw: unknown;
   try {
@@ -486,5 +510,5 @@ export async function extractMaintenanceCard(
   } catch {
     throw new Error("辨識結果非 JSON，無法解析，請改用手動輸入。");
   }
-  return { raw, model };
+  return { raw, model: usedModel };
 }
