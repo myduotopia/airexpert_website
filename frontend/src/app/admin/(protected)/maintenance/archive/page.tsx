@@ -5,22 +5,13 @@ import type { MxMachineListItem } from "@/lib/admin/maintenance";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { SubmitButton } from "@/components/admin/SubmitButton";
+import { rocDateTime } from "@/lib/admin/minguo";
 import {
   restoreMachineAction,
   deleteMachinePermanentlyAction,
 } from "../actions";
 
 export const metadata = { title: "封存區 · 後台" };
-
-const DATE_FMT = new Intl.DateTimeFormat("zh-TW", {
-  dateStyle: "medium",
-  timeZone: "Asia/Taipei",
-});
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : DATE_FMT.format(d);
-}
 
 export default async function MaintenanceArchivePage() {
   await requireRole(["office"]);
@@ -40,7 +31,7 @@ export default async function MaintenanceArchivePage() {
     },
     { header: "客戶", cell: (m) => m.customer_name },
     { header: "機型", cell: (m) => m.model ?? "—" },
-    { header: "封存時間", cell: (m) => fmtDate(m.archived_at) },
+    { header: "封存時間", cell: (m) => rocDateTime(m.archived_at) },
     {
       header: "操作",
       className: "text-right whitespace-nowrap",

@@ -1,6 +1,7 @@
 "use client";
 // 維護紀錄一列的欄位群。可獨立提交（新增/編輯列），或被 ImportReview 逐列內嵌。
 import type { ReactNode } from "react";
+import { MinguoDateInput } from "./MinguoDateInput";
 
 export interface RecordValues {
   service_date?: string;
@@ -15,8 +16,9 @@ export interface RecordValues {
   note?: string;
 }
 
-const FIELDS: { name: keyof RecordValues; label: string; type?: string }[] = [
-  { name: "service_date", label: "日期", type: "date" },
+// service_date 改用民國日期輸入（roc）；其餘為一般文字欄。
+const FIELDS: { name: keyof RecordValues; label: string; roc?: boolean }[] = [
+  { name: "service_date", label: "日期", roc: true },
   { name: "hours", label: "時數" },
   { name: "oil", label: "專用油" },
   { name: "oil_filter", label: "機油濾清器" },
@@ -36,13 +38,17 @@ export function RecordFields({ values }: { values?: RecordValues }): ReactNode {
           <label htmlFor={f.name} className="text-ink text-[14px] font-medium">
             {f.label}
           </label>
-          <input
-            id={f.name}
-            name={f.name}
-            type={f.type ?? "text"}
-            defaultValue={values?.[f.name] ?? ""}
-            className="border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none"
-          />
+          {f.roc ? (
+            <MinguoDateInput name={f.name} defaultIso={values?.[f.name]} />
+          ) : (
+            <input
+              id={f.name}
+              name={f.name}
+              type="text"
+              defaultValue={values?.[f.name] ?? ""}
+              className="border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none"
+            />
+          )}
         </div>
       ))}
     </div>
