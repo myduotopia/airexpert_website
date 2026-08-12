@@ -25,11 +25,12 @@ const jetbrainsMono = JetBrains_Mono({
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airexpert.com.tw";
 
 const SITE_NAME = "超勁賀空壓科技 AirExpert";
-// 首頁 <title>：品牌 + 主關鍵字（工業空壓機／節能空壓系統），兼顧品牌與 SEO。
+// 首頁 <title>：品牌 + 主關鍵字（空壓機廠商／漢鐘經銷／產品線），兼顧品牌與 SEO。
 // 子頁沿用各自 title + template；此值只作用於無自訂 title 的首頁與 OG/Twitter 標題。
-const HOME_TITLE = "超勁賀空壓科技 AirExpert｜工業空壓機・節能空壓系統";
+const HOME_TITLE =
+  "空壓機廠商・漢鐘空壓機經銷｜變頻/無油空壓機與空壓系統規劃 - 超勁賀空壓科技";
 const SITE_DESCRIPTION =
-  "超勁賀空壓科技專注工業空壓機與節能氣源系統，提供空壓機、真空泵浦、鼓風機、乾燥機及節能規劃，並協助評估節能補助與導入 ISO 50001 能源管理，助工廠省電減碳、邁向淨零。";
+  "超勁賀空壓科技是專業空壓機廠商，漢鐘（HANBELL）空壓機經銷與服務，提供變頻空壓機、永磁變頻與無油空壓機、冷凍式乾燥機，專精工業空壓系統規劃、節能改善與空壓機節能補助評估，打造節能潔淨的壓縮空氣解決方案。";
 
 // generateMetadata（非靜態 export）：favicon 由後台品牌資產動態決定，
 // 未設定時退回內建 /favicon.ico（getBranding 已含 fallback）。
