@@ -51,15 +51,20 @@ export default async function Home() {
     url: SITE_URL,
     logo: logoAbs,
     description:
-      "工業空壓機與節能氣源系統整合服務商，提供空壓機、真空泵浦、鼓風機、乾燥機與節能規劃，並協助評估節能補助與導入 ISO 50001 能源管理。",
+      "專業空壓機廠商，漢鐘（HANBELL）空壓機經銷與服務，提供變頻／永磁變頻／無油空壓機、冷凍式乾燥機，專精工業空壓系統規劃、節能改善與空壓機節能補助評估。",
+    slogan: "工業空壓系統・節能與潔淨空氣解決方案專家",
+    brand: { "@type": "Brand", name: "HANBELL 漢鐘" },
     knowsAbout: [
-      "工業空壓機",
       "空壓機",
-      "真空泵浦",
-      "鼓風機",
+      "工業用空壓機",
+      "空壓機廠商",
+      "漢鐘空壓機",
+      "變頻空壓機",
+      "永磁變頻空壓機",
+      "無油空壓機",
       "冷凍式乾燥機",
-      "節能規劃",
-      "節能補助評估",
+      "空壓系統規劃",
+      "空壓機節能補助",
       "ISO 50001 能源管理",
     ],
     areaServed: "TW",
@@ -78,7 +83,7 @@ export default async function Home() {
       <JsonLd data={orgSchema} />
       {/* SEO 主標（視覺隱藏、不影響 V3.08 版面）：提供首頁唯一 H1 與核心關鍵字。 */}
       <h1 className="sr-only">
-        工業空壓機與節能氣源系統整合服務｜超勁賀空壓科技
+        工業空壓系統・節能與潔淨空氣解決方案｜空壓機廠商 超勁賀空壓科技
       </h1>
       <PainCarousel slides={home.carousel.slides} />
       <StatBar content={home.stats} />
