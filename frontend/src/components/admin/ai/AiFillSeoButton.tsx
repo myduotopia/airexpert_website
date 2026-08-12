@@ -51,6 +51,8 @@ export function AiFillSeoButton({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // 重點關鍵字／提示：僅元件狀態，不設 name、不進表單、不寫入 DB/localStorage，換頁即清空。
+  const [focus, setFocus] = useState("");
 
   function onFill(e: React.MouseEvent<HTMLButtonElement>) {
     setError(null);
@@ -70,7 +72,7 @@ export function AiFillSeoButton({
     }
     startTransition(async () => {
       const res = await fillSeoFromContentAction(
-        { title, html },
+        { title, html, focus: focus.trim() || undefined },
         { targetType, targetId },
       );
       if (!res.ok) {
@@ -98,6 +100,15 @@ export function AiFillSeoButton({
 
   return (
     <div className="flex flex-col gap-1.5">
+      <input
+        type="text"
+        value={focus}
+        onChange={(e) => setFocus(e.target.value)}
+        maxLength={100}
+        disabled={pending}
+        placeholder="關鍵字或重點提示（100 字內，選填）"
+        className="border-border focus:border-primary h-9 w-full max-w-md rounded-lg border bg-white px-3 text-[13px] outline-none disabled:opacity-60"
+      />
       <div className="flex items-center gap-3">
         <button
           type="button"

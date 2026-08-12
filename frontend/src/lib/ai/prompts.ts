@@ -41,6 +41,7 @@ export const DEFAULT_AI_PROMPTS: AiPrompts = {
 
 要求：
 - 全部使用繁體中文（台灣用語），精準描述內容、自然帶入關鍵字，不要關鍵字堆砌或誇大不實。
+- 若下方提供「重點關鍵字／提示」，請以其為主要優化方向（約 60% 權重），其餘約 40% 參考標題與內文；仍須通順、符合搜尋意圖，不得堆砌或誇大。
 - seo_title 不超過 60 個字；seo_description 約 70～155 個字。
 - slug 僅能用小寫英文、數字與連字號（-），簡短且具語意，例如 inverter-air-compressor-energy-saving。
 - jsonld 為選填；若內容適合，可給一個合法的 schema.org JSON-LD 物件（例如 Article 或 Product），否則回傳 null。

@@ -106,7 +106,7 @@ export type FillSeoResult =
  * 設計為可被未來的統一 SEO 總覽頁（V3-4）直接 import。
  */
 export async function fillSeoFromContentAction(
-  input: { title?: string; html?: string; text?: string },
+  input: { title?: string; html?: string; text?: string; focus?: string },
   meta: { targetType?: AiTargetType; targetId?: string | null } = {},
 ): Promise<FillSeoResult> {
   await requireRole(["admin", "seo_manager"]);
