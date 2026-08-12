@@ -398,6 +398,7 @@ export async function fillSeoFromContent(input: {
   title?: string;
   html?: string;
   text?: string;
+  focus?: string;
 }): Promise<{ seo: SeoSuggestion; model: string }> {
   const { apiKey, model } = await getAiConfig();
   if (!apiKey) throw new Error(NO_KEY_ERROR);
@@ -406,9 +407,14 @@ export async function fillSeoFromContent(input: {
   // 內文來源：純文字優先，否則用 HTML（模型可自行忽略標籤）。
   const body = (input.text ?? input.html ?? "").trim();
   if (!title && !body) throw new Error("沒有可分析的標題或內文");
+  // 選填的重點關鍵字／提示（上限 100 字）；空字串時行為與過往完全一致。
+  const focus = (input.focus ?? "").trim().slice(0, 100);
 
   const { fill_seo } = await getAiPrompts();
-  const prompt = `${fill_seo}\n\n---\n標題：${title || "（無）"}\n\n內文：\n${body || "（無）"}`;
+  const focusBlock = focus
+    ? `\n\n重點關鍵字／提示（請以此為主要優化方向，約佔 60% 權重；其餘約 40% 依標題與內文。務必通順、符合搜尋意圖，不得關鍵字堆砌或誇大不實）：\n${focus}`
+    : "";
+  const prompt = `${fill_seo}\n\n---\n標題：${title || "（無）"}\n\n內文：\n${body || "（無）"}${focusBlock}`;
 
   const { text, model: usedModel } = await callGemini(apiKey, model, prompt, {
     json: true,
