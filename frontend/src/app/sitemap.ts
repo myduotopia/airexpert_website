@@ -8,7 +8,8 @@ import {
 } from "@/lib/data";
 
 // Overridable at deploy; same fallback as robots.ts / layout metadataBase.
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airexpert.com.tw";
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.airexpert.com.tw";
 
 // Static routes mirror the App Router tree (see src/app). Kept in sync by hand;
 // dynamic detail pages are appended from the data layer below.

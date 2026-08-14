@@ -22,7 +22,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 // Overridable at deploy; same fallback as sitemap.ts / robots.ts.
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airexpert.com.tw";
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.airexpert.com.tw";
 
 const SITE_NAME = "超勁賀空壓科技 AirExpert";
 // 首頁 <title>：品牌 + 主關鍵字（空壓機廠商／漢鐘經銷／產品線），兼顧品牌與 SEO。
