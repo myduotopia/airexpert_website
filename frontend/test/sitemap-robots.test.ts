@@ -23,7 +23,7 @@ vi.mock("@/lib/data", () => ({
 import sitemap from "@/app/sitemap";
 import robots from "@/app/robots";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airexpert.com.tw";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.airexpert.com.tw";
 
 describe("sitemap — 動態 + 靜態項組裝", () => {
   beforeEach(() => {
