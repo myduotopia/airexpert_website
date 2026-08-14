@@ -73,7 +73,7 @@ export function SeoFields({
             <input
               name="canonical_url"
               defaultValue={values?.canonical_url ?? ""}
-              placeholder="https://airexpert.com.tw/…"
+              placeholder="https://www.airexpert.com.tw/…"
               className={inputCls}
             />
           </label>

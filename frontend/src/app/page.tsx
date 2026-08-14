@@ -14,7 +14,8 @@ import { formatNewsDate } from "@/components/news/format";
 import { JsonLd } from "@/components/seo/JsonLd";
 import type { Article } from "@/lib/types";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airexpert.com.tw";
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.airexpert.com.tw";
 
 // 首頁改版（issue #97，依 wholenewhome 2.pen）。輪播以下區段依序：
 //   輪播圖 → 數字(StatBar) → 服務流程(Service) → 客戶實績(Cases)
