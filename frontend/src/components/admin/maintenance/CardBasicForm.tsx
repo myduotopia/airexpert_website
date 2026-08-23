@@ -37,7 +37,7 @@ export interface CardBasicValues {
   voltage?: string;
 }
 
-// 非受控（沿用 defaultValue）的其餘欄位；roc=true 者改用民國日期輸入。
+// 其餘欄位；roc=true 者改用民國日期輸入（MinguoDateInput 內部已是受控）。
 const PLAIN_FIELDS: {
   name: keyof CardBasicValues;
   label: string;
@@ -53,6 +53,43 @@ const PLAIN_FIELDS: {
 
 const INPUT_CLASS =
   "border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none";
+
+/**
+ * 一般文字欄。刻意「受控」而非 defaultValue：React 19 的 `<form action={fn}>`
+ * 在 action 結束後會自動 reset 表單（見 react-dom 的 startHostTransition →
+ * requestFormReset），非受控欄位會被清回初值。建卡撞機號時 action 回
+ * `{ ok: false }`、表單留在原地，這幾欄就會整排被清空 —— 正是「回報衝突而不弄丟
+ * 使用者輸入」要避免的事。受控欄位不受 reset 影響。
+ * 同 app/admin/(protected)/home/sections/primitives.tsx 的作法。
+ */
+function PlainField({
+  name,
+  label,
+  type,
+  initial,
+}: {
+  name: string;
+  label: string;
+  type?: string;
+  initial: string;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={name} className="text-ink text-[14px] font-medium">
+        {label}
+      </label>
+      <input
+        id={name}
+        name={name}
+        type={type ?? "text"}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className={INPUT_CLASS}
+      />
+    </div>
+  );
+}
 
 /**
  * 具建議下拉的受控輸入。value/onChange 由父層控制；輸入時 debounce 查詢 fetcher，
@@ -321,24 +358,27 @@ export function CardBasicFields({
         }
         onPick={pickMachine}
       />
-      {PLAIN_FIELDS.map((f) => (
-        <div key={f.name} className="flex flex-col gap-1.5">
-          <label htmlFor={f.name} className="text-ink text-[14px] font-medium">
-            {f.label}
-          </label>
-          {f.roc ? (
+      {PLAIN_FIELDS.map((f) =>
+        f.roc ? (
+          <div key={f.name} className="flex flex-col gap-1.5">
+            <label
+              htmlFor={f.name}
+              className="text-ink text-[14px] font-medium"
+            >
+              {f.label}
+            </label>
             <MinguoDateInput name={f.name} defaultIso={values?.[f.name]} />
-          ) : (
-            <input
-              id={f.name}
-              name={f.name}
-              type={f.type ?? "text"}
-              defaultValue={values?.[f.name] ?? ""}
-              className={INPUT_CLASS}
-            />
-          )}
-        </div>
-      ))}
+          </div>
+        ) : (
+          <PlainField
+            key={f.name}
+            name={f.name}
+            label={f.label}
+            type={f.type}
+            initial={values?.[f.name] ?? ""}
+          />
+        ),
+      )}
     </div>
   );
 }
