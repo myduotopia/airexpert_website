@@ -95,7 +95,8 @@ export interface ColumnDef {
 }
 
 /**
- * 一張卡的耗材欄上限。實際的卡最多 7 欄（xlsx 三個分頁），
+ * 一張卡的耗材欄上限。實際的卡最多 6 欄
+ * （xlsx 三個分頁分別是 4 / 5 / 6 個耗材欄；日期與維護員為固定欄不計）。
  * 此上限只用來擋畸形 / 惡意的 columns_json（避免同步時打出上千個 DB 請求）。
  */
 export const MAX_COLUMN_DEFS = 50;

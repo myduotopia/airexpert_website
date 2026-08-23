@@ -471,6 +471,16 @@ export async function commitImportAction(
     // （commitImportAction 非單一 DB 交易，故手動補償）。
     let createdMachineId: string | null = null;
 
+    if (machineId) {
+      // machineId 由 client 送來（辨識時的機號比對命中）。辨識只會產空壓機卡，
+      // 而空壓機的固定 9 欄在過濾卡上完全顯示不出來（過濾卡只讀 values jsonb），
+      // 附加錯卡會留下一張「紀錄與欄位對不上」的卡，故在 server 端再擋一次。
+      const target = await getMachineCardContext(machineId);
+      if (!target) return { ok: false, error: "找不到此保養卡。" };
+      if (target.card_type !== "compressor")
+        return { ok: false, error: "拍照辨識的維護紀錄只能匯入空壓機卡。" };
+    }
+
     if (!machineId) {
       const serial = input.basic.serial_no.trim();
       if (!serial) return { ok: false, error: "機號為必填。" };
