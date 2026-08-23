@@ -298,10 +298,13 @@ export async function isCustomerCodeTaken(
   //     可能前後帶空白，精確比對會漏判（正規化後其實重複，卻不出提示）。
   //   * 粗篩必然是超集，最終仍以正規化結果判定，故不會誤報；norm 內若含 % / _
   //     被當萬用字元也只是讓超集更大。
+  //   * 但反斜線是 LIKE 的預設跳脫字元：未處理時 "a\\b" 會被當成 "ab"，反而比字面
+  //     值更「窄」而漏判重複，故先自我跳脫成 "\\\\"。（前後已補 %，不會出現
+  //     「pattern 以跳脫字元結尾」的錯誤。）
   const { data, error } = await supabase
     .from("mx_customers")
     .select("id, code")
-    .ilike("code", `%${norm}%`)
+    .ilike("code", `%${norm.replace(/\\/g, "\\\\")}%`)
     .neq("id", excludeCustomerId);
   if (error) return false; // 純提示用途，查詢失敗不阻擋儲存。
   return (data ?? []).some(

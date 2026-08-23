@@ -216,6 +216,15 @@ describe("isCustomerCodeTaken", () => {
     expect(await isCustomerCodeTaken("KC054", "c1")).toBe(false);
   });
 
+  it("編號含反斜線時自我跳脫，粗篩仍撈得到（LIKE 預設以 \\ 為跳脫字元）", async () => {
+    const calls = fakeSupabase({
+      mx_customers: { data: [{ id: "c2", code: "A\\B" }], error: null },
+    });
+    expect(await isCustomerCodeTaken("a\\b", "c1")).toBe(true);
+    const ilike = calls.find((c) => c.method === "ilike");
+    expect(ilike?.args).toEqual(["code", "%a\\\\b%"]);
+  });
+
   it("查詢失敗只是不提示，不擋儲存", async () => {
     fakeSupabase({
       mx_customers: { data: null, error: { message: "boom" } },
