@@ -163,10 +163,19 @@ function AutocompleteField<T>({
 export function CardBasicFields({
   values,
   cardType = "compressor",
+  namePrefix = "",
 }: {
   values?: CardBasicValues;
   cardType?: MxCardType;
+  /**
+   * input 的 name / id 前綴。同一個 <form> 內同時放兩張卡的表頭時（拍照辨識分流，
+   * 見 #158）必須給其中一張前綴，否則兩張卡的 serial_no 等欄位會互相覆蓋。
+   * 預設空字串 → 與既有單卡表單完全相同。
+   */
+  namePrefix?: string;
 }): ReactNode {
+  // 欄位名 / id 一律經此組出，確保 label 的 htmlFor 也跟著加前綴。
+  const fieldName = (n: string) => `${namePrefix}${n}`;
   const [customerCode, setCustomerCode] = useState(values?.customer_code ?? "");
   const [customerName, setCustomerName] = useState(values?.customer_name ?? "");
   const [serialNo, setSerialNo] = useState(values?.serial_no ?? "");
@@ -196,7 +205,7 @@ export function CardBasicFields({
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <AutocompleteField
-        id="customer_code"
+        id={fieldName("customer_code")}
         label="客戶編號"
         value={customerCode}
         onChange={setCustomerCode}
@@ -206,7 +215,7 @@ export function CardBasicFields({
         onPick={pickCustomer}
       />
       <AutocompleteField
-        id="customer_name"
+        id={fieldName("customer_name")}
         label="客戶名稱"
         required
         value={customerName}
@@ -217,7 +226,7 @@ export function CardBasicFields({
         onPick={pickCustomer}
       />
       <AutocompleteField
-        id="serial_no"
+        id={fieldName("serial_no")}
         label={cardType === "filter" ? "卡號 / 機號" : "機號"}
         required
         value={serialNo}
@@ -230,7 +239,7 @@ export function CardBasicFields({
         onPick={pickMachine}
       />
       <AutocompleteField
-        id="machine_no"
+        id={fieldName("machine_no")}
         label="機台編號"
         value={machineNo}
         onChange={setMachineNo}
@@ -243,15 +252,21 @@ export function CardBasicFields({
       />
       {PLAIN_FIELDS[cardType].map((f) => (
         <div key={f.name} className="flex flex-col gap-1.5">
-          <label htmlFor={f.name} className="text-ink text-[14px] font-medium">
+          <label
+            htmlFor={fieldName(f.name)}
+            className="text-ink text-[14px] font-medium"
+          >
             {f.label}
           </label>
           {f.roc ? (
-            <MinguoDateInput name={f.name} defaultIso={values?.[f.name]} />
+            <MinguoDateInput
+              name={fieldName(f.name)}
+              defaultIso={values?.[f.name]}
+            />
           ) : (
             <input
-              id={f.name}
-              name={f.name}
+              id={fieldName(f.name)}
+              name={fieldName(f.name)}
               type={f.type ?? "text"}
               defaultValue={values?.[f.name] ?? ""}
               className={INPUT_CLASS}
@@ -263,7 +278,7 @@ export function CardBasicFields({
         SPEC_FIELDS.map((f) => (
           <div key={f.name} className="flex flex-col gap-1.5 sm:col-span-2">
             <label
-              htmlFor={f.name}
+              htmlFor={fieldName(f.name)}
               className="text-ink text-[14px] font-medium"
             >
               {f.label}
@@ -272,8 +287,8 @@ export function CardBasicFields({
               </span>
             </label>
             <textarea
-              id={f.name}
-              name={f.name}
+              id={fieldName(f.name)}
+              name={fieldName(f.name)}
               rows={3}
               defaultValue={values?.[f.name] ?? ""}
               className="border-border focus:border-primary rounded-lg border px-3 py-2 text-[15px] outline-none"
@@ -281,7 +296,7 @@ export function CardBasicFields({
           </div>
         ))}
       {/* 建卡時由此決定卡別；更新時 server action 一律以 DB 的卡別為準。 */}
-      <input type="hidden" name="card_type" value={cardType} />
+      <input type="hidden" name={fieldName("card_type")} value={cardType} />
     </div>
   );
 }

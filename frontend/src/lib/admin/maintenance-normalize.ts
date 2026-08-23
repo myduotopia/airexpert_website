@@ -1,4 +1,10 @@
 // 表單字串 → DB payload 的清洗（純函式，無 I/O，好單測）。
+import {
+  parseBelongsTo,
+  normalizeCardHeader,
+  type BelongsTo,
+  type CardKind,
+} from "./maintenance-card-split";
 
 import {
   classifyServiceType,
@@ -104,8 +110,7 @@ export interface ColumnDef {
 }
 
 /**
- * 一張卡的耗材欄上限。實際的卡最多 6 欄
- * （xlsx 三個分頁分別是 4 / 5 / 6 個耗材欄；日期與維護員為固定欄不計）。
+ * 一張卡的耗材欄上限。實際的卡最多 7 欄（xlsx 三個分頁），
  * 此上限只用來擋畸形 / 惡意的 columns_json（避免同步時打出上千個 DB 請求）。
  */
 export const MAX_COLUMN_DEFS = 50;
@@ -207,19 +212,36 @@ export function normalizeSerial(v: string | null | undefined): string {
   return (v ?? "").trim().toLowerCase();
 }
 
+export interface ExtractedBasic {
+  customer_name: string;
+  customer_code: string;
+  serial_no: string;
+  machine_no: string;
+  location: string;
+  purchased_at: string;
+  model: string;
+  horsepower: string;
+  voltage: string;
+  /** 表頭 / 機號位置出現的「過濾 …」原文（＝過濾系統型號）。無則空字串。 */
+  filter_spec: string;
+  /** 排水器 / 馬達葉片規格原文（舊的空壓機卡多半沒有，保留給正式乾燥機卡）。 */
+  drain_spec: string;
+}
+
+/** AI 擷取到的一列維護紀錄；belongs_to 為 AI 標的歸屬，沒標時為 null。 */
+export interface ExtractedRecord extends RecordPayload {
+  belongs_to: BelongsTo | null;
+}
+
 export interface ExtractedDraft {
-  basic: {
-    customer_name: string;
-    customer_code: string;
-    serial_no: string;
-    machine_no: string;
-    location: string;
-    purchased_at: string;
-    model: string;
-    horsepower: string;
-    voltage: string;
-  };
-  records: RecordPayload[];
+  /**
+   * 卡別。一律以本地表頭判定（normalizeCardHeader）為準：
+   * AI 回傳的 card_kind 只當提示（它無法提供本地看不到的資訊，且常把
+   * 「＋100HA」這種加號註記整個漏掉），原始值仍完整留在 mx_import_drafts.raw_output。
+   */
+  card_kind: CardKind;
+  basic: ExtractedBasic;
+  records: ExtractedRecord[];
 }
 
 /** 把 Gemini 回傳的 JSON 物件安全轉成型別化 draft；全空的維護列丟棄。 */
@@ -228,7 +250,7 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
   const b = (obj.basic ?? {}) as Record<string, unknown>;
   const rawRecords = Array.isArray(obj.records) ? obj.records : [];
 
-  const records: RecordPayload[] = rawRecords
+  const records: ExtractedRecord[] = rawRecords
     .map((r) => {
       const o = (r ?? {}) as Record<string, unknown>;
       const row = {
@@ -242,6 +264,7 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
         filter_system: cleanText(str(o.filter_system)),
         technician: cleanText(str(o.technician)),
         note: cleanText(str(o.note)),
+        belongs_to: parseBelongsTo(o.belongs_to),
       };
       // AI 只是加速：它給的 service_type 需為合法值才採用，否則一律以本地規則推導
       // （規則的真相來源是 classifyServiceType，見 maintenance-service-type.ts）。
@@ -251,21 +274,38 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
           parseServiceType(o.service_type) ?? classifyServiceType(row),
       };
     })
+    // belongs_to 只是歸屬標記、service_type 是本地推導出來的分類，兩者都不算
+    // 「這列有內容」，判斷空列時一律排除。
     .filter((r) =>
-      Object.entries(r).some(([k, v]) => k !== "service_type" && v !== null),
+      Object.entries(r).some(
+        ([k, v]) => k !== "belongs_to" && k !== "service_type" && v !== null,
+      ),
     );
 
+  // 表頭正規化：把寫在機號位置的「過濾 …」、或併進機型 / 馬力 / 電壓尾端的
+  // 「＋100HA」搬到 filter_spec 並定出卡別。
+  const header = normalizeCardHeader({
+    serial_no: str(b.serial_no),
+    filter_spec: str(b.filter_spec),
+    model: str(b.model),
+    horsepower: str(b.horsepower),
+    voltage: str(b.voltage),
+  });
+
   return {
+    card_kind: header.kind,
     basic: {
       customer_name: str(b.customer_name),
       customer_code: str(b.customer_code),
-      serial_no: str(b.serial_no),
+      serial_no: header.serial_no,
       machine_no: str(b.machine_no),
       location: str(b.location),
       purchased_at: str(b.purchased_at),
-      model: str(b.model),
-      horsepower: str(b.horsepower),
-      voltage: str(b.voltage),
+      model: header.model,
+      horsepower: header.horsepower,
+      voltage: header.voltage,
+      filter_spec: header.filter_spec,
+      drain_spec: str(b.drain_spec),
     },
     records,
   };

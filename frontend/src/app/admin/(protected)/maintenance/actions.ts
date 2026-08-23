@@ -13,16 +13,25 @@ import {
   parseColumnDefs,
   customerPayloadFromForm,
   parseExtraction,
+  MAX_COLUMN_DEFS,
   type ColumnDef,
   type ExtractedDraft,
   type MxCardType,
   type RecordPayload,
 } from "@/lib/admin/maintenance-normalize";
+import {
+  buildCardDrafts,
+  isSameCustomer,
+  shouldImportFilterCard,
+  type CardDrafts,
+} from "@/lib/admin/maintenance-card-split";
+import type { ServiceType } from "@/lib/admin/maintenance-service-type";
 import { extractMaintenanceCard } from "@/lib/ai/gemini";
 import {
   findMachineBySerial,
   getMachineCardContext,
   isCustomerCodeTaken,
+  listMachineColumns,
 } from "@/lib/admin/maintenance";
 
 /**
@@ -397,16 +406,64 @@ export async function deleteRecordAction(
   return { ok: true };
 }
 
+/** 辨識後比對到的既有卡。過濾卡另帶該卡既有的耗材欄定義（供核對畫面直接沿用）。 */
+export interface CardMatch {
+  id: string;
+  serial_no: string;
+  customer_name: string;
+  columns: { id: string; label: string }[];
+}
+
+/** 草稿卡上（辨識到的）客戶身分，用來確認比對到的既有卡是不是同一個客戶的。 */
+interface DraftOwner {
+  customer_code: string;
+  customer_name: string;
+}
+
 export type ExtractResult =
   | {
       ok: true;
+      /** 原始擷取結果（未分流），保留供除錯 / 稽核對照。 */
       draft: ExtractedDraft;
-      match: { id: string; serial_no: string; customer_name: string } | null;
+      /** 分流後要並排核對的兩張草稿卡（其一可能為 null）。 */
+      cards: CardDrafts;
+      /** 過濾卡預設是否勾選匯入（沒有任何過濾維護列時預設不匯入）。 */
+      importFilterByDefault: boolean;
+      /** 空壓機卡的機號比對結果。 */
+      match: CardMatch | null;
+      /** 過濾卡的機號比對結果。 */
+      filterMatch: CardMatch | null;
       draftId: string;
     }
   | { ok: false; error: string };
 
-/** 拍照辨識：Gemini 擷取 → 稽核草稿 → 機號比對。photoPath 為已存 Storage 的原圖 path。 */
+/**
+ * 依機號在指定卡別中找既有卡；過濾卡一併帶回耗材欄定義。
+ *
+ * 過濾卡多一道客戶檢查：它的「卡號」是由 filter_spec 推導的過濾器型號（例「100HA」），
+ * 不同客戶必然重複，而機號唯一索引是全表唯一，所以純比機號會把 B 客戶的乾燥機維護列
+ * 接到 A 客戶那張「100HA」卡上。客戶對不上就當作沒比對到，讓員工自己建卡 / 改卡號。
+ * 空壓機卡的機號是原廠序號，不會撞號，維持原本的純機號比對。
+ */
+async function matchCard(
+  serial: string,
+  cardType: MxCardType,
+  owner: DraftOwner,
+): Promise<CardMatch | null> {
+  const hit = await findMachineBySerial(serial, cardType);
+  if (!hit) return null;
+  if (cardType === "filter" && !isSameCustomer(hit, owner)) return null;
+  const columns =
+    cardType === "filter"
+      ? (await listMachineColumns(hit.id)).map((c) => ({
+          id: c.id,
+          label: c.label,
+        }))
+      : [];
+  return { ...hit, columns };
+}
+
+/** 拍照辨識：Gemini 擷取 → 稽核草稿 → 分流成兩張卡 → 各自機號比對。 */
 export async function extractCardFromImageAction(input: {
   imageBase64: string;
   mimeType: string;
@@ -420,6 +477,7 @@ export async function extractCardFromImageAction(input: {
       input.mimeType,
     );
     const draft = parseExtraction(raw);
+    const cards = buildCardDrafts(draft);
 
     const { data: user } = await supabase.auth.getUser();
     const { data: draftRow } = await supabase
@@ -433,11 +491,28 @@ export async function extractCardFromImageAction(input: {
       .select("id")
       .single();
 
-    const match = await findMachineBySerial(draft.basic.serial_no);
+    const [match, filterMatch] = await Promise.all([
+      cards.compressor
+        ? matchCard(cards.compressor.basic.serial_no, "compressor", {
+            customer_code: cards.compressor.basic.customer_code,
+            customer_name: cards.compressor.basic.customer_name,
+          })
+        : Promise.resolve(null),
+      cards.filter
+        ? matchCard(cards.filter.basic.serial_no, "filter", {
+            customer_code: cards.filter.basic.customer_code,
+            customer_name: cards.filter.basic.customer_name,
+          })
+        : Promise.resolve(null),
+    ]);
+
     return {
       ok: true,
       draft,
+      cards,
+      importFilterByDefault: shouldImportFilterCard(cards.filter),
       match,
+      filterMatch,
       draftId: (draftRow as { id: string } | null)?.id ?? "",
     };
   } catch (e) {
@@ -445,109 +520,269 @@ export async function extractCardFromImageAction(input: {
   }
 }
 
-export interface CommitImportInput {
-  draftId: string;
-  machineId: string | null; // 命中既有卡則帶 id；否則 null → 依 basic 建卡
-  basic: {
-    customer_name: string;
-    customer_code: string;
-    serial_no: string;
-    machine_no: string;
-    location: string;
-    purchased_at: string;
-    model: string;
-    horsepower: string;
-    voltage: string;
-  };
+export interface CommitCardBasic {
+  customer_name: string;
+  customer_code: string;
+  serial_no: string;
+  machine_no: string;
+  location: string;
+  purchased_at: string;
+  model: string;
+  horsepower: string;
+  voltage: string;
+  /** 過濾卡表頭：過濾器型號清單（空壓機卡不使用）。 */
+  filter_spec: string;
+  /** 過濾卡表頭：排水器 / 馬達葉片規格（空壓機卡不使用）。 */
+  drain_spec: string;
+}
+
+export interface CommitCompressorCard {
+  /** 命中既有卡則帶 id（附加維護列）；否則 null → 依 basic 建卡。 */
+  machineId: string | null;
+  basic: CommitCardBasic;
   records: RecordPayload[];
 }
 
+export interface CommitFilterRecord {
+  service_date: string | null;
+  technician: string | null;
+  note: string | null;
+  /** 服務類型（例檢／保養／維修）；與 FilterRecordPayload 一致，判不出來為 null。 */
+  service_type: ServiceType | null;
+  /** 與 columns 同序的耗材欄值；null = 該欄未填。 */
+  values: (string | null)[];
+}
+
+export interface CommitFilterCard {
+  machineId: string | null;
+  basic: CommitCardBasic;
+  /** 建新卡時要一併建立的耗材欄名（由左到右）。附加到既有卡時忽略，改用該卡既有欄位。 */
+  columns: string[];
+  records: CommitFilterRecord[];
+}
+
+export interface CommitImportInput {
+  draftId: string;
+  /** 不匯入該張卡時傳 null。兩張都 null 視為錯誤。 */
+  compressor: CommitCompressorCard | null;
+  filter: CommitFilterCard | null;
+}
+
+/** 把 basic 轉成 mx_machines 的欄位（空字串一律轉 null）。 */
+function machineInsertFromBasic(
+  basic: CommitCardBasic,
+  cardType: MxCardType,
+  customerId: string,
+): Record<string, unknown> {
+  const nz = (v: string) => v.trim() || null;
+  return {
+    customer_id: customerId,
+    card_type: cardType,
+    serial_no: basic.serial_no.trim(),
+    machine_no: nz(basic.machine_no),
+    location: nz(basic.location),
+    purchased_at: cardType === "filter" ? null : nz(basic.purchased_at),
+    model: nz(basic.model),
+    horsepower: cardType === "filter" ? null : nz(basic.horsepower),
+    voltage: cardType === "filter" ? null : nz(basic.voltage),
+    filter_spec: cardType === "filter" ? nz(basic.filter_spec) : null,
+    drain_spec: cardType === "filter" ? nz(basic.drain_spec) : null,
+  };
+}
+
+/** 建卡（拍照匯入用）。撞機號唯一索引時丟出可讀訊息。 */
+async function insertImportedMachine(
+  supabase: Awaited<ReturnType<typeof getServerSupabase>>,
+  basic: CommitCardBasic,
+  cardType: MxCardType,
+): Promise<string> {
+  const label = cardType === "filter" ? "過濾系統卡" : "空壓機卡";
+  if (!basic.serial_no.trim()) throw new Error(`${label}的機號為必填。`);
+  // 核對表單是 noValidate（未選取的分頁以 CSS 隱藏，瀏覽器必填驗證會讓表單「按了沒反應」），
+  // 必填一律在此把關。客戶名稱不能只靠 findOrCreateCustomer——它會把空白靜靜換成
+  // 「（未命名客戶）」，結果是資料庫多一筆假客戶而不是一則錯誤訊息。
+  if (!basic.customer_name.trim())
+    throw new Error(`${label}的客戶名稱為必填。`);
+  const customerId = await findOrCreateCustomer(supabase, {
+    code: basic.customer_code,
+    name: basic.customer_name || "（未命名客戶）",
+  });
+  const { data, error } = await supabase
+    .from("mx_machines")
+    .insert(machineInsertFromBasic(basic, cardType, customerId))
+    .select("id")
+    .single();
+  if (error) {
+    if (error.code === "23505")
+      throw new Error(
+        cardType === "filter"
+          ? // 過濾卡的卡號是過濾器型號（例「100HA」），撞號多半是「別的客戶已經用了」，
+            // 叫員工去附加到那張卡反而是錯的，請他改一個不重複的卡號。
+            `過濾系統卡的卡號「${basic.serial_no.trim()}」已被其他卡使用，請改一個不重複的卡號。`
+          : `${label}的機號已存在，請改為附加到現有卡。`,
+      );
+    throw new Error(`建立${label}失敗：${error.message}`);
+  }
+  return (data as { id: string }).id;
+}
+
+/**
+ * 匯入一次辨識的結果：可同時提交空壓機卡與過濾系統卡。
+ *
+ * 兩張卡屬同一客戶時共用 customer（findOrCreateCustomer 以客戶編號 / 名稱去重）。
+ * 非單一 DB 交易，故沿用手動補償，任一步失敗要回到「什麼都沒發生」：
+ * - 本次新建的卡全部刪掉（FK cascade 會一併帶走其維護列與耗材欄定義）。
+ * - 本次寫進「既有卡」的維護列也要逐筆刪掉：那張卡不能刪，但它的列若留著，
+ *   員工修正錯誤重送時會整批變成重複紀錄。
+ */
 export async function commitImportAction(
   input: CommitImportInput,
-): Promise<ActionResult & { machineId?: string }> {
+): Promise<ActionResult & { machineId?: string; machineIds?: string[] }> {
   await requireRole(["office"]);
   const supabase = await getServerSupabase();
+  if (!input.compressor && !input.filter)
+    return { ok: false, error: "沒有勾選要匯入的卡片。" };
+
+  // 本次新建的卡；任一步失敗要整批回滾，避免留下孤兒卡。
+  const createdMachineIds: string[] = [];
+  // 本次寫入的維護列。新建卡的列會被 cascade 帶走，但附加到既有卡的不會，故一律記下。
+  const insertedRecordIds: string[] = [];
+
   try {
-    let machineId = input.machineId;
-    // 記錄本次是否「新建」卡：若接著寫維護列失敗，需回滾刪卡避免孤兒卡
-    // （commitImportAction 非單一 DB 交易，故手動補償）。
-    let createdMachineId: string | null = null;
+    let compressorId: string | null = null;
+    let filterId: string | null = null;
 
-    if (machineId) {
-      // machineId 由 client 送來（辨識時的機號比對命中）。辨識只會產空壓機卡，
-      // 而空壓機的固定 9 欄在過濾卡上完全顯示不出來（過濾卡只讀 values jsonb），
-      // 附加錯卡會留下一張「紀錄與欄位對不上」的卡，故在 server 端再擋一次。
-      const target = await getMachineCardContext(machineId);
-      if (!target) return { ok: false, error: "找不到此保養卡。" };
-      if (target.card_type !== "compressor")
-        return { ok: false, error: "拍照辨識的維護紀錄只能匯入空壓機卡。" };
-    }
-
-    if (!machineId) {
-      const serial = input.basic.serial_no.trim();
-      if (!serial) return { ok: false, error: "機號為必填。" };
-      const customerId = await findOrCreateCustomer(supabase, {
-        code: input.basic.customer_code,
-        name: input.basic.customer_name || "（未命名客戶）",
-      });
-      const { data: machine, error: mErr } = await supabase
-        .from("mx_machines")
-        .insert({
-          customer_id: customerId,
-          // 拍照辨識目前只產空壓機卡（辨識分流見 #158）。
-          card_type: "compressor",
-          serial_no: serial,
-          machine_no: input.basic.machine_no || null,
-          location: input.basic.location || null,
-          purchased_at: input.basic.purchased_at || null,
-          model: input.basic.model || null,
-          horsepower: input.basic.horsepower || null,
-          voltage: input.basic.voltage || null,
-        })
-        .select("id")
-        .single();
-      if (mErr) {
-        if (mErr.code === "23505")
-          return { ok: false, error: "此機號已存在，請改為附加到現有卡。" };
-        return { ok: false, error: mErr.message };
+    // ── 空壓機卡 ────────────────────────────────────────────
+    if (input.compressor) {
+      const card = input.compressor;
+      compressorId = card.machineId;
+      if (!compressorId) {
+        compressorId = await insertImportedMachine(
+          supabase,
+          card.basic,
+          "compressor",
+        );
+        createdMachineIds.push(compressorId);
       }
-      machineId = (machine as { id: string }).id;
-      createdMachineId = machineId;
+      if (card.records.length > 0) {
+        const { data, error } = await supabase
+          .from("mx_records")
+          .insert(
+            card.records.map((r) => ({
+              ...r,
+              machine_id: compressorId,
+              source: "photo" as const,
+            })),
+          )
+          .select("id");
+        if (error) throw new Error(`匯入空壓機維護紀錄失敗：${error.message}`);
+        for (const row of (data ?? []) as { id: string }[])
+          insertedRecordIds.push(row.id);
+      }
     }
 
-    if (input.records.length > 0) {
-      const { error: rErr } = await supabase.from("mx_records").insert(
-        input.records.map((r) => ({
-          ...r,
-          machine_id: machineId,
-          source: "photo" as const,
-        })),
-      );
-      if (rErr) {
-        // 回滾：本次新建的卡若寫維護列失敗 → 刪卡，避免留下空的孤兒卡。
-        // 附加到既有卡（createdMachineId 為 null）時不刪，維持既有資料。
-        if (createdMachineId) {
-          await supabase
-            .from("mx_machines")
-            .delete()
-            .eq("id", createdMachineId);
+    // ── 過濾系統卡 ──────────────────────────────────────────
+    if (input.filter) {
+      const card = input.filter;
+      filterId = card.machineId;
+      // 與 record.values 同序的欄位 id；null = 該位置沒有對應的欄位定義。
+      let columnIds: (string | null)[];
+
+      if (!filterId) {
+        filterId = await insertImportedMachine(supabase, card.basic, "filter");
+        createdMachineIds.push(filterId);
+        // 空白欄名不建欄（比照 parseColumnDefs），但在 columnIds 內仍要「留一個 null 占位」：
+        // r.values 是照 client 的完整欄位清單逐格填的，把空白欄直接濾掉會讓它後面每一格
+        // 的值整排往前錯一欄（最後一格的值則靜靜消失）。上限同手動建卡。
+        const named = card.columns
+          .map((label, index) => ({ label: label.trim(), index }))
+          .filter((c) => c.label !== "")
+          .slice(0, MAX_COLUMN_DEFS);
+        columnIds = card.columns.map(() => null);
+        if (named.length > 0) {
+          const { data, error } = await supabase
+            .from("mx_machine_columns")
+            .insert(
+              named.map((c, i) => ({
+                machine_id: filterId,
+                label: c.label,
+                sort_order: i,
+              })),
+            )
+            .select("id, sort_order");
+          if (error) throw new Error(`建立耗材欄位失敗：${error.message}`);
+          // .select() 不保證回傳順序，故以 sort_order 排回插入順序，再對回原欄位位置。
+          const ids = (data as { id: string; sort_order: number }[])
+            .slice()
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map((c) => c.id);
+          named.forEach((c, i) => {
+            columnIds[c.index] = ids[i] ?? null;
+          });
         }
-        return { ok: false, error: `匯入維護紀錄失敗：${rErr.message}` };
+      } else {
+        // 附加到既有過濾卡：欄位以 DB 為準（不信任 client 傳來的欄名），值依位置對應。
+        columnIds = (await listMachineColumns(filterId)).map((c) => c.id);
+      }
+
+      if (card.records.length > 0) {
+        const { data, error } = await supabase
+          .from("mx_records")
+          .insert(
+            card.records.map((r) => {
+              const values: Record<string, string> = {};
+              columnIds.forEach((id, i) => {
+                if (!id) return;
+                const v = (r.values[i] ?? "").trim();
+                if (v) values[id] = v;
+              });
+              return {
+                machine_id: filterId,
+                service_date: r.service_date,
+                technician: r.technician,
+                note: r.note,
+                service_type: r.service_type,
+                values: Object.keys(values).length > 0 ? values : null,
+                source: "photo" as const,
+              };
+            }),
+          )
+          .select("id");
+        if (error)
+          throw new Error(`匯入過濾系統維護紀錄失敗：${error.message}`);
+        for (const row of (data ?? []) as { id: string }[])
+          insertedRecordIds.push(row.id);
       }
     }
+
+    const machineIds = [compressorId, filterId].filter(
+      (v): v is string => v !== null,
+    );
 
     // draftId 可能為空（辨識時稽核草稿寫入失敗，best-effort）；為空則跳過更新，
     // 避免 .eq("id","") 靜默匹配不到任何列。
     if (input.draftId) {
       await supabase
         .from("mx_import_drafts")
-        .update({ status: "committed", machine_id: machineId })
+        .update({
+          status: "committed",
+          machine_id: compressorId ?? filterId,
+          machine_ids: machineIds,
+        })
         .eq("id", input.draftId);
     }
 
     revalidatePath("/admin/maintenance");
-    return { ok: true, machineId };
+    return { ok: true, machineId: machineIds[0], machineIds };
   } catch (e) {
+    // 回滾：先刪本次寫入的維護列（附加到既有卡的不會被 cascade 帶走，留著會在重送時
+    // 變成重複紀錄），再刪本次新建的卡（cascade 連帶清掉其維護列與耗材欄）。
+    if (insertedRecordIds.length > 0) {
+      await supabase.from("mx_records").delete().in("id", insertedRecordIds);
+    }
+    for (const id of createdMachineIds) {
+      await supabase.from("mx_machines").delete().eq("id", id);
+    }
     return { ok: false, error: (e as Error).message };
   }
 }
