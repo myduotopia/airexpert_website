@@ -538,7 +538,7 @@ export type ExtractResult =
  * isSameCustomer 事後守衛因此變成冗餘，已一併移除。
  *
  * 客戶對不上任何既有客戶時不自動比對，改回傳 otherCustomer=true 的提示卡
- * （其他客戶有同機號 / 同代號的卡），由核對畫面預設「建立新卡」。
+ * （其他客戶有同「機號」的卡），由核對畫面預設「建立新卡」。
  */
 async function matchCard(
   supabase: Awaited<ReturnType<typeof getServerSupabase>>,
@@ -561,9 +561,9 @@ async function matchCard(
         serialNo: basic.serial_no,
         cardType,
       })
-    : await findMachineAcrossCustomers({
+    : // 客戶未定：只能拿「機號」跨客戶提示（代號跨客戶必然重複，拿它比等於亂猜）。
+      await findMachineAcrossCustomers({
         serialNo: basic.serial_no,
-        machineNo: basic.machine_no,
         cardType,
       });
   if (!hit) return null;

@@ -280,10 +280,19 @@ function toIdentityHit(row: IdentityRow): MachineIdentityHit {
 }
 
 /**
- * 在**指定客戶內**找既有卡：
+ * 在**指定客戶內**找既有卡，依序：
  *   1. 有機台代號 → 以代號比對（客戶內唯一，這才是人平常在講的識別）
- *   2. 無機台代號 → 以機號比對
- * 兩者皆無 / 找不到回 null（呼叫端一律解讀為「建新卡」）。
+ *   2. 代號比不到（或本來就沒有代號）→ 以機號比對「沒有代號的卡」
+ *   3. 本來就沒有代號時，最後才退回比對「任何一張同機號的卡」
+ * 全都落空回 null（呼叫端一律解讀為「建新卡」）。
+ *
+ * 第 2 步是既有資料的命脈：現有卡幾乎清一色只有機號、machine_no 是 null，而
+ * #165 之後的辨識 prompt 會積極抓出卡上手寫的「A機」。若「有代號就只比代號」，
+ * 每一次重拍既有卡都會比不到而多開一張重複卡（DB 也擋不住 —— 代號索引與
+ * 機號索引互斥，有代號的新卡不受 mx_machines_customer_serial_key 約束）。
+ * 反過來，退回比對時**只認沒有代號的卡**：那正是 0018 的
+ * mx_machines_customer_serial_key 保證唯一的集合，不會在「同客戶兩台 AD480、
+ * 靠 A機／B機 區分」的情況下把 B 機的維護列接到 A 機那張卡上。
  *
  * cardType 限定比對範圍（預設空壓機卡），避免把空壓機的維護列附加到過濾卡上；
  * 拍照辨識分流（#158）產出兩張草稿卡時，兩張各自以自己的卡別比對。
@@ -311,10 +320,35 @@ export async function findMachine(input: {
   if (error) throw new Error(`查詢機台失敗：${error.message}`);
 
   const rows = (data ?? []) as IdentityRow[];
-  const hit = tag
-    ? rows.find((m) => normalizeMachineNo(m.machine_no) === tag)
-    : rows.find((m) => normalizeSerial(m.serial_no) === serial);
+  const hit = pickIdentityMatch(rows, tag, serial);
   return hit ? toIdentityHit(hit) : null;
+}
+
+/**
+ * findMachine 的本地比對規則（拆出來純函式化，好推理也好單測）。
+ * tag / serial 皆為正規化後的字串，空字串代表「這一段沒有」。
+ */
+function pickIdentityMatch(
+  rows: IdentityRow[],
+  tag: string,
+  serial: string,
+): IdentityRow | null {
+  if (tag) {
+    const byTag = rows.find((m) => normalizeMachineNo(m.machine_no) === tag);
+    if (byTag) return byTag;
+  }
+  if (!serial) return null;
+  // 沒有代號的卡＝0018 的 mx_machines_customer_serial_key 作用範圍，同機號至多一張。
+  const untagged = rows.find(
+    (m) =>
+      normalizeSerial(m.serial_no) === serial &&
+      normalizeMachineNo(m.machine_no) === "",
+  );
+  if (untagged) return untagged;
+  // 這張照片自己也沒有代號時，才容許比到「有代號」的卡（同機號可能不只一張，
+  // 取第一張；核對畫面會把比到的卡秀出來讓員工可以取消附加）。
+  if (tag) return null;
+  return rows.find((m) => normalizeSerial(m.serial_no) === serial) ?? null;
 }
 
 /**
@@ -347,48 +381,38 @@ export async function findMachineByTag(
 }
 
 /**
- * 跨客戶找識別相同的卡（先比機號，再比機台代號）。
+ * 跨客戶找**機號**相同的卡。
  *
  * **只用於「辨識出來的客戶對不上任何既有客戶」時的提示**：這種情況下不能自動比對
  * （硬比就會把 B 客戶的維護列寫到 A 客戶的「AD480」卡上），但完全不提示又會讓員工
- * 重複建卡。故回傳一張「其他客戶的同識別卡」，由 UI 顯示警告、預設不附加。
+ * 重複建卡。故回傳一張「其他客戶的同機號卡」，由 UI 顯示警告、預設不附加。
+ *
+ * 刻意**不比機台代號**：代號是客戶內部稱呼，「A機」「1號機」跨客戶本來就必然重複
+ * （這正是 #165 的前提）。拿代號跨客戶比等於隨機挑一家有 A機 的客戶當提示 —— 提示
+ * 幾乎必為誤報，員工照著勾「附加」就會把維護列寫進毫不相干的客戶卡裡。
  */
 export async function findMachineAcrossCustomers(input: {
   serialNo?: string | null;
-  machineNo?: string | null;
   cardType?: MxCardType;
 }): Promise<MachineIdentityHit | null> {
   const serial = normalizeSerial(input.serialNo);
-  const tag = normalizeMachineNo(input.machineNo);
-  if (!serial && !tag) return null;
+  if (!serial) return null;
 
   const supabase = await getServerSupabase();
-  const base = () =>
-    supabase
-      .from("mx_machines")
-      .select(IDENTITY_SELECT)
-      .is("archived_at", null)
-      .eq("card_type", input.cardType ?? "compressor");
-
   // 先以 ilike 粗篩（走 0018 的 mx_machines_serial_lookup_idx），再在本地以
   // 正規化結果精確比對；粗篩必然是超集，故不會誤報。
-  if (serial) {
-    const { data, error } = await base().ilike("serial_no", serial).limit(20);
-    if (error) throw new Error(`查詢機號失敗：${error.message}`);
-    const hit = (data ?? [])
-      .map((row) => row as IdentityRow)
-      .find((m) => normalizeSerial(m.serial_no) === serial);
-    if (hit) return toIdentityHit(hit);
-  }
-  if (tag) {
-    const { data, error } = await base().ilike("machine_no", tag).limit(20);
-    if (error) throw new Error(`查詢機台代號失敗：${error.message}`);
-    const hit = (data ?? [])
-      .map((row) => row as IdentityRow)
-      .find((m) => normalizeMachineNo(m.machine_no) === tag);
-    if (hit) return toIdentityHit(hit);
-  }
-  return null;
+  const { data, error } = await supabase
+    .from("mx_machines")
+    .select(IDENTITY_SELECT)
+    .is("archived_at", null)
+    .eq("card_type", input.cardType ?? "compressor")
+    .ilike("serial_no", serial)
+    .limit(20);
+  if (error) throw new Error(`查詢機號失敗：${error.message}`);
+  const hit = (data ?? [])
+    .map((row) => row as IdentityRow)
+    .find((m) => normalizeSerial(m.serial_no) === serial);
+  return hit ? toIdentityHit(hit) : null;
 }
 
 // ── 客戶主檔（0016）─────────────────────────────────────────────

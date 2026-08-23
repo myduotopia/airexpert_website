@@ -9,7 +9,10 @@ import {
 } from "@/components/admin/AdminTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { cardTypeLabel } from "@/lib/admin/maintenance-normalize";
-import { machineDisplayName } from "@/lib/admin/machine-identity";
+import {
+  machineDisplayName,
+  machineTagLabel,
+} from "@/lib/admin/machine-identity";
 import { rocDate } from "@/lib/admin/minguo";
 import { archiveMachineAction } from "./actions";
 
@@ -38,8 +41,9 @@ export default async function MaintenanceListPage({
   const machines = await listMachines(tab === "all" ? undefined : tab);
 
   const columns: AdminColumn[] = [
-    // 機台識別是三段式的「客戶-機台代號-機號」（#165）；客戶另留一欄是為了
-    // 連進客戶頁與依客戶排序。
+    // 機台識別是三段式的「客戶-機台代號-機號」（#165），但本表已經有「客戶」一欄
+    // （它才是連進客戶頁、可依客戶排序的那一欄），這裡只出「代號-機號」兩段，
+    // 免得每一列都把客戶名印兩次。搜尋字串仍收三段（見下方 search）。
     { header: "機台", sortable: true },
     { header: "卡別", sortable: true },
     { header: "客戶", sortable: true },
@@ -49,6 +53,8 @@ export default async function MaintenanceListPage({
   ];
   const rows: AdminRow[] = machines.map((m) => {
     const typeLabel = cardTypeLabel(m.card_type);
+    // 顯示 / 排序用兩段；displayName 只餵搜尋（含正規化後的客戶短名）。
+    const tagLabel = machineTagLabel(m);
     const displayName = machineDisplayName(m.customer_name, m);
     return {
       key: m.id,
@@ -58,7 +64,7 @@ export default async function MaintenanceListPage({
           href={`/admin/maintenance/${m.id}`}
           className="text-ink hover:text-primary-deep font-medium"
         >
-          {displayName}
+          {tagLabel}
         </Link>,
         typeLabel,
         <Link
@@ -79,14 +85,15 @@ export default async function MaintenanceListPage({
         </div>,
       ],
       sortValues: [
-        displayName,
+        tagLabel,
         typeLabel,
         m.customer_name,
         m.model,
         m.last_service_date,
         null,
       ],
-      // 三段識別任一段都要能搜到（客戶原名與正規化後的短名都收進來）。
+      // 三段識別任一段都要能搜到：displayName 帶正規化後的客戶短名（「兆利科技」），
+      // 另外收客戶原名（「兆利科技股份有限公司」）與拆開的代號 / 機號。
       search:
         `${displayName} ${m.machine_no ?? ""} ${m.serial_no ?? ""} ${typeLabel} ${m.customer_name} ${m.model ?? ""}`.toLowerCase(),
     };

@@ -312,6 +312,11 @@ describe("extractCardFromImageAction — 先解析客戶，再在客戶內找機
     if (!res.ok) return;
     // 客戶未定 → 絕不可拿某個客戶去比對機台。
     expect(findMachine).not.toHaveBeenCalled();
+    // 提示只能以「機號」跨客戶找：代號（A機）跨客戶必然重複，拿它比是亂猜。
+    expect(findMachineAcrossCustomers).toHaveBeenCalledWith({
+      serialNo: "J751307001",
+      cardType: "compressor",
+    });
     expect(res.match?.id).toBe("m-9");
     // otherCustomer=true 讓核對畫面預設「建立新卡」、附加開關預設關閉。
     expect(res.match?.otherCustomer).toBe(true);
