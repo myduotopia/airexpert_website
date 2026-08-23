@@ -13,11 +13,25 @@ describe("navForRole（後台側欄角色 gating）", () => {
     );
     expect(navForRole("admin")).toHaveLength(adminVisible.length);
     expect(keys).not.toContain("maintenance");
+    expect(keys).not.toContain("maintenance-customers");
   });
 
-  it("office 只看得到「保養記錄卡」一項", () => {
+  it("office 只看得到「保養記錄卡」與「客戶」兩項", () => {
     const items = navForRole("office");
-    expect(items.map((i) => i.key)).toEqual(["maintenance"]);
+    expect(items.map((i) => i.key)).toEqual([
+      "maintenance",
+      "maintenance-customers",
+    ]);
+  });
+
+  it("「客戶」為 office 專屬且指向保養卡客戶列表", () => {
+    const item = ADMIN_NAV.find((i) => i.key === "maintenance-customers");
+    expect(item?.href).toBe("/admin/maintenance/customers");
+    expect(item?.enabled).toBe(true);
+    expect(item?.roles).toEqual(["office"]);
+    expect(
+      navForRole("seo_manager").some((i) => i.key === "maintenance-customers"),
+    ).toBe(false);
   });
 
   it("seo_manager 看不到網站設定 / 人員管理 / 聯絡來信", () => {

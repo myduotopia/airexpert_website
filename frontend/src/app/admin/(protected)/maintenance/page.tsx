@@ -33,7 +33,13 @@ export default async function MaintenanceListPage() {
       >
         {m.serial_no}
       </Link>,
-      m.customer_name,
+      <Link
+        key="customer"
+        href={`/admin/maintenance/customers/${m.customer_id}`}
+        className="text-ink hover:text-primary-deep"
+      >
+        {m.customer_name}
+      </Link>,
       m.model ?? "—",
       rocDate(m.last_service_date),
       <div key="actions" className="flex justify-end">
@@ -64,6 +70,12 @@ export default async function MaintenanceListPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href="/admin/maintenance/customers"
+            className="border-border hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border px-4 text-[14px] font-semibold"
+          >
+            客戶
+          </Link>
           <Link
             href="/admin/maintenance/archive"
             className="border-border hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border px-4 text-[14px] font-semibold"

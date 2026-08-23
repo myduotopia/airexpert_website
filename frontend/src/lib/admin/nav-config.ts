@@ -79,6 +79,15 @@ export const ADMIN_NAV: AdminNavItem[] = [
     enabled: true,
     roles: ["office"],
   },
+  // 客戶主檔：保養卡的客戶層資料（完整聯絡資訊 + 名下所有機台）。
+  // 路徑是 /admin/maintenance 的子路由，故側欄兩項會同時 active，屬預期。
+  {
+    key: "maintenance-customers",
+    label: "客戶",
+    href: "/admin/maintenance/customers",
+    enabled: true,
+    roles: ["office"],
+  },
 ];
 
 // 未指定 roles 的項目預設可見角色 = 內容團隊（admin + seo_manager）。

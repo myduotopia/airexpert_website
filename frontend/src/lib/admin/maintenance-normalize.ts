@@ -122,3 +122,41 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
     records,
   };
 }
+
+// ── 客戶主檔（0016）─────────────────────────────────────────────
+
+export interface CustomerPayload {
+  name: string;
+  code: string | null;
+  contact_person: string | null;
+  phone: string | null;
+  address: string | null;
+  note: string | null;
+}
+
+/** 客戶編輯表單 → DB payload。客戶名稱為必填，其餘空字串一律轉 null。 */
+export function customerPayloadFromForm(fd: FormData): CustomerPayload {
+  const name = cleanText(fd.get("name"));
+  if (!name) throw new Error("客戶名稱為必填。");
+  return {
+    name,
+    code: cleanText(fd.get("code")),
+    contact_person: cleanText(fd.get("contact_person")),
+    phone: cleanText(fd.get("phone")),
+    address: cleanText(fd.get("address")),
+    note: cleanText(fd.get("note")),
+  };
+}
+
+/** 客戶編號比對用正規化：lower + trim。與 0013 的索引 lower(btrim(code)) 對齊。 */
+export function normalizeCustomerCode(v: string | null | undefined): string {
+  return (v ?? "").trim().toLowerCase();
+}
+
+/**
+ * 卡別顯示文字。card_type 由 #155（過濾系統卡）新增，欄位尚未落地時為
+ * undefined / null，一律視為空壓機卡，確保本頁在 0014/0015 之前也能正常顯示。
+ */
+export function cardTypeLabel(cardType?: string | null): string {
+  return cardType === "filter" ? "過濾系統" : "空壓機";
+}
