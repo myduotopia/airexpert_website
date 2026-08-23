@@ -363,10 +363,14 @@ export async function updateRecordAction(
   const supabase = await getServerSupabase();
   try {
     const payload = await recordPayloadForMachine(machineId, fd);
+    // 一併綁 machine_id：payload 的形狀（固定 9 欄 vs values jsonb）是依
+    // machineId 的卡別決定的，若 recordId 其實屬於另一張卡，寫進去的欄位語意
+    // 會對不上。正常流程兩者必定相符，此處只是把不變式寫死。
     const { error } = await supabase
       .from("mx_records")
       .update(payload)
-      .eq("id", recordId);
+      .eq("id", recordId)
+      .eq("machine_id", machineId);
     if (error) return { ok: false, error: error.message };
     revalidatePath(`/admin/maintenance/${machineId}`);
     return { ok: true };

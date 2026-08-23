@@ -34,6 +34,9 @@ export function ColumnsEditor({ initial }: { initial?: ColumnItem[] }) {
   const [dragKey, setDragKey] = useState<string | null>(null);
 
   function move(from: number, to: number) {
+    // from < 0 = 來源列已不存在（例如 dragKey 過期）。若不擋，splice(-1, 1)
+    // 會改成搬「最後一欄」，靜靜把使用者沒碰過的欄位換位置。
+    if (from < 0 || from >= rows.length) return;
     if (to < 0 || to >= rows.length || from === to) return;
     setRows((prev) => {
       const next = [...prev];
@@ -67,7 +70,10 @@ export function ColumnsEditor({ initial }: { initial?: ColumnItem[] }) {
             <li
               key={row.key}
               onDragOver={(e) => e.preventDefault()}
-              onDrop={() => {
+              onDrop={(e) => {
+                // 不 preventDefault 的話瀏覽器仍會跑預設落點行為——最明顯的是
+                // 把拖曳中的文字插進本列的欄名輸入框。
+                e.preventDefault();
                 if (dragKey === null) return;
                 move(
                   rows.findIndex((r) => r.key === dragKey),
@@ -82,7 +88,13 @@ export function ColumnsEditor({ initial }: { initial?: ColumnItem[] }) {
               {/* 只有把手可拖移，避免拖到文字輸入時被當成拖曳。 */}
               <span
                 draggable
-                onDragStart={() => setDragKey(row.key)}
+                onDragStart={(e) => {
+                  // Firefox 要求 dragstart 內至少 setData 一次，否則整個拖曳
+                  // 不會啟動（把手變成完全沒反應）。
+                  e.dataTransfer.setData("text/plain", row.key);
+                  e.dataTransfer.effectAllowed = "move";
+                  setDragKey(row.key);
+                }}
                 onDragEnd={() => setDragKey(null)}
                 aria-label="拖曳排序"
                 className="text-text-muted inline-flex h-9 w-5 shrink-0 cursor-grab items-center justify-center active:cursor-grabbing"
