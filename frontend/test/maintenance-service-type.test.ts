@@ -235,6 +235,8 @@ describe("parseServiceType", () => {
     expect(parseServiceType("例檢")).toBeNull();
     expect(parseServiceType(undefined)).toBeNull();
     expect(parseServiceType(3)).toBeNull();
+    // 卡詳情頁以此收斂 ?type=；同名參數重複帶時 Next 會給陣列，需視為未篩選。
+    expect(parseServiceType(["repair"])).toBeNull();
   });
 });
 

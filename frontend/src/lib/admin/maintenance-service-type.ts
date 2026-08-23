@@ -62,7 +62,7 @@ function normalizeCell(v: string | null | undefined): string {
 
 /**
  * 是否為「純數量記號」——即該格只寫了數量或勾記，沒有描述性文字。
- * 匯出供 UI／測試共用。
+ * 匯出僅供單元測試直接驗證（產品程式碼只透過 classifyServiceType 使用）。
  */
 export function isQuantityMark(v: string | null | undefined): boolean {
   const s = normalizeCell(v);

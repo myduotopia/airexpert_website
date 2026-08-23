@@ -13,9 +13,10 @@
 | 0-1 | **執行 migration 0011** | Supabase → SQL Editor 貼上 `supabase/migrations/0011_office_maintenance.sql` **整檔照跑（含 RLS，勿拆掉）** | 資料表不存在，功能一行都動不了 |
 | 0-2 | **執行 migration 0012** | 同上貼 `supabase/migrations/0012_maintenance_soft_delete.sql`（封存區軟刪除所需） | 封存 / 復原 / 永久刪除會報 `archived_at` 欄位不存在 |
 | 0-3 | **設定 Gemini API key** | 後台 → 網站設定 ▸ AI，貼上 Gemini key（建議付費層：不限流、內容不被訓練；model 需為 `gemini-2.5-flash` 或 `gemini-2.5-pro`）| 手動輸入可用；**拍照辨識**會回「尚未設定 key」|
+| 0-4 | **執行 migration 0014** | 同上貼 `supabase/migrations/0014_record_service_type.sql`（服務類型欄位 + 既有資料回填所需；全檔冪等） | 新增／編輯維護紀錄、拍照匯入全部寫入失敗，訊息為 `Could not find the 'service_type' column of 'mx_records' in the schema cache` |
 
-### 0-1 / 0-2 驗證 migration 是否套用成功
-在 SQL Editor 執行，四項都要符合預期：
+### 0-1 / 0-2 / 0-4 驗證 migration 是否套用成功
+在 SQL Editor 執行，五項都要符合預期：
 
 ```sql
 -- 應回 4 張表：mx_customers / mx_import_drafts / mx_machines / mx_records
@@ -30,7 +31,14 @@ select tablename, policyname from pg_policies where tablename like 'mx_%' order 
 -- 0012：mx_machines 應有 archived_at 欄位
 select column_name from information_schema.columns
 where table_name = 'mx_machines' and column_name = 'archived_at';
+
+-- 0014：mx_records 應有 service_type 欄位
+select column_name from information_schema.columns
+where table_name = 'mx_records' and column_name = 'service_type';
 ```
+
+> ⚠️ **部署順序**：`service_type` 是前端每次寫入維護紀錄都會帶的欄位。
+> 前端上線前（或上線後立刻）務必先跑 0014，否則新增／編輯／拍照匯入都會失敗。
 
 ---
 

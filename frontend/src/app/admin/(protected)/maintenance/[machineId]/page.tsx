@@ -8,6 +8,7 @@ import type { MxRecord } from "@/lib/admin/maintenance";
 import { rocDate } from "@/lib/admin/minguo";
 import { ServiceTypeBadge } from "@/components/admin/maintenance/ServiceTypeBadge";
 import {
+  parseServiceType,
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
   type ServiceType,
@@ -15,13 +16,6 @@ import {
 import { deleteRecordAction } from "../actions";
 
 export const metadata = { title: "保養卡 · 後台" };
-
-/** 將 ?type= 收斂到允許值；非法或未帶 → null（全部）。 */
-function resolveServiceType(raw: string | undefined): ServiceType | null {
-  return (SERVICE_TYPES as readonly string[]).includes(raw ?? "")
-    ? (raw as ServiceType)
-    : null;
-}
 
 /** 服務類型篩選頁籤（純連結，無 client JS）。 */
 function ServiceTypeTabs({
@@ -71,8 +65,8 @@ export default async function MachineDetailPage({
   searchParams,
 }: {
   params: Promise<{ machineId: string }>;
-  // Next.js 16：params / searchParams 皆為非同步。
-  searchParams: Promise<{ type?: string }>;
+  // Next.js 16：params / searchParams 皆為非同步；同名參數重複帶時值會是陣列。
+  searchParams: Promise<{ type?: string | string[] }>;
 }) {
   await requireRole(["office"]);
   const { machineId } = await params;
@@ -85,7 +79,8 @@ export default async function MachineDetailPage({
     ? `/admin/maintenance/customers/${customer.id}`
     : null;
 
-  const activeType = resolveServiceType(type);
+  // ?type= 收斂到允許值；非法、重複帶（陣列）或未帶 → null（全部）。
+  const activeType = parseServiceType(type);
   const counts = SERVICE_TYPES.reduce(
     (acc, t) => {
       acc[t] = records.filter((r) => r.service_type === t).length;
