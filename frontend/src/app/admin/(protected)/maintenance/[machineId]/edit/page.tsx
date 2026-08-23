@@ -14,13 +14,15 @@ export default async function EditMachinePage({
   const { machineId } = await params;
   const data = await getMachine(machineId);
   if (!data) notFound();
-  const { machine, customer } = data;
+  const { machine, customer, columns } = data;
 
   return (
     <div className="mx-auto max-w-[800px]">
       <h1 className="text-ink mb-6 text-[24px] font-bold">編輯保養卡</h1>
       <EditMachineForm
         machineId={machineId}
+        cardType={machine.card_type}
+        columns={columns.map((c) => ({ id: c.id, label: c.label }))}
         values={{
           customer_code: customer.code ?? undefined,
           customer_name: customer.name ?? undefined,
@@ -31,6 +33,8 @@ export default async function EditMachinePage({
           model: machine.model ?? undefined,
           horsepower: machine.horsepower ?? undefined,
           voltage: machine.voltage ?? undefined,
+          filter_spec: machine.filter_spec ?? undefined,
+          drain_spec: machine.drain_spec ?? undefined,
         }}
       />
     </div>

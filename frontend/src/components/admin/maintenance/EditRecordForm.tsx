@@ -1,17 +1,26 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { RecordFields, type RecordValues } from "./RecordForm";
+import {
+  FilterRecordFields,
+  type FilterColumn,
+  type FilterRecordValues,
+} from "./FilterRecordForm";
 import { updateRecordAction } from "@/app/admin/(protected)/maintenance/actions";
 
-export function EditRecordForm({
+/**
+ * 編輯維護紀錄的表單外殼。送出 / 錯誤 / 導回的行為兩種卡別完全相同，
+ * 只有中間的欄位群不同，故以 children 帶入。
+ */
+function EditRecordShell({
   machineId,
   recordId,
-  values,
+  children,
 }: {
   machineId: string;
   recordId: string;
-  values: RecordValues;
+  children: ReactNode;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -32,7 +41,7 @@ export function EditRecordForm({
 
   return (
     <form action={onSubmit} className="flex flex-col gap-6">
-      <RecordFields values={values} />
+      {children}
       {error && <p className="text-[14px] text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button
@@ -50,5 +59,41 @@ export function EditRecordForm({
         </a>
       </div>
     </form>
+  );
+}
+
+/** 空壓機卡：固定 9 欄 + 備註。 */
+export function EditRecordForm({
+  machineId,
+  recordId,
+  values,
+}: {
+  machineId: string;
+  recordId: string;
+  values: RecordValues;
+}) {
+  return (
+    <EditRecordShell machineId={machineId} recordId={recordId}>
+      <RecordFields values={values} />
+    </EditRecordShell>
+  );
+}
+
+/** 過濾（乾燥機）卡：日期 / 動態耗材欄 / 維護員 / 備註。 */
+export function EditFilterRecordForm({
+  machineId,
+  recordId,
+  columns,
+  values,
+}: {
+  machineId: string;
+  recordId: string;
+  columns: FilterColumn[];
+  values: FilterRecordValues;
+}) {
+  return (
+    <EditRecordShell machineId={machineId} recordId={recordId}>
+      <FilterRecordFields columns={columns} values={values} />
+    </EditRecordShell>
   );
 }
