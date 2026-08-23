@@ -13,6 +13,10 @@ import {
   type ExtractedDraft,
   type RecordPayload,
 } from "@/lib/admin/maintenance-normalize";
+import {
+  SERIAL_CONFLICT_MESSAGE,
+  SERIAL_REQUIRED_MESSAGE,
+} from "@/lib/admin/machine-serial";
 import { extractMaintenanceCard } from "@/lib/ai/gemini";
 import { findMachineBySerial } from "@/lib/admin/maintenance";
 
@@ -162,6 +166,39 @@ export async function searchMachinesAction(
   return Array.from(merged.values()).slice(0, 8);
 }
 
+// ── 機號衝突預檢 ──────────────────────────────────────────────────
+// mx_machines 對未封存卡的 lower(btrim(serial_no)) 是「全域」唯一索引，
+// 不同客戶都寫「A機」會互撞。索引維持現行語意不動，改在表單先預檢，
+// 讓員工在送出前就看到衝突與該卡連結，並被引導改用「客戶名稱-A」形式。
+
+export interface SerialConflict {
+  id: string;
+  serial_no: string;
+  customer_name: string;
+}
+
+/**
+ * 機號衝突預檢（唯讀）。回傳撞到的未封存卡；沒撞到回 null。
+ * excludeMachineId 用於編輯既有卡時排除自己。
+ */
+export async function checkSerialConflictAction(
+  serial: string,
+  excludeMachineId?: string,
+): Promise<SerialConflict | null> {
+  await requireRole(["office"]);
+  const hit = await findMachineBySerial(serial);
+  if (!hit) return null;
+  if (excludeMachineId && hit.id === excludeMachineId) return null;
+  return hit;
+}
+
+/** 撞機號時的錯誤訊息：帶出衝突卡的客戶，並引導改用「客戶名稱-A」形式。 */
+function serialConflictMessage(hit: SerialConflict | null): string {
+  if (!hit) return SERIAL_CONFLICT_MESSAGE;
+  const who = hit.customer_name || "（未命名客戶）";
+  return `機號「${hit.serial_no}」已被「${who}」的卡使用。${SERIAL_CONFLICT_MESSAGE}`;
+}
+
 /** 建立新卡（含客戶）。表單需帶 customer_name + 機器欄位。成功後導向卡詳情。 */
 export async function createMachineAction(fd: FormData): Promise<void> {
   await requireRole(["office"]);
@@ -171,6 +208,10 @@ export async function createMachineAction(fd: FormData): Promise<void> {
   if (!customerName) throw new Error("客戶名稱為必填。");
   const customerCode = String(fd.get("customer_code") ?? "").trim();
   const payload = machinePayloadFromForm(fd);
+
+  // 建卡前先預檢機號，直接給出「撞到誰」的訊息，不必等 DB 丟 23505。
+  const conflict = await checkSerialConflictAction(payload.serial_no);
+  if (conflict) throw new Error(serialConflictMessage(conflict));
 
   const customerId = await findOrCreateCustomer(supabase, {
     code: customerCode,
@@ -182,8 +223,8 @@ export async function createMachineAction(fd: FormData): Promise<void> {
     .select("id")
     .single();
   if (error) {
-    if (error.code === "23505")
-      throw new Error("此機號已存在，請改用既有卡片。");
+    // 預檢與 insert 之間仍可能被別人搶先（race），或撞到封存卡以外的邊界。
+    if (error.code === "23505") throw new Error(SERIAL_CONFLICT_MESSAGE);
     throw new Error(`建立保養卡失敗：${error.message}`);
   }
   revalidatePath("/admin/maintenance");
@@ -202,6 +243,12 @@ export async function updateMachineAction(
   const customerCode = String(fd.get("customer_code") ?? "").trim();
   try {
     const payload = machinePayloadFromForm(fd);
+    // 預檢機號（排除自己），避免只丟出無指向性的 23505。
+    const conflict = await checkSerialConflictAction(
+      payload.serial_no,
+      machineId,
+    );
+    if (conflict) return { ok: false, error: serialConflictMessage(conflict) };
     const patch: Record<string, unknown> = { ...payload };
     if (customerName || customerCode) {
       patch.customer_id = await findOrCreateCustomer(supabase, {
@@ -214,7 +261,8 @@ export async function updateMachineAction(
       .update(patch)
       .eq("id", machineId);
     if (error) {
-      if (error.code === "23505") return { ok: false, error: "此機號已存在。" };
+      if (error.code === "23505")
+        return { ok: false, error: SERIAL_CONFLICT_MESSAGE };
       return { ok: false, error: error.message };
     }
     revalidatePath(`/admin/maintenance/${machineId}`);
@@ -352,7 +400,11 @@ export async function commitImportAction(
 
     if (!machineId) {
       const serial = input.basic.serial_no.trim();
-      if (!serial) return { ok: false, error: "機號為必填。" };
+      if (!serial) return { ok: false, error: SERIAL_REQUIRED_MESSAGE };
+      // 建卡前先預檢機號，訊息直接指出撞到哪一位客戶的卡。
+      const conflict = await checkSerialConflictAction(serial);
+      if (conflict)
+        return { ok: false, error: serialConflictMessage(conflict) };
       const customerId = await findOrCreateCustomer(supabase, {
         code: input.basic.customer_code,
         name: input.basic.customer_name || "（未命名客戶）",
@@ -373,7 +425,7 @@ export async function commitImportAction(
         .single();
       if (mErr) {
         if (mErr.code === "23505")
-          return { ok: false, error: "此機號已存在，請改為附加到現有卡。" };
+          return { ok: false, error: SERIAL_CONFLICT_MESSAGE };
         return { ok: false, error: mErr.message };
       }
       machineId = (machine as { id: string }).id;

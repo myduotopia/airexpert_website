@@ -1,5 +1,7 @@
 // 表單字串 → DB payload 的清洗（純函式，無 I/O，好單測）。
 
+import { SERIAL_REQUIRED_MESSAGE } from "./machine-serial";
+
 export function cleanText(
   v: FormDataEntryValue | string | null,
 ): string | null {
@@ -19,7 +21,8 @@ export interface MachinePayload {
 
 export function machinePayloadFromForm(fd: FormData): MachinePayload {
   const serial = cleanText(fd.get("serial_no"));
-  if (!serial) throw new Error("機號為必填。");
+  // 維持必填（空機號會讓卡片無法識別），但錯誤訊息引導改用「客戶名稱-A」形式。
+  if (!serial) throw new Error(SERIAL_REQUIRED_MESSAGE);
   return {
     serial_no: serial,
     machine_no: cleanText(fd.get("machine_no")),

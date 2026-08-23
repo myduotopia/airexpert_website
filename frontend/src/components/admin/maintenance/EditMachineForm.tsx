@@ -30,7 +30,7 @@ export function EditMachineForm({
 
   return (
     <form action={onSubmit} className="flex flex-col gap-6">
-      <CardBasicFields values={values} />
+      <CardBasicFields values={values} machineId={machineId} />
       {error && <p className="text-[14px] text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button
