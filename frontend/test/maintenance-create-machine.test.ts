@@ -126,7 +126,10 @@ const fakeSupabase = {
 };
 
 const redirectSpy = vi.fn();
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+const revalidateSpy = vi.fn();
+vi.mock("next/cache", () => ({
+  revalidatePath: (...args: unknown[]) => revalidateSpy(...args),
+}));
 vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => redirectSpy(...args),
 }));
@@ -181,6 +184,7 @@ beforeEach(() => {
   selectRows = {};
   idSeq = {};
   redirectSpy.mockClear();
+  revalidateSpy.mockClear();
 });
 
 describe("createMachineAction — 錯誤回報（不得 throw）", () => {
@@ -219,6 +223,8 @@ describe("createMachineAction — 錯誤回報（不得 throw）", () => {
     const res = await createMachineAction(form({}));
     expect(res).toEqual({ ok: true, machineId: "mx_machines-1" });
     expect(redirectSpy).not.toHaveBeenCalled();
+    // 導頁雖然改由 client 端做，列表的快取仍必須失效，否則新卡不會出現在清單。
+    expect(revalidateSpy).toHaveBeenCalledWith("/admin/maintenance");
     expect(rowsInsertedInto("mx_machines")[0]).toMatchObject({
       serial_no: "J751307001",
       location: "鶯歌區八德路1號",
@@ -263,6 +269,8 @@ describe("createMachineAction — 過濾卡的耗材欄同步與回滾", () => {
     expect(deletes[0].filters).toEqual([
       { fn: "eq", args: ["id", "mx_machines-1"] },
     ]);
+    // 卡已刪掉，不該把列表快取洗掉（也證明失敗時沒走到成功分支）。
+    expect(revalidateSpy).not.toHaveBeenCalled();
   });
 
   it("空壓機卡不碰耗材欄，即使表單帶了 columns_json", async () => {

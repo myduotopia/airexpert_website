@@ -7,7 +7,10 @@ import { useRouter } from "next/navigation";
 import { CardBasicFields } from "./CardBasicForm";
 import { ColumnsEditor } from "./ColumnsEditor";
 import type { MxCardType } from "@/lib/admin/maintenance-normalize";
-import { createMachineAction } from "@/app/admin/(protected)/maintenance/actions";
+import {
+  createMachineAction,
+  type CreateMachineResult,
+} from "@/app/admin/(protected)/maintenance/actions";
 
 export function NewMachineForm({
   cardType = "compressor",
@@ -21,7 +24,17 @@ export function NewMachineForm({
   async function onSubmit(fd: FormData) {
     setBusy(true);
     setError(null);
-    const res = await createMachineAction(fd);
+    let res: CreateMachineResult;
+    try {
+      res = await createMachineAction(fd);
+    } catch (e) {
+      // 送不出去（斷網、server action 本身失敗）時的保底。不接的話這個 rejection
+      // 會冒到最近的 error boundary，而本專案沒有 error.tsx，結果就是整頁換成通用
+      // 錯誤畫面、剛打的整張表單一起消失 —— 正是這支元件要避免的事。
+      setBusy(false);
+      setError((e as Error)?.message || "建立失敗，請確認網路後再試一次。");
+      return;
+    }
     if (!res.ok) {
       setBusy(false);
       setError(res.error);
