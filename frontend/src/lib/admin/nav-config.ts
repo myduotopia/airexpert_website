@@ -80,7 +80,8 @@ export const ADMIN_NAV: AdminNavItem[] = [
     roles: ["office"],
   },
   // 客戶主檔：保養卡的客戶層資料（完整聯絡資訊 + 名下所有機台）。
-  // 路徑是 /admin/maintenance 的子路由，故側欄兩項會同時 active，屬預期。
+  // 路徑是 /admin/maintenance 的子路由；側欄以「最長匹配」決定 active，
+  // 故停在客戶頁時只有本項會亮（見 AdminSidebar 的 activeHrefFor）。
   {
     key: "maintenance-customers",
     label: "客戶",
@@ -98,5 +99,32 @@ const DEFAULT_ROLES: AdminRole[] = ["admin", "seo_manager"];
 export function navForRole(role: AdminRole): AdminNavItem[] {
   return ADMIN_NAV.filter((item) =>
     (item.roles ?? DEFAULT_ROLES).includes(role),
+  );
+}
+
+/** 單一項目是否涵蓋目前路徑（"/admin" 需完全相符，否則會對所有後台頁成立）。 */
+function matchesPath(pathname: string, href: string): boolean {
+  if (href === "/admin") return pathname === "/admin";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * 目前所在的側欄項目 href（純函式，供 AdminSidebar 標示 active）。
+ * 側欄項目彼此可能互為前綴（例：「保養記錄卡」/admin/maintenance 與
+ * 「客戶」/admin/maintenance/customers）；若逐項各自判斷，停在客戶頁時兩項
+ * 會同時 active，也會出現兩個 aria-current="page"。故取「最長匹配」的那一項，
+ * 確保任一時刻只有一項為目前頁。都不匹配回 null。
+ */
+export function activeNavHref(
+  pathname: string,
+  hrefs: string[],
+): string | null {
+  return hrefs.reduce<string | null>(
+    (best, href) =>
+      matchesPath(pathname, href) &&
+      (best === null || href.length > best.length)
+        ? href
+        : best,
+    null,
   );
 }

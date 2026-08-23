@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ADMIN_NAV, navForRole } from "@/lib/admin/nav-config";
+import { ADMIN_NAV, activeNavHref, navForRole } from "@/lib/admin/nav-config";
 
 describe("navForRole（後台側欄角色 gating）", () => {
   it("admin 看得到所有非 office 專屬項目（含網站設定 / 人員管理 / 聯絡來信）", () => {
@@ -90,5 +90,39 @@ describe("navForRole（後台側欄角色 gating）", () => {
     expect(navForRole("seo_manager").some((i) => i.key === "products")).toBe(
       true,
     );
+  });
+});
+
+describe("activeNavHref（側欄 active 取最長匹配）", () => {
+  const hrefs = navForRole("office").map((i) => i.href);
+
+  it("停在客戶頁時只有「客戶」為 active，不會連「保養記錄卡」也亮", () => {
+    expect(activeNavHref("/admin/maintenance/customers", hrefs)).toBe(
+      "/admin/maintenance/customers",
+    );
+    expect(activeNavHref("/admin/maintenance/customers/abc/edit", hrefs)).toBe(
+      "/admin/maintenance/customers",
+    );
+  });
+
+  it("停在保養卡列表 / 卡詳情時為「保養記錄卡」", () => {
+    expect(activeNavHref("/admin/maintenance", hrefs)).toBe(
+      "/admin/maintenance",
+    );
+    expect(activeNavHref("/admin/maintenance/abc", hrefs)).toBe(
+      "/admin/maintenance",
+    );
+  });
+
+  it("「總覽」需完全相符，不會對所有後台頁成立", () => {
+    const adminHrefs = navForRole("admin").map((i) => i.href);
+    expect(activeNavHref("/admin", adminHrefs)).toBe("/admin");
+    expect(activeNavHref("/admin/products", adminHrefs)).toBe(
+      "/admin/products",
+    );
+  });
+
+  it("都不匹配時回 null", () => {
+    expect(activeNavHref("/admin/unknown", hrefs)).toBeNull();
   });
 });
