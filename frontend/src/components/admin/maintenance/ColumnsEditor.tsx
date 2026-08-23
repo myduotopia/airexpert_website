@@ -6,7 +6,7 @@
 // 送出方式：不逐欄開 input name，而是把整份定義序列化成單一隱藏欄位
 // columns_json，由 server action 以 parseColumnDefs() 解析。
 // 既有欄位帶 id（uuid），新增的欄位 id 為 null（由 DB 產生）。
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, GripVertical, Plus, Trash2 } from "lucide-react";
 
 export interface ColumnItem {
@@ -16,14 +16,30 @@ export interface ColumnItem {
 
 // React key 用的本地序號。欄位新增後 id 仍是 null，不能拿 id 或索引當 key
 // （拿索引當 key 會讓刪除中間列時輸入游標跳到別列）。
-type Row = ColumnItem & { key: string };
+// key 也對外開放（ColumnDraft）：拍照辨識分流（#158）的核對畫面要用它當每一列
+// 耗材值 input 的 name，欄位改名 / 重排時值才不會跟著錯位。
+export interface ColumnDraft extends ColumnItem {
+  key: string;
+}
+
+type Row = ColumnDraft;
 
 const INPUT_CLASS =
   "border-border focus:border-primary h-11 w-full rounded-lg border px-3 text-[15px] outline-none";
 const ICON_BTN =
   "text-text-muted hover:bg-surface-muted hover:text-ink inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-30";
 
-export function ColumnsEditor({ initial }: { initial?: ColumnItem[] }) {
+export function ColumnsEditor({
+  initial,
+  onChange,
+}: {
+  initial?: ColumnItem[];
+  /**
+   * 欄位清單變動時回報給父層（拍照辨識分流的核對畫面要據此渲染每一列的耗材值輸入格）。
+   * 必須傳「參考穩定」的 callback（例如 useState 的 setter），否則 effect 會反覆觸發。
+   */
+  onChange?: (columns: ColumnDraft[]) => void;
+}) {
   // key 只需在本元件內唯一且穩定；初始列直接用索引，之後新增的列由 seq 續號。
   // seq 只在事件處理器內遞增，不在 render 期間讀寫 ref。
   const seq = useRef(initial?.length ?? 0);
@@ -32,6 +48,11 @@ export function ColumnsEditor({ initial }: { initial?: ColumnItem[] }) {
     (initial ?? []).map((c, i) => ({ ...c, key: `c${i}` })),
   );
   const [dragKey, setDragKey] = useState<string | null>(null);
+
+  // 在 effect 而非 render 期間通知父層，避免 render 期間 setState。
+  useEffect(() => {
+    onChange?.(rows);
+  }, [rows, onChange]);
 
   function move(from: number, to: number) {
     // from < 0 = 來源列已不存在（例如 dragKey 過期）。若不擋，splice(-1, 1)

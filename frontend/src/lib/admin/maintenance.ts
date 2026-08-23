@@ -226,30 +226,42 @@ export async function getMachineCardContext(machineId: string): Promise<{
   };
 }
 
-/** 依機號（正規化後）找現有卡；命中回 {id, serial_no, customer_name}，否則 null。 */
+/** findMachineBySerial 的命中結果。帶客戶編號 / 名稱供呼叫端判斷是不是同一個客戶的卡。 */
+export interface MachineSerialHit {
+  id: string;
+  serial_no: string;
+  customer_name: string;
+  customer_code: string;
+}
+
+/**
+ * 依機號（正規化後）找現有卡；命中回 MachineSerialHit，否則 null。
+ * cardType 限定比對範圍（預設空壓機卡），避免把空壓機的維護列附加到過濾卡上；
+ * 拍照辨識分流（#158）產出兩張草稿卡時，兩張各自以自己的卡別比對。
+ */
 export async function findMachineBySerial(
   serial: string,
-): Promise<{ id: string; serial_no: string; customer_name: string } | null> {
+  cardType: MxCardType = "compressor",
+): Promise<MachineSerialHit | null> {
   const norm = normalizeSerial(serial);
   if (!norm) return null;
   const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("mx_machines")
-    .select("id, serial_no, mx_customers(name)")
+    .select("id, serial_no, mx_customers(name, code)")
     .is("archived_at", null)
-    // 拍照辨識目前只產空壓機卡；比對範圍限縮在空壓機卡，
-    // 避免把空壓機的維護列附加到過濾卡上（辨識分流見 #158）。
-    .eq("card_type", "compressor")
+    .eq("card_type", cardType)
     .ilike("serial_no", serial.trim());
   if (error) throw new Error(`查詢機號失敗：${error.message}`);
   const hit = (data ?? []).find(
     (m: { serial_no: string }) => normalizeSerial(m.serial_no) === norm,
   );
   if (!hit) return null;
+  type Cust = { name: string; code: string | null };
   const h = hit as {
     id: string;
     serial_no: string;
-    mx_customers: { name: string } | { name: string }[] | null;
+    mx_customers: Cust | Cust[] | null;
   };
   const customer = Array.isArray(h.mx_customers)
     ? h.mx_customers[0]
@@ -258,6 +270,7 @@ export async function findMachineBySerial(
     id: h.id,
     serial_no: h.serial_no,
     customer_name: customer?.name ?? "",
+    customer_code: customer?.code ?? "",
   };
 }
 

@@ -440,19 +440,47 @@ export async function extractMaintenanceCard(
   const prompt = `你是資料輸入助理。這是一張手寫的「空壓機保養記錄卡」照片(繁體中文 + 數字)。
 請擷取內容並回傳「純 JSON 物件」，格式：
 {
+  "card_kind": "compressor | filter | mixed",
   "basic": {
     "customer_name": "客戶名稱", "customer_code": "客戶編號(卡片左上代號，如KC054)",
     "serial_no": "機號", "machine_no": "機台編號(若卡上有)",
     "location": "使用地點", "purchased_at": "購買時間(YYYY-MM-DD)",
-    "model": "機型", "horsepower": "馬力", "voltage": "電壓"
+    "model": "機型", "horsepower": "馬力", "voltage": "電壓",
+    "filter_spec": "表頭的過濾系統型號原文：『過濾 …』或行尾的『＋100HA』，沒有就空字串"
   },
   "records": [
     { "service_date": "日期(YYYY-MM-DD)", "hours": "時數", "oil": "專用油",
       "oil_filter": "機油濾清器", "air_filter": "空氣濾清器", "oil_separator": "油氣分離器",
       "inverter": "變頻器", "filter_system": "過濾系統", "technician": "維護員", "note": "備註",
-      "service_type": "inspection|maintenance|repair 或空字串" }
+      "service_type": "inspection|maintenance|repair 或空字串",
+      "belongs_to": "compressor | filter" }
   ]
 }
+
+【卡別分流 — 舊資料常把「過濾系統(乾燥機)卡」與「空壓機卡」混寫在同一張紙上】
+紙張標題一律印「空壓機保養紀錄卡」，但實際內容不一定只有空壓機，請先判斷 card_kind：
+- 機號那一行（或緊接使用地點的下一行）若「以『過濾』二字開頭」，例「過濾 AL 010N + LM-P-010」
+  → card_kind = "filter"；把該整串原文(含「過濾」二字)填入 basic.filter_spec，
+    basic.serial_no 留空 ""（這張紙沒有空壓機機號）。
+- 表頭同時出現「機號XXX」與「過濾XXX」，例「機號J751307001 過濾100HA」
+  → card_kind = "mixed"；serial_no 填 "J751307001"、filter_spec 填 "過濾100HA"。
+- 機型 / 馬力 / 電壓那一行（或機號那一行）的「結尾」另外手寫「＋100HA」「+100HA」這種
+  「加號 + 型號」的註記，意思等同「過濾100HA」，也是過濾系統(乾燥機)的型號
+  → 有機號時 card_kind = "mixed"；filter_spec 填含加號的原文如 "＋100HA"。
+    這段註記不要一併塞進 model / horsepower / voltage（電壓只填 "380V"）。
+- 表頭既沒有「過濾」二字、也沒有上述加號註記 → card_kind = "compressor"，filter_spec 填 ""。
+  「機型JNV75/8」「12"馬達+葉片」這種加號後面接中文、或本來就在型號中間的加號不算註記。
+- filter_spec 只能來自表頭 / 機號欄的原文，絕不可從表格內文湊出來。
+
+【每一列的歸屬 belongs_to】
+- 內容主要落在「過濾系統」欄（或由該欄溢寫到右邊的「變頻器」欄），
+  或提到 乾燥機／乾修／排水器／濾蕊／散熱馬達／葉片／AD480／CKD → belongs_to = "filter"。
+- 「散熱器組清洗」「散熱器清潔」講的是空壓機本體的散熱器，不是乾燥機 → belongs_to = "compressor"。
+- 有時數／專用油／機油濾清器／空氣濾清器／油氣分離器的值 → belongs_to = "compressor"。
+- 同一列若兩張卡的內容都有（例：專用油寫「例」、過濾系統欄寫「乾燥機12"散熱馬達+葉片」）
+  → 拆成「兩列」輸出，各自只保留屬於自己那張卡的欄位值，日期 / 維護員 兩列都填，
+    再各自標上 belongs_to。
+- card_kind = "compressor" 時，所有列一律 belongs_to = "compressor"。
 
 【民國年轉換 — 重要】卡片上的年份是「民國(ROC)紀年」，換算西元 = 民國年 + 1911。
 - 例：「112.4.20」→ 2023-04-20；「115.5.23」→ 2026-05-23。
