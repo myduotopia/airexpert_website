@@ -293,10 +293,15 @@ export async function isCustomerCodeTaken(
   const norm = normalizeCustomerCode(code);
   if (!norm) return false;
   const supabase = await getServerSupabase();
+  // 先以「包含」粗篩，再用 normalizeCustomerCode（lower + trim）精確比對：
+  //   * 粗篩用 %norm% 而非 eq/ilike 精確值——0013 由 card_no best-effort 回填的 code
+  //     可能前後帶空白，精確比對會漏判（正規化後其實重複，卻不出提示）。
+  //   * 粗篩必然是超集，最終仍以正規化結果判定，故不會誤報；norm 內若含 % / _
+  //     被當萬用字元也只是讓超集更大。
   const { data, error } = await supabase
     .from("mx_customers")
     .select("id, code")
-    .ilike("code", code.trim())
+    .ilike("code", `%${norm}%`)
     .neq("id", excludeCustomerId);
   if (error) return false; // 純提示用途，查詢失敗不阻擋儲存。
   return (data ?? []).some(

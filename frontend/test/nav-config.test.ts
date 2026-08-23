@@ -122,6 +122,30 @@ describe("activeNavHref（側欄 active 取最長匹配）", () => {
     );
   });
 
+  it("只是字串前綴但不是路徑段前綴時不算匹配", () => {
+    // /admin/maintenance-customers 這種同名開頭的兄弟路由不可讓「保養記錄卡」亮，
+    // 也不可讓 /admin/maintenance/customersX 被當成客戶頁。
+    expect(activeNavHref("/admin/maintenance-archive", hrefs)).toBeNull();
+    expect(activeNavHref("/admin/maintenance/customersX", hrefs)).toBe(
+      "/admin/maintenance",
+    );
+  });
+
+  it("任一路徑最多只會有一項 active（不會出現兩個 aria-current）", () => {
+    for (const p of [
+      "/admin/maintenance",
+      "/admin/maintenance/abc",
+      "/admin/maintenance/archive",
+      "/admin/maintenance/customers",
+      "/admin/maintenance/customers/abc",
+      "/admin/maintenance/customers/abc/edit",
+    ]) {
+      expect(hrefs.filter((h) => h === activeNavHref(p, hrefs))).toHaveLength(
+        1,
+      );
+    }
+  });
+
   it("都不匹配時回 null", () => {
     expect(activeNavHref("/admin/unknown", hrefs)).toBeNull();
   });

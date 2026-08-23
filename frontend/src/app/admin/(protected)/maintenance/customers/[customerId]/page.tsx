@@ -65,8 +65,9 @@ export default async function CustomerDetailPage({
 
   return (
     <div className="mx-auto max-w-[1100px]">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-4">
+        {/* 客戶名稱可能很長：左側允許縮到 0 並斷字，右側動作鈕不被壓縮。 */}
+        <div className="min-w-0 break-words">
           <h1 className="text-ink text-[24px] font-bold">
             {customer.name}
             {customer.code && (
@@ -79,7 +80,7 @@ export default async function CustomerDetailPage({
             使用中機台 {active.length} 台，已封存 {archived.length} 台。
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <Link
             href="/admin/maintenance/customers"
             className="border-border hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border px-4 text-[14px] font-semibold"
@@ -95,7 +96,8 @@ export default async function CustomerDetailPage({
         </div>
       </div>
 
-      <dl className="border-border mt-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border bg-white p-5 text-[14px] sm:grid-cols-4">
+      {/* break-words：地址 / 備註 可能有超長不換行字串（網址等），避免撐破卡片。 */}
+      <dl className="border-border mt-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border bg-white p-5 text-[14px] break-words sm:grid-cols-4">
         <div>
           <dt className="text-text-muted">客戶編號</dt>
           <dd className="text-ink">{customer.code ?? "—"}</dd>

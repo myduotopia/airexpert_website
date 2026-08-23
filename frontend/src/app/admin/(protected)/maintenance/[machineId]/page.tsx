@@ -103,12 +103,15 @@ export default async function MachineDetailPage({
         <div>
           <dt className="text-text-muted">客戶編號</dt>
           <dd className="text-ink">
-            {customerHref ? (
+            {/* 無客戶編號時不做成連結——否則連結文字會是「—」，
+                螢幕閱讀器只會念出一個破折號（可辨識連結目的失效）。
+                此情境仍可由標題旁的客戶名稱進客戶頁。 */}
+            {customerHref && customer.code ? (
               <Link
                 href={customerHref}
                 className="text-ink hover:text-primary-deep underline-offset-2 hover:underline"
               >
-                {customer.code ?? "—"}
+                {customer.code}
               </Link>
             ) : (
               (customer.code ?? "—")
