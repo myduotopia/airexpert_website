@@ -1,8 +1,11 @@
 "use client";
 // 保養卡「基本資訊」欄位群。可獨立提交（建卡/改卡），或被 ImportReview 內嵌。
-// 客戶編號 / 客戶名稱 / 機號 / 機台編號 具 autocomplete：
+// 客戶編號 / 客戶名稱 / 機台代號 / 機號 具 autocomplete：
 //  - 客戶欄選客戶 → 帶入客戶編號 + 客戶名稱
-//  - 機台欄選機台 → 帶入機號 + 機台編號 + 該機台的客戶編號 + 客戶名稱
+//  - 機台欄選機台 → 帶入機台代號 + 機號 + 該機台的客戶編號 + 客戶名稱
+//
+// 欄位順序刻意把「機台代號」放在「機號」前面：機台的識別是三段式的
+// (客戶 + 機台代號 + 機號)，而現場人講的是「A機」不是「J751307001」（#165）。
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   searchCustomersAction,
@@ -11,6 +14,7 @@ import {
   type MachineHit,
 } from "@/app/admin/(protected)/maintenance/actions";
 import type { MxCardType } from "@/lib/admin/maintenance-normalize";
+import { machineDisplayName } from "@/lib/admin/machine-identity";
 import { MinguoDateInput } from "./MinguoDateInput";
 
 export interface CardBasicValues {
@@ -126,6 +130,7 @@ function SpecTextarea({ name, initial }: { name: string; initial: string }) {
 function AutocompleteField<T>({
   id,
   label,
+  hint,
   required,
   value,
   onChange,
@@ -136,6 +141,8 @@ function AutocompleteField<T>({
 }: {
   id: string;
   label: string;
+  /** 顯示在 label 右側的小字說明。 */
+  hint?: string;
   required?: boolean;
   value: string;
   onChange: (v: string) => void;
@@ -168,6 +175,11 @@ function AutocompleteField<T>({
       <label htmlFor={id} className="text-ink text-[14px] font-medium">
         {label}
         {required && <span className="text-red-500"> *</span>}
+        {hint && (
+          <span className="text-text-muted ml-2 text-[13px] font-normal">
+            {hint}
+          </span>
+        )}
       </label>
       <input
         id={id}
@@ -207,6 +219,11 @@ function AutocompleteField<T>({
   );
 }
 
+/** 機台建議列的顯示文字：三段識別（客戶-代號-機號）。 */
+function hitLabel(hit: MachineHit): string {
+  return machineDisplayName(hit.customer_name, hit);
+}
+
 export function CardBasicFields({
   values,
   cardType = "compressor",
@@ -241,9 +258,9 @@ export function CardBasicFields({
     setCustomerName(hit.name);
   }
 
-  // 選機台 → 帶入機號 + 機台編號 + 該機台的客戶編號 + 名稱。
+  // 選機台 → 帶入機台代號 + 機號 + 該機台的客戶編號 + 名稱。
   function pickMachine(hit: MachineHit) {
-    setSerialNo(hit.serial_no);
+    setSerialNo(hit.serial_no ?? "");
     setMachineNo(hit.machine_no ?? "");
     setCustomerCode(hit.customer_code ?? "");
     setCustomerName(hit.customer_name);
@@ -272,29 +289,31 @@ export function CardBasicFields({
         renderHit={(h) => `${h.name}（${h.code ?? "—"}）`}
         onPick={pickCustomer}
       />
-      <AutocompleteField
-        id={fieldName("serial_no")}
-        label={cardType === "filter" ? "卡號 / 機號" : "機號"}
-        required
-        value={serialNo}
-        onChange={setSerialNo}
-        fetcher={searchSameType}
-        getKey={(h) => h.id}
-        renderHit={(h) =>
-          `${h.serial_no}${h.machine_no ? ` · ${h.machine_no}` : ""} · ${h.customer_name}`
-        }
-        onPick={pickMachine}
-      />
+      {/* 機台代號在前：它才是客戶平常在講的識別（見檔頭說明）。 */}
       <AutocompleteField
         id={fieldName("machine_no")}
-        label="機台編號"
+        label="機台代號"
+        hint="客戶內部稱呼，例：A機、1號機"
         value={machineNo}
         onChange={setMachineNo}
         fetcher={searchSameType}
         getKey={(h) => h.id}
-        renderHit={(h) =>
-          `${h.machine_no ?? "—"} · ${h.serial_no} · ${h.customer_name}`
+        renderHit={(h) => hitLabel(h)}
+        onPick={pickMachine}
+      />
+      <AutocompleteField
+        id={fieldName("serial_no")}
+        label="機號"
+        hint={
+          cardType === "filter"
+            ? "選填。過濾卡此處填過濾器型號，例：100HA"
+            : "選填。原廠序號，例：J751307001"
         }
+        value={serialNo}
+        onChange={setSerialNo}
+        fetcher={searchSameType}
+        getKey={(h) => h.id}
+        renderHit={(h) => hitLabel(h)}
         onPick={pickMachine}
       />
       {PLAIN_FIELDS[cardType].map((f) => (

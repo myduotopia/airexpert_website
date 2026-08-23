@@ -136,7 +136,9 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/admin/auth", () => ({ requireRole: vi.fn(async () => {}) }));
 vi.mock("@/lib/ai/gemini", () => ({ extractMaintenanceCard: vi.fn() }));
 vi.mock("@/lib/admin/maintenance", () => ({
-  findMachineBySerial: vi.fn(async () => null),
+  findMachine: vi.fn(async () => null),
+  findMachineAcrossCustomers: vi.fn(async () => null),
+  findMachineByTag: vi.fn(async () => null),
   getMachineCardContext: vi.fn(async () => null),
   listMachineColumns: vi.fn(async () => []),
 }));

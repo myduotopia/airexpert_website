@@ -32,6 +32,10 @@ import {
 } from "@/app/admin/(protected)/maintenance/actions";
 import type { RecordPayload } from "@/lib/admin/maintenance-normalize";
 import {
+  machineDisplayName,
+  machineTagLabel,
+} from "@/lib/admin/machine-identity";
+import {
   filterCellText,
   type BelongsTo,
   type CardDraft,
@@ -296,6 +300,67 @@ function RecordRow({
   );
 }
 
+/**
+ * 一張草稿卡的比對結果提示 + 「附加到既有卡」開關。
+ *
+ * 比對是在「已確定的客戶」範圍內做的（見 actions.matchCard），命中就預設附加。
+ * 但辨識到的客戶對不上任何既有客戶時（名稱有出入又沒帶客戶編號），後端只會回一張
+ * 「其他客戶的同識別卡」當提示：這種情況預設**建立新卡**，附加要員工自己勾（#165）。
+ */
+function MatchNotice({
+  match,
+  attach,
+  onAttach,
+  recordCount,
+  extra,
+}: {
+  match: CardMatch | null;
+  attach: boolean;
+  onAttach: (v: boolean) => void;
+  recordCount: number;
+  /** 附加時要補充的說明（過濾卡：耗材欄沿用既有定義）。 */
+  extra?: string;
+}) {
+  if (!match)
+    return (
+      <div className="bg-surface-muted rounded-lg p-3 text-[14px]">
+        未比對到既有卡，將建立新卡。請確認基本資訊。
+      </div>
+    );
+
+  const identity = machineDisplayName(match.customer_name, match);
+  return (
+    <div
+      className={`rounded-lg p-3 text-[14px] ${
+        match.otherCustomer
+          ? "border border-amber-300 bg-amber-50 text-amber-900"
+          : "bg-surface-muted"
+      }`}
+    >
+      <p>
+        {match.otherCustomer
+          ? `⚠️ 其他客戶有機號相同的卡：${match.customer_name}／${machineTagLabel(match)}。若這其實是同一個客戶，請先修正客戶名稱或編號。`
+          : `比對到既有卡：${identity}。`}
+      </p>
+      <label className="mt-2 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={attach}
+          onChange={(e) => onAttach(e.target.checked)}
+          className="h-4 w-4"
+        />
+        附加 {recordCount} 列維護紀錄到「{identity}」
+        {extra ? `（${extra}）` : ""}
+      </label>
+      {!attach && (
+        <p className="text-text-muted mt-1">
+          未勾選 → 依下方基本資訊建立新卡。
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── 已辨識完成的核對表單 ──────────────────────────────────────────
 
 function ReviewForm({
@@ -331,12 +396,22 @@ function ReviewForm({
   const [importFilter, setImportFilter] = useState(
     result.importFilterByDefault,
   );
+  // 「附加到既有卡」：確定同一個客戶的命中預設開；只是「其他客戶有同識別卡」的
+  // 提示預設關（#165），避免把這張照片的維護列寫進別人家的卡。
+  const [attachCompressor, setAttachCompressor] = useState(
+    match !== null && !match.otherCustomer,
+  );
+  const [attachFilter, setAttachFilter] = useState(
+    filterMatch !== null && !filterMatch.otherCustomer,
+  );
+  const activeMatch = attachCompressor ? match : null;
+  const activeFilterMatch = attachFilter ? filterMatch : null;
   // ColumnsEditor 回報的耗材欄清單（只在「新建過濾卡」時使用）。
   const [editorColumns, setEditorColumns] = useState<ColumnDraft[]>([]);
 
   // 附加到既有過濾卡時，欄位以該卡既有定義為準（key = column id，與後端對應）。
-  const columns: ReviewColumn[] = filterMatch
-    ? filterMatch.columns.map((c) => ({ key: c.id, label: c.label }))
+  const columns: ReviewColumn[] = activeFilterMatch
+    ? activeFilterMatch.columns.map((c) => ({ key: c.id, label: c.label }))
     : editorColumns.map((c) => ({ key: c.key, label: c.label }));
 
   /** 以另一張卡的表頭為底，開一張空白草稿卡（同一張紙 → 同一個客戶 / 地點）。 */
@@ -464,16 +539,18 @@ function ReviewForm({
         draftId: result.draftId,
         compressor: useCompressor
           ? {
-              machineId: match?.id ?? null,
-              basic: match ? emptyBasicFor(match) : readBasic(fd, ""),
+              machineId: activeMatch?.id ?? null,
+              basic: activeMatch
+                ? emptyBasicFor(activeMatch)
+                : readBasic(fd, ""),
               records: compressorRecords,
             }
           : null,
         filter: useFilter
           ? {
-              machineId: filterMatch?.id ?? null,
-              basic: filterMatch
-                ? emptyBasicFor(filterMatch)
+              machineId: activeFilterMatch?.id ?? null,
+              basic: activeFilterMatch
+                ? emptyBasicFor(activeFilterMatch)
                 : readBasic(fd, "f_"),
               columns: columns.map((c) => c.label),
               records: filterRecords,
@@ -585,12 +662,19 @@ function ReviewForm({
               />
               匯入這張空壓機卡
             </label>
-            <div className="bg-surface-muted mb-4 rounded-lg p-3 text-[14px]">
-              {match
-                ? `比對到既有卡：機號 ${match.serial_no}／客戶 ${match.customer_name}。將附加 ${compressorCount} 列維護紀錄。`
-                : "未比對到既有卡，將建立新卡。請確認基本資訊。"}
+            <div className="mb-4">
+              <MatchNotice
+                match={match}
+                attach={attachCompressor}
+                onAttach={setAttachCompressor}
+                recordCount={compressorCount}
+              />
             </div>
-            {!match && <CardBasicFields values={compressorCard.basic} />}
+            {/* 附加到既有卡時表頭用不到，但仍留在 DOM（只用 CSS 隱藏）：
+                條件渲染會在切換開關時卸載這些 input，員工改過的值就沒了。 */}
+            <div className={activeMatch ? "hidden" : ""}>
+              <CardBasicFields values={compressorCard.basic} />
+            </div>
           </>
         ) : (
           <p className="border-border text-text-muted rounded-xl border border-dashed p-6 text-center text-[14px]">
@@ -612,27 +696,29 @@ function ReviewForm({
               />
               匯入這張過濾系統卡
             </label>
-            <div className="bg-surface-muted rounded-lg p-3 text-[14px]">
-              {filterMatch
-                ? `比對到既有過濾卡：${filterMatch.serial_no}／客戶 ${filterMatch.customer_name}。將附加 ${filterCount} 列維護紀錄，耗材欄沿用該卡既有定義。`
-                : "未比對到既有過濾卡，將建立新卡。請確認表頭與耗材欄位。"}
+            <MatchNotice
+              match={filterMatch}
+              attach={attachFilter}
+              onAttach={setAttachFilter}
+              recordCount={filterCount}
+              extra="耗材欄沿用該卡既有定義"
+            />
+            <div
+              className={activeFilterMatch ? "hidden" : "flex flex-col gap-4"}
+            >
+              <CardBasicFields
+                values={filterCard.basic}
+                cardType="filter"
+                namePrefix="f_"
+              />
+              <ColumnsEditor
+                initial={filterCard.columns.map((label) => ({
+                  id: null,
+                  label,
+                }))}
+                onChange={setEditorColumns}
+              />
             </div>
-            {!filterMatch && (
-              <>
-                <CardBasicFields
-                  values={filterCard.basic}
-                  cardType="filter"
-                  namePrefix="f_"
-                />
-                <ColumnsEditor
-                  initial={filterCard.columns.map((label) => ({
-                    id: null,
-                    label,
-                  }))}
-                  onChange={setEditorColumns}
-                />
-              </>
-            )}
           </div>
         ) : (
           <div className="border-border rounded-xl border border-dashed p-6 text-center">
@@ -701,8 +787,8 @@ function emptyBasicFor(m: CardMatch): CommitCardBasic {
   return {
     customer_name: m.customer_name,
     customer_code: "",
-    serial_no: m.serial_no,
-    machine_no: "",
+    serial_no: m.serial_no ?? "",
+    machine_no: m.machine_no ?? "",
     location: "",
     purchased_at: "",
     model: "",

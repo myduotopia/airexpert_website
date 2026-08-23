@@ -42,6 +42,24 @@ describe("machinePayloadFromForm", () => {
     expect(() => machinePayloadFromForm(new FormData())).toThrow(/機號/);
   });
 
+  // #165：機號改為選填 —— 現場很多卡只有「A機」這種客戶內部代號。
+  // 兩段全空才算沒有識別（對齊 0018 的 mx_machines_identity_check）。
+  it("只有機台代號、沒有機號也算合法（機號改選填）", () => {
+    const fd = new FormData();
+    fd.set("machine_no", " A機 ");
+    const out = machinePayloadFromForm(fd);
+    expect(out.machine_no).toBe("A機");
+    expect(out.serial_no).toBeNull();
+  });
+
+  it("機號與機台代號兩段全空才 throw，訊息同時提到兩者", () => {
+    const fd = new FormData();
+    fd.set("serial_no", "   ");
+    fd.set("machine_no", "   ");
+    expect(() => machinePayloadFromForm(fd)).toThrow(/機台代號/);
+    expect(() => machinePayloadFromForm(fd)).toThrow(/機號/);
+  });
+
   it("defaults card_type to compressor and keeps filter specs null", () => {
     const fd = new FormData();
     fd.set("serial_no", "B072303002");

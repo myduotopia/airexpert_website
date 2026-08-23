@@ -9,6 +9,7 @@ import {
 } from "@/components/admin/AdminTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { cardTypeLabel } from "@/lib/admin/maintenance-normalize";
+import { machineDisplayName } from "@/lib/admin/machine-identity";
 import { rocDate } from "@/lib/admin/minguo";
 import { archiveMachineAction } from "./actions";
 
@@ -37,7 +38,9 @@ export default async function MaintenanceListPage({
   const machines = await listMachines(tab === "all" ? undefined : tab);
 
   const columns: AdminColumn[] = [
-    { header: "機號", sortable: true },
+    // 機台識別是三段式的「客戶-機台代號-機號」（#165）；客戶另留一欄是為了
+    // 連進客戶頁與依客戶排序。
+    { header: "機台", sortable: true },
     { header: "卡別", sortable: true },
     { header: "客戶", sortable: true },
     { header: "機型", sortable: true },
@@ -46,15 +49,16 @@ export default async function MaintenanceListPage({
   ];
   const rows: AdminRow[] = machines.map((m) => {
     const typeLabel = cardTypeLabel(m.card_type);
+    const displayName = machineDisplayName(m.customer_name, m);
     return {
       key: m.id,
       cells: [
         <Link
-          key="serial"
+          key="identity"
           href={`/admin/maintenance/${m.id}`}
           className="text-ink hover:text-primary-deep font-medium"
         >
-          {m.serial_no}
+          {displayName}
         </Link>,
         typeLabel,
         <Link
@@ -75,15 +79,16 @@ export default async function MaintenanceListPage({
         </div>,
       ],
       sortValues: [
-        m.serial_no,
+        displayName,
         typeLabel,
         m.customer_name,
         m.model,
         m.last_service_date,
         null,
       ],
+      // 三段識別任一段都要能搜到（客戶原名與正規化後的短名都收進來）。
       search:
-        `${m.serial_no} ${typeLabel} ${m.customer_name} ${m.model ?? ""}`.toLowerCase(),
+        `${displayName} ${m.machine_no ?? ""} ${m.serial_no ?? ""} ${typeLabel} ${m.customer_name} ${m.model ?? ""}`.toLowerCase(),
     };
   });
 
@@ -155,7 +160,7 @@ export default async function MaintenanceListPage({
       <AdminTable
         rows={rows}
         columns={columns}
-        searchPlaceholder="搜尋機號 / 客戶…"
+        searchPlaceholder="搜尋客戶 / 機台代號 / 機號…"
         empty="尚無保養卡，點右上角建立第一張。"
       />
     </div>

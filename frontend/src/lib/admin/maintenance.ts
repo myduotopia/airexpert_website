@@ -3,6 +3,7 @@ import "server-only";
 import { getServerSupabase } from "../supabase-server";
 import {
   normalizeSerial,
+  normalizeMachineNo,
   normalizeCustomerCode,
   type MxCardType,
 } from "./maintenance-normalize";
@@ -41,8 +42,10 @@ export interface MxMachine {
   customer_id: string;
   /** 卡別。既有卡一律為 compressor（DB 預設值）。 */
   card_type: MxCardType;
+  /** 機台代號 tag：客戶內部稱呼（A機／1號機／A01 銅器部）。同一客戶內唯一。 */
   machine_no: string | null;
-  serial_no: string;
+  /** 機號：空壓機為原廠序號；過濾卡此處放過濾器型號。0018 起可為 null。 */
+  serial_no: string | null;
   location: string | null;
   purchased_at: string | null; // yyyy-mm-dd
   model: string | null;
@@ -226,52 +229,166 @@ export async function getMachineCardContext(machineId: string): Promise<{
   };
 }
 
-/** findMachineBySerial 的命中結果。帶客戶編號 / 名稱供呼叫端判斷是不是同一個客戶的卡。 */
-export interface MachineSerialHit {
+// ── 機台識別比對（#165）───────────────────────────────────────────
+//
+// 機台的唯一鍵是三段式的 (客戶, 機台代號, 機號)，而不是機號自己：
+//   * 空壓機的機號是原廠序號（J751307001），碰巧全球唯一；
+//   * 過濾卡的「機號」其實是過濾器型號（100HA／AD480），兩家客戶買同款就一樣；
+//   * 機台代號（A機／1號機）是客戶內部稱呼，跨客戶必然重複。
+// 因此 0018 把唯一索引改成 per-customer，這裡的查詢一律**先框在一個客戶內**。
+
+/** 機台比對的命中結果。帶客戶資訊供 UI 顯示與跨客戶提示使用。 */
+export interface MachineIdentityHit {
   id: string;
-  serial_no: string;
+  serial_no: string | null;
+  machine_no: string | null;
+  card_type: MxCardType;
+  customer_id: string;
   customer_name: string;
   customer_code: string;
 }
 
+/** 比對查詢共用的 select 欄位。 */
+const IDENTITY_SELECT =
+  "id, serial_no, machine_no, card_type, customer_id, mx_customers(name, code)";
+
+type IdentityRow = {
+  id: string;
+  serial_no: string | null;
+  machine_no: string | null;
+  card_type: MxCardType;
+  customer_id: string;
+  mx_customers:
+    | { name: string; code: string | null }
+    | { name: string; code: string | null }[]
+    | null;
+};
+
+function toIdentityHit(row: IdentityRow): MachineIdentityHit {
+  const c = Array.isArray(row.mx_customers)
+    ? (row.mx_customers[0] ?? null)
+    : row.mx_customers;
+  return {
+    id: row.id,
+    serial_no: row.serial_no,
+    machine_no: row.machine_no,
+    card_type: row.card_type,
+    customer_id: row.customer_id,
+    customer_name: c?.name ?? "",
+    customer_code: c?.code ?? "",
+  };
+}
+
 /**
- * 依機號（正規化後）找現有卡；命中回 MachineSerialHit，否則 null。
+ * 在**指定客戶內**找既有卡：
+ *   1. 有機台代號 → 以代號比對（客戶內唯一，這才是人平常在講的識別）
+ *   2. 無機台代號 → 以機號比對
+ * 兩者皆無 / 找不到回 null（呼叫端一律解讀為「建新卡」）。
+ *
  * cardType 限定比對範圍（預設空壓機卡），避免把空壓機的維護列附加到過濾卡上；
  * 拍照辨識分流（#158）產出兩張草稿卡時，兩張各自以自己的卡別比對。
+ *
+ * 一次把該客戶的未封存卡撈回本地比對（一個客戶的機台是個位數～十幾台），
+ * 正規化規則才能與 0018 的 lower(btrim(...)) 索引完全一致，不必煩惱 ilike 的跳脫。
  */
-export async function findMachineBySerial(
-  serial: string,
-  cardType: MxCardType = "compressor",
-): Promise<MachineSerialHit | null> {
-  const norm = normalizeSerial(serial);
-  if (!norm) return null;
+export async function findMachine(input: {
+  customerId: string;
+  machineNo?: string | null;
+  serialNo?: string | null;
+  cardType?: MxCardType;
+}): Promise<MachineIdentityHit | null> {
+  const tag = normalizeMachineNo(input.machineNo);
+  const serial = normalizeSerial(input.serialNo);
+  if (!input.customerId || (!tag && !serial)) return null;
+
   const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("mx_machines")
-    .select("id, serial_no, mx_customers(name, code)")
+    .select(IDENTITY_SELECT)
     .is("archived_at", null)
-    .eq("card_type", cardType)
-    .ilike("serial_no", serial.trim());
-  if (error) throw new Error(`查詢機號失敗：${error.message}`);
-  const hit = (data ?? []).find(
-    (m: { serial_no: string }) => normalizeSerial(m.serial_no) === norm,
-  );
-  if (!hit) return null;
-  type Cust = { name: string; code: string | null };
-  const h = hit as {
-    id: string;
-    serial_no: string;
-    mx_customers: Cust | Cust[] | null;
-  };
-  const customer = Array.isArray(h.mx_customers)
-    ? h.mx_customers[0]
-    : h.mx_customers;
-  return {
-    id: h.id,
-    serial_no: h.serial_no,
-    customer_name: customer?.name ?? "",
-    customer_code: customer?.code ?? "",
-  };
+    .eq("customer_id", input.customerId)
+    .eq("card_type", input.cardType ?? "compressor");
+  if (error) throw new Error(`查詢機台失敗：${error.message}`);
+
+  const rows = (data ?? []) as IdentityRow[];
+  const hit = tag
+    ? rows.find((m) => normalizeMachineNo(m.machine_no) === tag)
+    : rows.find((m) => normalizeSerial(m.serial_no) === serial);
+  return hit ? toIdentityHit(hit) : null;
+}
+
+/**
+ * 同一客戶內是否已有相同機台代號的卡（衝突預檢）。
+ * **不分卡別** —— 0018 的 mx_machines_customer_tag_key 也沒有分，
+ * 同一客戶的空壓機卡與過濾卡不能共用一個代號。
+ * excludeMachineId 用於編輯既有卡時排除自己。
+ */
+export async function findMachineByTag(
+  customerId: string,
+  machineNo: string | null | undefined,
+  excludeMachineId?: string,
+): Promise<MachineIdentityHit | null> {
+  const tag = normalizeMachineNo(machineNo);
+  if (!customerId || !tag) return null;
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("mx_machines")
+    .select(IDENTITY_SELECT)
+    .is("archived_at", null)
+    .eq("customer_id", customerId);
+  if (error) throw new Error(`查詢機台代號失敗：${error.message}`);
+  const hit = (data ?? [])
+    .map((row) => row as IdentityRow)
+    .find(
+      (m) =>
+        normalizeMachineNo(m.machine_no) === tag && m.id !== excludeMachineId,
+    );
+  return hit ? toIdentityHit(hit) : null;
+}
+
+/**
+ * 跨客戶找識別相同的卡（先比機號，再比機台代號）。
+ *
+ * **只用於「辨識出來的客戶對不上任何既有客戶」時的提示**：這種情況下不能自動比對
+ * （硬比就會把 B 客戶的維護列寫到 A 客戶的「AD480」卡上），但完全不提示又會讓員工
+ * 重複建卡。故回傳一張「其他客戶的同識別卡」，由 UI 顯示警告、預設不附加。
+ */
+export async function findMachineAcrossCustomers(input: {
+  serialNo?: string | null;
+  machineNo?: string | null;
+  cardType?: MxCardType;
+}): Promise<MachineIdentityHit | null> {
+  const serial = normalizeSerial(input.serialNo);
+  const tag = normalizeMachineNo(input.machineNo);
+  if (!serial && !tag) return null;
+
+  const supabase = await getServerSupabase();
+  const base = () =>
+    supabase
+      .from("mx_machines")
+      .select(IDENTITY_SELECT)
+      .is("archived_at", null)
+      .eq("card_type", input.cardType ?? "compressor");
+
+  // 先以 ilike 粗篩（走 0018 的 mx_machines_serial_lookup_idx），再在本地以
+  // 正規化結果精確比對；粗篩必然是超集，故不會誤報。
+  if (serial) {
+    const { data, error } = await base().ilike("serial_no", serial).limit(20);
+    if (error) throw new Error(`查詢機號失敗：${error.message}`);
+    const hit = (data ?? [])
+      .map((row) => row as IdentityRow)
+      .find((m) => normalizeSerial(m.serial_no) === serial);
+    if (hit) return toIdentityHit(hit);
+  }
+  if (tag) {
+    const { data, error } = await base().ilike("machine_no", tag).limit(20);
+    if (error) throw new Error(`查詢機台代號失敗：${error.message}`);
+    const hit = (data ?? [])
+      .map((row) => row as IdentityRow)
+      .find((m) => normalizeMachineNo(m.machine_no) === tag);
+    if (hit) return toIdentityHit(hit);
+  }
+  return null;
 }
 
 // ── 客戶主檔（0016）─────────────────────────────────────────────

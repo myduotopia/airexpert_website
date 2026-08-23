@@ -393,10 +393,13 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
       ? {
           basic: {
             ...basic,
-            // 過濾卡的機號 / 卡號建議用去掉「過濾」前綴的型號；filter_spec 保留原文。
+            // 過濾卡的機號建議用去掉「過濾」前綴的型號；filter_spec 保留原文。
             serial_no: filterCardSerial(basic.filter_spec),
+            // 機台代號（A機／1號機）在同一客戶內唯一、且不分卡別（0018）：
+            // 混合卡的兩張草稿若都帶同一個代號會互撞，故只有「整張就是過濾卡」
+            // （沒有空壓機卡跟它搶）時才沿用表頭的代號。
+            machine_no: compressor === null ? basic.machine_no : "",
             // 乾燥機卡沒有馬力 / 電壓 / 購買時間（見 #155），一律留空由員工補。
-            machine_no: "",
             purchased_at: "",
             model: "",
             horsepower: "",
@@ -408,29 +411,6 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
       : null;
 
   return { kind: header.kind, rows, compressor, filter };
-}
-
-/**
- * 兩張草稿卡各自去比對既有卡時，用來判斷「命中的那張卡是不是同一個客戶的」。
- *
- * 為什麼只有過濾卡需要這道關：mx_machines 的機號唯一索引是「全表唯一」（0012），
- * 而過濾卡的卡號是由 filter_spec 推導出來的「過濾器型號」（例「100HA」），
- * 那是型號不是序號，不同客戶必然重複。若不比對客戶，A 客戶已建的「100HA」過濾卡
- * 會被當成 B 客戶這張照片的既有卡，B 的乾燥機維護列就靜靜寫到 A 的卡上。
- * 空壓機卡的機號是原廠序號（J751307001），不會有這個問題，因此維持原本的純機號比對。
- *
- * 判定順序：兩邊都有客戶編號 → 比編號（不分大小寫）；否則比客戶名稱全等。
- * 兩邊都認不出客戶時回 false（寧可讓員工自己建卡，也不要猜錯客戶）。
- */
-export function isSameCustomer(
-  a: { customer_code?: string | null; customer_name?: string | null },
-  b: { customer_code?: string | null; customer_name?: string | null },
-): boolean {
-  const codeA = str(a.customer_code).toLowerCase();
-  const codeB = str(b.customer_code).toLowerCase();
-  if (codeA && codeB) return codeA === codeB;
-  const nameA = str(a.customer_name);
-  return nameA !== "" && nameA === str(b.customer_name);
 }
 
 /**

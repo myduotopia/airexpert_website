@@ -7,7 +7,6 @@ import {
   filterCardSerial,
   filterCellText,
   isFilterHeaderText,
-  isSameCustomer,
   normalizeCardHeader,
   parseBelongsTo,
   parseCardKind,
@@ -553,54 +552,6 @@ describe("splitRecordsByCard", () => {
       "filter",
       "compressor",
     ]);
-  });
-});
-
-describe("isSameCustomer — 過濾卡比對既有卡時的客戶把關", () => {
-  it("兩邊都有客戶編號 → 比編號（不分大小寫）", () => {
-    expect(
-      isSameCustomer(
-        {
-          customer_code: "KK123-1",
-          customer_name: "和成欣業(股)公司(二廠) 25",
-        },
-        { customer_code: "kk123-1", customer_name: "和成欣業" },
-      ),
-    ).toBe(true);
-    expect(
-      isSameCustomer(
-        {
-          customer_code: "KK123-1",
-          customer_name: "和成欣業(股)公司(二廠) 25",
-        },
-        {
-          customer_code: "KK321-3",
-          customer_name: "和成欣業(股)公司(二廠) 25",
-        },
-      ),
-    ).toBe(false);
-  });
-
-  it("缺客戶編號 → 退回比客戶名稱全等", () => {
-    expect(
-      isSameCustomer(
-        { customer_code: "", customer_name: "本源興(股)公司(三廠)25" },
-        { customer_code: "KK321-3", customer_name: "本源興(股)公司(三廠)25" },
-      ),
-    ).toBe(true);
-    expect(
-      isSameCustomer(
-        { customer_code: "", customer_name: "本源興(股)公司(三廠)25" },
-        { customer_code: "", customer_name: "和成欣業(股)公司(二廠) 25" },
-      ),
-    ).toBe(false);
-  });
-
-  it("兩邊都認不出客戶 → false（寧可讓員工自己建卡，也不要猜錯客戶）", () => {
-    expect(isSameCustomer({}, {})).toBe(false);
-    expect(
-      isSameCustomer({ customer_code: "KK123-1" }, { customer_name: "和成" }),
-    ).toBe(false);
   });
 });
 
