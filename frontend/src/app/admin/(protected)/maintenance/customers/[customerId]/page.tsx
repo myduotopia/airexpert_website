@@ -22,7 +22,8 @@ function machineColumns(archived: boolean): Column<MxCustomerMachine>[] {
       ),
     },
     {
-      // 本頁已經在講同一個客戶，識別只需「機台代號-機號」兩段（#165）。
+      // 本頁已經在講同一個客戶，識別只需「機台代號-機號」兩段（#165）；
+      // 拆開的兩段在卡片詳情頁看得到，這裡不再各開一欄重複同樣的值。
       header: "機台",
       cell: (m) => (
         <Link
@@ -33,8 +34,6 @@ function machineColumns(archived: boolean): Column<MxCustomerMachine>[] {
         </Link>
       ),
     },
-    { header: "機台代號", cell: (m) => m.machine_no ?? "—" },
-    { header: "機號", cell: (m) => m.serial_no ?? "—" },
     { header: "機型", cell: (m) => m.model ?? "—" },
     { header: "使用地點", cell: (m) => m.location ?? "—" },
     archived

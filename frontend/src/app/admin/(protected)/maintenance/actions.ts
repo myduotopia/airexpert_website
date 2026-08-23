@@ -512,6 +512,15 @@ export interface CardMatch {
    * 重複建卡。核對畫面要顯示警告、「附加到既有卡」預設關閉。
    */
   otherCustomer: boolean;
+  /**
+   * true = 同一個客戶內的候選，但**分辨不出是不是同一台機器**，因此不可預設附加。
+   *
+   * 典型情況（見 maintenance.pickIdentityMatch）：照片上寫著「B機」，該客戶卻只有
+   * 一張沒有代號、機號同為「AD480」的過濾卡 —— 它可能就是這台（還沒補代號），
+   * 也可能是同客戶的另一台 AD480。附加錯了就是把維護列接到別台機器上，且事後
+   * 從卡面完全看不出來，所以寧可讓員工多按一下。
+   */
+  uncertain: boolean;
 }
 
 export type ExtractResult =
@@ -527,33 +536,32 @@ export type ExtractResult =
       match: CardMatch | null;
       /** 過濾卡的機號比對結果。 */
       filterMatch: CardMatch | null;
+      /**
+       * 辨識到的客戶是否對得上既有客戶。false 代表這次匯入會**順便建一個新客戶**，
+       * 而且機台比對整個停用（#165 的比對一律框在客戶內）——核對畫面要講明白，
+       * 否則員工只會看到「未比對到既有卡」，然後靜靜多出一個同名異寫的客戶。
+       */
+      customerResolved: boolean;
       draftId: string;
     }
   | { ok: false; error: string };
 
 /**
- * 一張草稿卡的比對：**先定客戶，再在該客戶內找機台**（#165）。
- *
- * 這個順序讓「跨客戶誤附加」在結構上不可能發生 —— #158 為過濾卡加的
+ * 一張草稿卡的比對。customerId 由呼叫端先解析好（**先定客戶，再在該客戶內找機台**，
+ * 見 #165）——這個順序讓「跨客戶誤附加」在結構上不可能發生，#158 為過濾卡加的
  * isSameCustomer 事後守衛因此變成冗餘，已一併移除。
  *
- * 客戶對不上任何既有客戶時不自動比對，改回傳 otherCustomer=true 的提示卡
- * （其他客戶有同「機號」的卡），由核對畫面預設「建立新卡」。
+ * customerId 為 null（辨識到的客戶對不上任何既有客戶）時不自動比對，改回傳
+ * otherCustomer=true 的提示卡（其他客戶有同「機號」的卡），由核對畫面預設「建立新卡」。
  */
 async function matchCard(
-  supabase: Awaited<ReturnType<typeof getServerSupabase>>,
   basic: {
-    customer_code: string;
-    customer_name: string;
     serial_no: string;
     machine_no: string;
   },
   cardType: MxCardType,
+  customerId: string | null,
 ): Promise<CardMatch | null> {
-  const customerId = await resolveCustomerId(supabase, {
-    code: basic.customer_code,
-    name: basic.customer_name,
-  });
   const hit: MachineIdentityHit | null = customerId
     ? await findMachine({
         customerId,
@@ -581,6 +589,7 @@ async function matchCard(
     customer_name: hit.customer_name,
     columns,
     otherCustomer: customerId === null,
+    uncertain: !hit.confident,
   };
 }
 
@@ -612,12 +621,18 @@ export async function extractCardFromImageAction(input: {
       .select("id")
       .single();
 
+    // 客戶只解析一次：兩張草稿卡的客戶欄位本來就同一份（buildCardDrafts 共用 basic）。
+    const customerId = await resolveCustomerId(supabase, {
+      code: draft.basic.customer_code,
+      name: draft.basic.customer_name,
+    });
+
     const [match, filterMatch] = await Promise.all([
       cards.compressor
-        ? matchCard(supabase, cards.compressor.basic, "compressor")
+        ? matchCard(cards.compressor.basic, "compressor", customerId)
         : Promise.resolve(null),
       cards.filter
-        ? matchCard(supabase, cards.filter.basic, "filter")
+        ? matchCard(cards.filter.basic, "filter", customerId)
         : Promise.resolve(null),
     ]);
 
@@ -628,6 +643,7 @@ export async function extractCardFromImageAction(input: {
       importFilterByDefault: shouldImportFilterCard(cards.filter),
       match,
       filterMatch,
+      customerResolved: customerId !== null,
       draftId: (draftRow as { id: string } | null)?.id ?? "",
     };
   } catch (e) {

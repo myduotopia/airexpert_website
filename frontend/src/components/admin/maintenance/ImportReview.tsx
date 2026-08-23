@@ -300,12 +300,19 @@ function RecordRow({
   );
 }
 
+/** 這個比對結果可不可以預設勾「附加」。只有「同客戶 + 確定是同一台」才可以。 */
+function canAutoAttach(match: CardMatch | null): boolean {
+  return match !== null && !match.otherCustomer && !match.uncertain;
+}
+
 /**
  * 一張草稿卡的比對結果提示 + 「附加到既有卡」開關。
  *
- * 比對是在「已確定的客戶」範圍內做的（見 actions.matchCard），命中就預設附加。
- * 但辨識到的客戶對不上任何既有客戶時（名稱有出入又沒帶客戶編號），後端只會回一張
- * 「其他客戶的同識別卡」當提示：這種情況預設**建立新卡**，附加要員工自己勾（#165）。
+ * 比對是在「已確定的客戶」範圍內做的（見 actions.matchCard），確定的命中才預設附加。
+ * 兩種情況只當提示、預設**建立新卡**，附加要員工自己勾（#165）：
+ * - otherCustomer：辨識到的客戶對不上任何既有客戶，後端只回一張「其他客戶的同機號卡」。
+ * - uncertain：同客戶內只憑機號比到的卡，分辨不出是不是同一台機器
+ *   （過濾卡的「機號」是型號，同客戶可以有兩台 AD480）。
  */
 function MatchNotice({
   match,
@@ -329,10 +336,16 @@ function MatchNotice({
     );
 
   const identity = machineDisplayName(match.customer_name, match);
+  const warn = match.otherCustomer || match.uncertain;
+  // 不確定的兩種樣態要講不同的話：比到的是「還沒補代號的卡」，還是「照片沒讀到代號、
+  // 只好在多張同機號的卡裡挑一張」。講錯會讓員工照著錯的線索去核對。
+  const uncertainText = match.machine_no
+    ? `⚠️ 只比到機號相同的卡：${identity}，但照片上沒有可對照的機台代號。同一個客戶可能有兩台同型機 —— 確認是同一台再勾選附加，否則請直接建立新卡。`
+    : `⚠️ 只比到機號相同、但沒有機台代號的卡：${identity}。它可能就是這台（卡上還沒補代號），也可能是同客戶的另一台同型機 —— 確認是同一台再勾選附加，否則請直接建立新卡。`;
   return (
     <div
       className={`rounded-lg p-3 text-[14px] ${
-        match.otherCustomer
+        warn
           ? "border border-amber-300 bg-amber-50 text-amber-900"
           : "bg-surface-muted"
       }`}
@@ -340,7 +353,9 @@ function MatchNotice({
       <p>
         {match.otherCustomer
           ? `⚠️ 其他客戶有機號相同的卡：${match.customer_name}／${machineTagLabel(match)}。若這其實是同一個客戶，請先修正客戶名稱或編號。`
-          : `比對到既有卡：${identity}。`}
+          : match.uncertain
+            ? uncertainText
+            : `比對到既有卡：${identity}。`}
       </p>
       <label className="mt-2 flex items-center gap-2">
         <input
@@ -372,6 +387,12 @@ function ReviewForm({
 }) {
   const router = useRouter();
   const { cards, match, filterMatch } = result;
+  // 辨識到的客戶（兩張草稿卡共用同一份客戶欄位），供「客戶對不上」提示指名道姓。
+  const draftBasic = (cards.compressor ?? cards.filter)?.basic;
+  const customerLabel = [draftBasic?.customer_name, draftBasic?.customer_code]
+    .map((v) => (v ?? "").trim())
+    .filter((v) => v !== "")
+    .join(" / ");
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -396,14 +417,13 @@ function ReviewForm({
   const [importFilter, setImportFilter] = useState(
     result.importFilterByDefault,
   );
-  // 「附加到既有卡」：確定同一個客戶的命中預設開；只是「其他客戶有同識別卡」的
-  // 提示預設關（#165），避免把這張照片的維護列寫進別人家的卡。
+  // 「附加到既有卡」：只有「同客戶 + 確定是同一台」的命中預設開；「其他客戶有同機號
+  // 的卡」與「只比到機號、分不出是不是同一台」都預設關（#165），避免把這張照片的
+  // 維護列靜靜寫進別人家的卡、或同客戶的另一台機器。
   const [attachCompressor, setAttachCompressor] = useState(
-    match !== null && !match.otherCustomer,
+    canAutoAttach(match),
   );
-  const [attachFilter, setAttachFilter] = useState(
-    filterMatch !== null && !filterMatch.otherCustomer,
-  );
+  const [attachFilter, setAttachFilter] = useState(canAutoAttach(filterMatch));
   const activeMatch = attachCompressor ? match : null;
   const activeFilterMatch = attachFilter ? filterMatch : null;
   // ColumnsEditor 回報的耗材欄清單（只在「新建過濾卡」時使用）。
@@ -620,6 +640,17 @@ function ReviewForm({
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {/* 客戶對不上既有客戶：機台比對整個停用（比對一律框在客戶內），而且送出
+          會順便建一個新客戶。這件事不講明，員工只會看到「未比對到既有卡」。 */}
+      {!result.customerResolved && customerLabel !== "" && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-[14px] text-amber-900">
+          ⚠️ 辨識到的客戶「{customerLabel}
+          」對不上任何既有客戶：這次匯入會一併建立新客戶，機台也不會與既有卡比對。
+          若其實是既有客戶，請先修正下方的客戶名稱 /
+          客戶編號（名稱要與既有客戶完全一致，或填對客戶編號）。
         </div>
       )}
 

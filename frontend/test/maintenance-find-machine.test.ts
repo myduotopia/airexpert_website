@@ -120,6 +120,77 @@ describe("findMachine — 客戶範圍內的比對", () => {
     expect(hit?.id).toBe("m-2");
   });
 
+  // ── confident 旗標：命中「能不能當成確定是同一台」 ──────────────
+  // 比不到只是多開一張重複卡（看得見、刪得掉）；比錯是把維護列靜靜接到同客戶的
+  // 另一台機器上（看不出來）。分不出來的情況一律 confident=false，UI 不預設附加。
+
+  it("代號命中 → confident（代號在同一客戶內唯一）", async () => {
+    fakeSupabase([row("m-1", "A機", "J751307001")]);
+    const hit = await findMachine({ customerId: "cust-1", machineNo: "A機" });
+    expect(hit?.confident).toBe(true);
+  });
+
+  it("空壓機卡：照片有代號、只比到沒代號的同機號卡 → confident（原廠序號唯一）", async () => {
+    fakeSupabase([row("m-1", null, "J751307001")]);
+    const hit = await findMachine({
+      customerId: "cust-1",
+      machineNo: "A機",
+      serialNo: "J751307001",
+      cardType: "compressor",
+    });
+    expect(hit?.id).toBe("m-1");
+    expect(hit?.confident).toBe(true);
+  });
+
+  it("過濾卡：照片有代號、只比到沒代號的同型號卡 → 命中但 not confident", async () => {
+    // 這是 #165 驗收「同客戶兩台 AD480 靠 A機／B機 區分」的**過渡狀態**：
+    // 舊卡還沒補代號，照片是另一台的 B機。m-1 可能就是這台（還沒補代號），
+    // 也可能是另一台 AD480 —— 資料上分不出來，不可預設附加。
+    fakeSupabase([row("m-1", null, "AD480")]);
+    const hit = await findMachine({
+      customerId: "cust-1",
+      machineNo: "B機",
+      serialNo: "AD480",
+      cardType: "filter",
+    });
+    expect(hit?.id).toBe("m-1");
+    expect(hit?.confident).toBe(false);
+  });
+
+  it("照片沒代號、比到沒代號的卡 → confident（0018 保證同機號至多一張）", async () => {
+    fakeSupabase([row("m-1", "A機", "AD480"), row("m-2", null, "AD480")]);
+    const hit = await findMachine({
+      customerId: "cust-1",
+      serialNo: "AD480",
+      cardType: "filter",
+    });
+    expect(hit?.id).toBe("m-2");
+    expect(hit?.confident).toBe(true);
+  });
+
+  it("照片沒代號、只剩多張有代號的同機號卡 → 取第一張但 not confident", async () => {
+    // 同客戶兩台 AD480（A機／B機）都已建卡，照片沒讀到代號：取哪一張都是擲骰子。
+    fakeSupabase([row("m-1", "A機", "AD480"), row("m-2", "B機", "AD480")]);
+    const hit = await findMachine({
+      customerId: "cust-1",
+      serialNo: "AD480",
+      cardType: "filter",
+    });
+    expect(hit?.id).toBe("m-1");
+    expect(hit?.confident).toBe(false);
+  });
+
+  it("空壓機卡：照片沒代號、只有一張同機號的有代號卡 → confident", async () => {
+    fakeSupabase([row("m-1", "A機", "J751307001")]);
+    const hit = await findMachine({
+      customerId: "cust-1",
+      serialNo: "J751307001",
+      cardType: "compressor",
+    });
+    expect(hit?.id).toBe("m-1");
+    expect(hit?.confident).toBe(true);
+  });
+
   it("命中結果帶回客戶資訊（join 可能是物件或陣列）", async () => {
     const r = row("m-1", "A機", "AD480");
     r.mx_customers = [{ name: "兆利科技股份有限公司", code: "KC054" }];
@@ -143,6 +214,8 @@ describe("findMachineAcrossCustomers — 只比機號", () => {
       method: "ilike",
       args: ["serial_no", "ad480"],
     });
+    // 別的客戶的卡永遠只是提示，不是「確定是同一台」。
+    expect(hit?.confident).toBe(false);
   });
 
   it("沒有機號 → 不查 DB（代號跨客戶必然重複，拿它比等於亂猜）", async () => {

@@ -277,11 +277,13 @@ describe("extractCardFromImageAction — 先解析客戶，再在客戶內找機
       customer_id: "cust-1",
       customer_name: "兆利科技股份有限公司",
       customer_code: "KC054",
+      confident: true,
     });
 
     const res = await extractCardFromImageAction(input);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
+    expect(res.customerResolved).toBe(true);
     expect(findMachine).toHaveBeenCalledWith({
       customerId: "cust-1",
       machineNo: "A機",
@@ -292,6 +294,32 @@ describe("extractCardFromImageAction — 先解析客戶，再在客戶內找機
     expect(findMachineAcrossCustomers).not.toHaveBeenCalled();
     expect(res.match?.id).toBe("m-1");
     expect(res.match?.otherCustomer).toBe(false);
+    // 代號命中 → 確定是同一台 → 核對畫面預設勾「附加」。
+    expect(res.match?.uncertain).toBe(false);
+  });
+
+  it("同客戶內只憑機號比到的卡（confident=false）→ uncertain=true，附加不可預設開", async () => {
+    // 照片是「B機／AD480」的過濾卡，客戶名下只有一張沒有代號的 AD480 卡：
+    // 它可能就是這台（還沒補代號），也可能是同客戶的另一台 AD480。
+    stubExtraction();
+    selectRows.mx_customers = [{ id: "cust-1" }];
+    findMachine.mockResolvedValue({
+      id: "m-1",
+      serial_no: "AD480",
+      machine_no: null,
+      card_type: "filter",
+      customer_id: "cust-1",
+      customer_name: "兆利科技股份有限公司",
+      customer_code: "KC054",
+      confident: false,
+    });
+
+    const res = await extractCardFromImageAction(input);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.match?.id).toBe("m-1");
+    expect(res.match?.otherCustomer).toBe(false);
+    expect(res.match?.uncertain).toBe(true);
   });
 
   it("客戶對不上 → 不在任何客戶內比對，只回其他客戶的同識別卡當提示", async () => {
@@ -305,6 +333,7 @@ describe("extractCardFromImageAction — 先解析客戶，再在客戶內找機
       customer_id: "cust-9",
       customer_name: "和成欣業(股)公司",
       customer_code: "KK123-1",
+      confident: false,
     });
 
     const res = await extractCardFromImageAction(input);
@@ -322,6 +351,8 @@ describe("extractCardFromImageAction — 先解析客戶，再在客戶內找機
     expect(res.match?.otherCustomer).toBe(true);
     expect(res.match?.customer_name).toBe("和成欣業(股)公司");
     expect(res.match?.machine_no).toBe("A機");
+    // 核對畫面要能講出「這次會一併建新客戶」。
+    expect(res.customerResolved).toBe(false);
   });
 
   it("客戶對不上、其他客戶也沒有同識別卡 → 就是一張全新的卡", async () => {
@@ -331,5 +362,7 @@ describe("extractCardFromImageAction — 先解析客戶，再在客戶內找機
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.match).toBeNull();
+    // 比對不到既有卡「而且」客戶也對不上 —— 後者是靜靜多一個客戶的來源，要另外提示。
+    expect(res.customerResolved).toBe(false);
   });
 });

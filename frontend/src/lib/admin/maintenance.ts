@@ -246,6 +246,15 @@ export interface MachineIdentityHit {
   customer_id: string;
   customer_name: string;
   customer_code: string;
+  /**
+   * true = 這個命中可以當成「確定是同一台機器」，核對畫面才可以預設附加維護列。
+   *
+   * false = 只是「值得給員工看一眼」的候選：資料上分辨不出是不是同一台機器
+   * （例：照片上寫著 B機，但只比到一張沒有代號、機號同為 AD480 的卡 —— 它可能
+   * 就是這台機器只是還沒補代號，也可能是同客戶的另一台 AD480）。
+   * 這種命中一律要顯示警告、附加預設關閉，否則會靜靜把維護列接到別台機器上。
+   */
+  confident: boolean;
 }
 
 /** 比對查詢共用的 select 欄位。 */
@@ -264,7 +273,10 @@ type IdentityRow = {
     | null;
 };
 
-function toIdentityHit(row: IdentityRow): MachineIdentityHit {
+function toIdentityHit(
+  row: IdentityRow,
+  confident: boolean,
+): MachineIdentityHit {
   const c = Array.isArray(row.mx_customers)
     ? (row.mx_customers[0] ?? null)
     : row.mx_customers;
@@ -276,6 +288,7 @@ function toIdentityHit(row: IdentityRow): MachineIdentityHit {
     customer_id: row.customer_id,
     customer_name: c?.name ?? "",
     customer_code: c?.code ?? "",
+    confident,
   };
 }
 
@@ -290,9 +303,9 @@ function toIdentityHit(row: IdentityRow): MachineIdentityHit {
  * #165 之後的辨識 prompt 會積極抓出卡上手寫的「A機」。若「有代號就只比代號」，
  * 每一次重拍既有卡都會比不到而多開一張重複卡（DB 也擋不住 —— 代號索引與
  * 機號索引互斥，有代號的新卡不受 mx_machines_customer_serial_key 約束）。
- * 反過來，退回比對時**只認沒有代號的卡**：那正是 0018 的
- * mx_machines_customer_serial_key 保證唯一的集合，不會在「同客戶兩台 AD480、
- * 靠 A機／B機 區分」的情況下把 B 機的維護列接到 A 機那張卡上。
+ *
+ * 但退回比機號**不一定就是同一台機器**，故命中還帶一個 confident 旗標，
+ * 詳見 pickIdentityMatch。
  *
  * cardType 限定比對範圍（預設空壓機卡），避免把空壓機的維護列附加到過濾卡上；
  * 拍照辨識分流（#158）產出兩張草稿卡時，兩張各自以自己的卡別比對。
@@ -320,35 +333,78 @@ export async function findMachine(input: {
   if (error) throw new Error(`查詢機台失敗：${error.message}`);
 
   const rows = (data ?? []) as IdentityRow[];
-  const hit = pickIdentityMatch(rows, tag, serial);
-  return hit ? toIdentityHit(hit) : null;
+  const hit = pickIdentityMatch(
+    rows,
+    tag,
+    serial,
+    input.cardType ?? "compressor",
+  );
+  return hit ? toIdentityHit(hit.row, hit.confident) : null;
+}
+
+/** pickIdentityMatch 的結果：命中的列 + 這個命中能不能當成「確定是同一台」。 */
+interface IdentityMatch {
+  row: IdentityRow;
+  confident: boolean;
 }
 
 /**
  * findMachine 的本地比對規則（拆出來純函式化，好推理也好單測）。
  * tag / serial 皆為正規化後的字串，空字串代表「這一段沒有」。
+ *
+ * 「比不到」與「比錯」的代價不對稱：比不到只是多開一張重複卡（看得見、刪得掉），
+ * 比錯是把維護列靜靜接到同客戶的另一台機器上（看不出來）。因此凡是資料上分辨
+ * 不出的情況，一律照樣回傳候選但標成 confident=false，由核對畫面顯示警告、
+ * 附加預設關閉，讓看得到照片的人決定。
+ *
+ * 關鍵不對稱：**空壓機的機號是原廠序號，同一客戶不會有第二台同機號的機器；
+ * 過濾卡的「機號」其實是過濾器型號（AD480），同一客戶可以有兩台**（這正是 #165
+ * 驗收條件之一）。所以「只比到機號」這件事，在空壓機卡上是確定，在過濾卡上不是。
  */
 function pickIdentityMatch(
   rows: IdentityRow[],
   tag: string,
   serial: string,
-): IdentityRow | null {
+  cardType: MxCardType,
+): IdentityMatch | null {
+  // 代號在同一客戶內唯一（0018 的 mx_machines_customer_tag_key）→ 命中即確定。
   if (tag) {
     const byTag = rows.find((m) => normalizeMachineNo(m.machine_no) === tag);
-    if (byTag) return byTag;
+    if (byTag) return { row: byTag, confident: true };
   }
   if (!serial) return null;
-  // 沒有代號的卡＝0018 的 mx_machines_customer_serial_key 作用範圍，同機號至多一張。
-  const untagged = rows.find(
-    (m) =>
-      normalizeSerial(m.serial_no) === serial &&
-      normalizeMachineNo(m.machine_no) === "",
+  const sameSerial = rows.filter(
+    (m) => normalizeSerial(m.serial_no) === serial,
   );
-  if (untagged) return untagged;
-  // 這張照片自己也沒有代號時，才容許比到「有代號」的卡（同機號可能不只一張，
-  // 取第一張；核對畫面會把比到的卡秀出來讓員工可以取消附加）。
-  if (tag) return null;
-  return rows.find((m) => normalizeSerial(m.serial_no) === serial) ?? null;
+  // 沒有代號的卡＝0018 的 mx_machines_customer_serial_key 作用範圍，同機號至多一張。
+  const untagged = sameSerial.find(
+    (m) => normalizeMachineNo(m.machine_no) === "",
+  );
+  // 機號本身足以指認一台機器嗎？空壓機的原廠序號可以，過濾卡的型號不行。
+  const serialIdentifies = cardType !== "filter";
+
+  if (tag) {
+    // 照片有代號，但這個客戶沒有這個代號的卡 → 只可能比到「還沒補上代號」的既有卡。
+    // 有代號的卡一律不碰：那是明確標成另一台機器的卡。
+    if (!untagged) return null;
+    // 空壓機：同機號就是同一台，補代號而已 → 確定。
+    // 過濾卡：這張沒代號的 AD480 可能是照片這台（只是還沒補代號），也可能是同客戶
+    // 的另一台 AD480（＝#165 驗收裡「兩台 AD480 靠 A機／B機 區分」的過渡狀態，
+    // 此時另一台還沒建卡）。資料上分不出來 → 不確定。
+    return { row: untagged, confident: serialIdentifies };
+  }
+
+  // 照片沒有代號：優先挑同樣沒有代號的那張（0018 保證同機號至多一張，且它正是
+  // 「一直沒有代號的那台」）。
+  if (untagged) return { row: untagged, confident: true };
+  // 只剩「有代號」的卡可挑。剛好一張時當候選還算合理；兩張以上（同客戶兩台 AD480，
+  // 一張 A機 一張 B機）取第一張純粹是擲骰子，絕不可預設附加。
+  const first = sameSerial[0];
+  if (!first) return null;
+  return {
+    row: first,
+    confident: serialIdentifies && sameSerial.length === 1,
+  };
 }
 
 /**
@@ -377,7 +433,8 @@ export async function findMachineByTag(
       (m) =>
         normalizeMachineNo(m.machine_no) === tag && m.id !== excludeMachineId,
     );
-  return hit ? toIdentityHit(hit) : null;
+  // 代號在同一客戶內唯一，命中就是確定的同一張卡。
+  return hit ? toIdentityHit(hit, true) : null;
 }
 
 /**
@@ -412,7 +469,8 @@ export async function findMachineAcrossCustomers(input: {
   const hit = (data ?? [])
     .map((row) => row as IdentityRow)
     .find((m) => normalizeSerial(m.serial_no) === serial);
-  return hit ? toIdentityHit(hit) : null;
+  // 跨客戶的命中永遠只是提示，不是「確定是同一台」——它明擺著屬於別的客戶。
+  return hit ? toIdentityHit(hit, false) : null;
 }
 
 // ── 客戶主檔（0016）─────────────────────────────────────────────
