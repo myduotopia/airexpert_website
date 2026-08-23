@@ -6,17 +6,74 @@ import { DataTable, type Column } from "@/components/admin/DataTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import type { MxRecord } from "@/lib/admin/maintenance";
 import { rocDate } from "@/lib/admin/minguo";
+import { ServiceTypeBadge } from "@/components/admin/maintenance/ServiceTypeBadge";
+import {
+  isUnclassified,
+  parseServiceTypeFilter,
+  SERVICE_TYPE_FILTERS,
+  SERVICE_TYPE_FILTER_LABELS,
+  UNCLASSIFIED,
+  type ServiceTypeFilter,
+} from "@/lib/admin/maintenance-service-type";
 import { deleteRecordAction } from "../actions";
 
 export const metadata = { title: "保養卡 · 後台" };
 
+/** 服務類型篩選頁籤（純連結，無 client JS）。 */
+function ServiceTypeTabs({
+  machineId,
+  current,
+  counts,
+}: {
+  machineId: string;
+  current: ServiceTypeFilter | null;
+  counts: Record<ServiceTypeFilter, number>;
+}) {
+  // null = 全部（不帶 ?type=）；UNCLASSIFIED 是「只看未判定」的哨兵，不是「不篩選」。
+  const tabs: { value: ServiceTypeFilter | null; label: string }[] = [
+    { value: null, label: "全部" },
+    ...SERVICE_TYPE_FILTERS.map((t) => ({
+      value: t,
+      label: `${SERVICE_TYPE_FILTER_LABELS[t]}（${counts[t]}）`,
+    })),
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {tabs.map((t) => {
+        const active = t.value === current;
+        const href = t.value
+          ? `/admin/maintenance/${machineId}?type=${t.value}`
+          : `/admin/maintenance/${machineId}`;
+        return (
+          <Link
+            key={t.value ?? "all"}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={`inline-flex h-9 items-center rounded-lg border px-3 text-[13px] font-medium ${
+              active
+                ? "border-primary bg-primary text-white"
+                : "border-border hover:bg-surface-muted text-ink"
+            }`}
+          >
+            {t.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export default async function MachineDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ machineId: string }>;
+  // Next.js 16：params / searchParams 皆為非同步；同名參數重複帶時值會是陣列。
+  searchParams: Promise<{ type?: string | string[] }>;
 }) {
   await requireRole(["office"]);
   const { machineId } = await params;
+  const { type } = await searchParams;
   const data = await getMachine(machineId);
   if (!data) notFound();
   const { machine, customer, records } = data;
@@ -25,8 +82,30 @@ export default async function MachineDetailPage({
     ? `/admin/maintenance/customers/${customer.id}`
     : null;
 
+  // ?type= 收斂到允許值；非法、重複帶（陣列）或未帶 → null（全部）。
+  const activeType = parseServiceTypeFilter(type);
+  const counts = SERVICE_TYPE_FILTERS.reduce(
+    (acc, t) => {
+      acc[t] =
+        t === UNCLASSIFIED
+          ? records.filter(isUnclassified).length
+          : records.filter((r) => r.service_type === t).length;
+      return acc;
+    },
+    {} as Record<ServiceTypeFilter, number>,
+  );
+  const visibleRecords = !activeType
+    ? records
+    : activeType === UNCLASSIFIED
+      ? records.filter(isUnclassified)
+      : records.filter((r) => r.service_type === activeType);
+
   const columns: Column<MxRecord>[] = [
     { header: "日期", cell: (r) => rocDate(r.service_date) },
+    {
+      header: "類型",
+      cell: (r) => <ServiceTypeBadge type={r.service_type} />,
+    },
     { header: "時數", cell: (r) => r.hours ?? "—" },
     { header: "專用油", cell: (r) => r.oil ?? "—" },
     { header: "機油濾", cell: (r) => r.oil_filter ?? "—" },
@@ -124,7 +203,7 @@ export default async function MachineDetailPage({
         </div>
       </dl>
 
-      <div className="mt-8 mb-4 flex items-center justify-between">
+      <div className="mt-8 mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-ink text-[18px] font-bold">
           維護紀錄（{records.length}）
         </h2>
@@ -135,11 +214,22 @@ export default async function MachineDetailPage({
           新增維護紀錄
         </Link>
       </div>
+      <div className="mb-3">
+        <ServiceTypeTabs
+          machineId={machineId}
+          current={activeType}
+          counts={counts}
+        />
+      </div>
       <DataTable
-        rows={records}
+        rows={visibleRecords}
         columns={columns}
         getKey={(r) => r.id}
-        empty="尚無維護紀錄。"
+        empty={
+          activeType
+            ? `沒有「${SERVICE_TYPE_FILTER_LABELS[activeType]}」的維護紀錄。`
+            : "尚無維護紀錄。"
+        }
       />
     </div>
   );

@@ -1,5 +1,11 @@
 // 表單字串 → DB payload 的清洗（純函式，無 I/O，好單測）。
 
+import {
+  classifyServiceType,
+  parseServiceType,
+  type ServiceType,
+} from "./maintenance-service-type";
+
 export function cleanText(
   v: FormDataEntryValue | string | null,
 ): string | null {
@@ -42,6 +48,8 @@ export interface RecordPayload {
   filter_system: string | null;
   technician: string | null;
   note: string | null;
+  /** 服務類型；null = 未判定（由人工補）。 */
+  service_type: ServiceType | null;
 }
 
 export function recordPayloadFromForm(fd: FormData): RecordPayload {
@@ -56,6 +64,7 @@ export function recordPayloadFromForm(fd: FormData): RecordPayload {
     filter_system: cleanText(fd.get("filter_system")),
     technician: cleanText(fd.get("technician")),
     note: cleanText(fd.get("note")),
+    service_type: parseServiceType(fd.get("service_type")),
   };
 }
 
@@ -92,7 +101,7 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
   const records: RecordPayload[] = rawRecords
     .map((r) => {
       const o = (r ?? {}) as Record<string, unknown>;
-      return {
+      const row = {
         service_date: cleanText(str(o.service_date)),
         hours: cleanText(str(o.hours)),
         oil: cleanText(str(o.oil)),
@@ -104,8 +113,17 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
         technician: cleanText(str(o.technician)),
         note: cleanText(str(o.note)),
       };
+      // AI 只是加速：它給的 service_type 需為合法值才採用，否則一律以本地規則推導
+      // （規則的真相來源是 classifyServiceType，見 maintenance-service-type.ts）。
+      return {
+        ...row,
+        service_type:
+          parseServiceType(o.service_type) ?? classifyServiceType(row),
+      };
     })
-    .filter((r) => Object.values(r).some((v) => v !== null));
+    .filter((r) =>
+      Object.entries(r).some(([k, v]) => k !== "service_type" && v !== null),
+    );
 
   return {
     basic: {
