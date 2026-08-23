@@ -9,12 +9,19 @@ import type { ActionResult } from "@/lib/admin/crud";
 import {
   machinePayloadFromForm,
   recordPayloadFromForm,
+  filterRecordPayloadFromForm,
+  parseColumnDefs,
   parseExtraction,
+  type ColumnDef,
   type ExtractedDraft,
+  type MxCardType,
   type RecordPayload,
 } from "@/lib/admin/maintenance-normalize";
 import { extractMaintenanceCard } from "@/lib/ai/gemini";
-import { findMachineBySerial } from "@/lib/admin/maintenance";
+import {
+  findMachineBySerial,
+  getMachineCardContext,
+} from "@/lib/admin/maintenance";
 
 /**
  * 找或建客戶。優先以「客戶編號 code」比對（不分大小寫）；無編號時退回以 name 完全比對。
@@ -130,9 +137,13 @@ function toMachineHit(row: MachineRow): MachineHit {
   };
 }
 
-/** 依機號或機台編號模糊搜尋機台（排除已封存），join 客戶。上限 8 筆。 */
+/**
+ * 依機號或機台編號模糊搜尋機台（排除已封存），join 客戶。上限 8 筆。
+ * cardType 有值時只搜同卡別（過濾卡表單不該提示空壓機卡）。
+ */
 export async function searchMachinesAction(
   query: string,
+  cardType?: MxCardType,
 ): Promise<MachineHit[]> {
   await requireRole(["office"]);
   const q = query.trim();
@@ -140,19 +151,16 @@ export async function searchMachinesAction(
   const supabase = await getServerSupabase();
   const pattern = `%${q}%`;
   const select = "id, serial_no, machine_no, mx_customers(code, name)";
+  const base = () => {
+    const b = supabase
+      .from("mx_machines")
+      .select(select)
+      .is("archived_at", null);
+    return cardType ? b.eq("card_type", cardType) : b;
+  };
   const [bySerial, byMachineNo] = await Promise.all([
-    supabase
-      .from("mx_machines")
-      .select(select)
-      .is("archived_at", null)
-      .ilike("serial_no", pattern)
-      .limit(8),
-    supabase
-      .from("mx_machines")
-      .select(select)
-      .is("archived_at", null)
-      .ilike("machine_no", pattern)
-      .limit(8),
+    base().ilike("serial_no", pattern).limit(8),
+    base().ilike("machine_no", pattern).limit(8),
   ]);
   const merged = new Map<string, MachineHit>();
   for (const row of [...(bySerial.data ?? []), ...(byMachineNo.data ?? [])]) {
@@ -160,6 +168,63 @@ export async function searchMachinesAction(
     if (!merged.has(hit.id)) merged.set(hit.id, hit);
   }
   return Array.from(merged.values()).slice(0, 8);
+}
+
+/**
+ * 把過濾卡的耗材欄定義同步成 defs 的內容與順序（新增 / 更名 / 刪除 / 重排）。
+ * 刪除欄位只會刪 mx_machine_columns 的定義列，既有紀錄 values 內該 key 仍保留
+ * （不再顯示），避免誤刪不可回復的手寫資料。
+ */
+async function syncMachineColumns(
+  supabase: Awaited<ReturnType<typeof getServerSupabase>>,
+  machineId: string,
+  defs: ColumnDef[],
+): Promise<void> {
+  const { data: existingRows, error: readErr } = await supabase
+    .from("mx_machine_columns")
+    .select("id")
+    .eq("machine_id", machineId);
+  if (readErr) throw new Error(`讀取耗材欄位失敗：${readErr.message}`);
+  const existing = new Set(
+    (existingRows ?? []).map((r) => (r as { id: string }).id),
+  );
+
+  const kept = defs.filter((d) => d.id !== null && existing.has(d.id));
+  const keptIds = new Set(kept.map((d) => d.id as string));
+  const removed = [...existing].filter((id) => !keptIds.has(id));
+
+  if (removed.length > 0) {
+    const { error } = await supabase
+      .from("mx_machine_columns")
+      .delete()
+      .in("id", removed);
+    if (error) throw new Error(`刪除耗材欄位失敗：${error.message}`);
+  }
+
+  // 逐列 update：欄位數量是個位數，不值得為此加 upsert 的 unique 約束。
+  await Promise.all(
+    defs.map(async (d, i) => {
+      if (d.id === null || !existing.has(d.id)) return;
+      const { error } = await supabase
+        .from("mx_machine_columns")
+        .update({ label: d.label, sort_order: i })
+        .eq("id", d.id);
+      if (error) throw new Error(`更新耗材欄位失敗：${error.message}`);
+    }),
+  );
+
+  const added = defs
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.id === null || !existing.has(d.id))
+    .map(({ d, i }) => ({
+      machine_id: machineId,
+      label: d.label,
+      sort_order: i,
+    }));
+  if (added.length > 0) {
+    const { error } = await supabase.from("mx_machine_columns").insert(added);
+    if (error) throw new Error(`新增耗材欄位失敗：${error.message}`);
+  }
 }
 
 /** 建立新卡（含客戶）。表單需帶 customer_name + 機器欄位。成功後導向卡詳情。 */
@@ -186,8 +251,24 @@ export async function createMachineAction(fd: FormData): Promise<void> {
       throw new Error("此機號已存在，請改用既有卡片。");
     throw new Error(`建立保養卡失敗：${error.message}`);
   }
+  const machineId = (data as { id: string }).id;
+
+  if (payload.card_type === "filter") {
+    // 建卡與建欄非同一交易；欄位寫入失敗就把剛建的卡刪掉，避免留下沒有欄位的空卡。
+    try {
+      await syncMachineColumns(
+        supabase,
+        machineId,
+        parseColumnDefs(fd.get("columns_json")),
+      );
+    } catch (e) {
+      await supabase.from("mx_machines").delete().eq("id", machineId);
+      throw e;
+    }
+  }
+
   revalidatePath("/admin/maintenance");
-  redirect(`/admin/maintenance/${(data as { id: string }).id}`);
+  redirect(`/admin/maintenance/${machineId}`);
 }
 
 /** 更新既有卡的基本資訊（含客戶名）。 */
@@ -201,8 +282,14 @@ export async function updateMachineAction(
   const customerName = String(fd.get("customer_name") ?? "").trim();
   const customerCode = String(fd.get("customer_code") ?? "").trim();
   try {
+    // 卡別以 DB 為準，不接受表單改卡別（改了會讓既有紀錄的欄位語意錯亂）。
+    const ctx = await getMachineCardContext(machineId);
+    if (!ctx) return { ok: false, error: "找不到此保養卡。" };
     const payload = machinePayloadFromForm(fd);
-    const patch: Record<string, unknown> = { ...payload };
+    const patch: Record<string, unknown> = {
+      ...payload,
+      card_type: ctx.card_type,
+    };
     if (customerName || customerCode) {
       patch.customer_id = await findOrCreateCustomer(supabase, {
         code: customerCode,
@@ -217,11 +304,34 @@ export async function updateMachineAction(
       if (error.code === "23505") return { ok: false, error: "此機號已存在。" };
       return { ok: false, error: error.message };
     }
+    if (ctx.card_type === "filter") {
+      await syncMachineColumns(
+        supabase,
+        machineId,
+        parseColumnDefs(fd.get("columns_json")),
+      );
+    }
+    revalidatePath("/admin/maintenance");
     revalidatePath(`/admin/maintenance/${machineId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
+}
+
+/**
+ * 依卡別產生維護紀錄的 payload。卡別與欄位定義一律向 DB 取，不信任表單。
+ * 空壓機卡 → 固定 9 欄；過濾卡 → service_date / technician / note + values jsonb。
+ */
+async function recordPayloadForMachine(
+  machineId: string,
+  fd: FormData,
+): Promise<Record<string, unknown>> {
+  const ctx = await getMachineCardContext(machineId);
+  if (!ctx) throw new Error("找不到此保養卡。");
+  return ctx.card_type === "filter"
+    ? { ...filterRecordPayloadFromForm(fd, ctx.columns) }
+    : { ...recordPayloadFromForm(fd) };
 }
 
 /** 新增一列維護紀錄（手動；source='manual'）。 */
@@ -231,7 +341,7 @@ export async function addRecordAction(
 ): Promise<void> {
   await requireRole(["office"]);
   const supabase = await getServerSupabase();
-  const payload = recordPayloadFromForm(fd);
+  const payload = await recordPayloadForMachine(machineId, fd);
   const { error } = await supabase
     .from("mx_records")
     .insert({ ...payload, machine_id: machineId, source: "manual" });
@@ -248,14 +358,18 @@ export async function updateRecordAction(
 ): Promise<ActionResult> {
   await requireRole(["office"]);
   const supabase = await getServerSupabase();
-  const payload = recordPayloadFromForm(fd);
-  const { error } = await supabase
-    .from("mx_records")
-    .update(payload)
-    .eq("id", recordId);
-  if (error) return { ok: false, error: error.message };
-  revalidatePath(`/admin/maintenance/${machineId}`);
-  return { ok: true };
+  try {
+    const payload = await recordPayloadForMachine(machineId, fd);
+    const { error } = await supabase
+      .from("mx_records")
+      .update(payload)
+      .eq("id", recordId);
+    if (error) return { ok: false, error: error.message };
+    revalidatePath(`/admin/maintenance/${machineId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 /** 刪除一列維護紀錄（DeleteButton 以 bind 帶入 id）。 */
@@ -361,6 +475,8 @@ export async function commitImportAction(
         .from("mx_machines")
         .insert({
           customer_id: customerId,
+          // 拍照辨識目前只產空壓機卡（辨識分流見 #158）。
+          card_type: "compressor",
           serial_no: serial,
           machine_no: input.basic.machine_no || null,
           location: input.basic.location || null,

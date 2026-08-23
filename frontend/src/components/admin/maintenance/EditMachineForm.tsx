@@ -2,14 +2,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CardBasicFields, type CardBasicValues } from "./CardBasicForm";
+import { ColumnsEditor, type ColumnItem } from "./ColumnsEditor";
+import type { MxCardType } from "@/lib/admin/maintenance-normalize";
 import { updateMachineAction } from "@/app/admin/(protected)/maintenance/actions";
 
 export function EditMachineForm({
   machineId,
   values,
+  cardType = "compressor",
+  columns,
 }: {
   machineId: string;
   values: CardBasicValues;
+  cardType?: MxCardType;
+  /** 過濾卡的既有耗材欄定義（依 sort_order）。空壓機卡不需傳。 */
+  columns?: ColumnItem[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -30,7 +37,8 @@ export function EditMachineForm({
 
   return (
     <form action={onSubmit} className="flex flex-col gap-6">
-      <CardBasicFields values={values} />
+      <CardBasicFields values={values} cardType={cardType} />
+      {cardType === "filter" && <ColumnsEditor initial={columns} />}
       {error && <p className="text-[14px] text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button

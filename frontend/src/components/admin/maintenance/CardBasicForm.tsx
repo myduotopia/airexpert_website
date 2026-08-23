@@ -3,13 +3,14 @@
 // 客戶編號 / 客戶名稱 / 機號 / 機台編號 具 autocomplete：
 //  - 客戶欄選客戶 → 帶入客戶編號 + 客戶名稱
 //  - 機台欄選機台 → 帶入機號 + 機台編號 + 該機台的客戶編號 + 客戶名稱
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   searchCustomersAction,
   searchMachinesAction,
   type CustomerHit,
   type MachineHit,
 } from "@/app/admin/(protected)/maintenance/actions";
+import type { MxCardType } from "@/lib/admin/maintenance-normalize";
 import { MinguoDateInput } from "./MinguoDateInput";
 
 export interface CardBasicValues {
@@ -22,20 +23,50 @@ export interface CardBasicValues {
   model?: string;
   horsepower?: string;
   voltage?: string;
+  filter_spec?: string;
+  drain_spec?: string;
 }
 
-// 非受控（沿用 defaultValue）的其餘欄位；roc=true 者改用民國日期輸入。
-const PLAIN_FIELDS: {
+type PlainField = {
   name: keyof CardBasicValues;
   label: string;
   type?: string;
   roc?: boolean;
+};
+
+// 非受控（沿用 defaultValue）的其餘欄位；roc=true 者改用民國日期輸入。
+// 空壓機卡與過濾（乾燥機）卡的表頭不同：乾燥機卡沒有馬力 / 電壓 / 購買時間，
+// 改為兩塊多行規格清單（過濾器、排水器 / 馬達葉片），見下方 SPEC_FIELDS。
+const PLAIN_FIELDS: Record<MxCardType, PlainField[]> = {
+  compressor: [
+    { name: "location", label: "使用地點" },
+    { name: "purchased_at", label: "購買時間", roc: true },
+    { name: "model", label: "機型" },
+    { name: "horsepower", label: "馬力" },
+    { name: "voltage", label: "電壓" },
+  ],
+  filter: [
+    { name: "location", label: "使用地點" },
+    { name: "model", label: "機型" },
+  ],
+};
+
+// 過濾卡表頭的兩塊多行規格清單（原文照存，逐行輸入）。
+const SPEC_FIELDS: {
+  name: "filter_spec" | "drain_spec";
+  label: string;
+  hint: string;
 }[] = [
-  { name: "location", label: "使用地點" },
-  { name: "purchased_at", label: "購買時間", roc: true },
-  { name: "model", label: "機型" },
-  { name: "horsepower", label: "馬力" },
-  { name: "voltage", label: "電壓" },
+  {
+    name: "filter_spec",
+    label: "過濾器",
+    hint: "一行一個型號，例：EA350-Q*1只",
+  },
+  {
+    name: "drain_spec",
+    label: "排水器 / 馬達葉片",
+    hint: "上為排水器、下為馬達 + 葉片，例：外置式排水器CKD*3只+桶下AD480",
+  },
 ];
 
 const INPUT_CLASS =
@@ -131,13 +162,22 @@ function AutocompleteField<T>({
 
 export function CardBasicFields({
   values,
+  cardType = "compressor",
 }: {
   values?: CardBasicValues;
+  cardType?: MxCardType;
 }): ReactNode {
   const [customerCode, setCustomerCode] = useState(values?.customer_code ?? "");
   const [customerName, setCustomerName] = useState(values?.customer_name ?? "");
   const [serialNo, setSerialNo] = useState(values?.serial_no ?? "");
   const [machineNo, setMachineNo] = useState(values?.machine_no ?? "");
+
+  // 機台建議只提示同卡別的卡；useCallback 使 fetcher 參考穩定，
+  // 否則 AutocompleteField 的 debounce effect 每次 render 都會重跑。
+  const searchSameType = useCallback(
+    (q: string) => searchMachinesAction(q, cardType),
+    [cardType],
+  );
 
   // 選客戶 → 帶入客戶編號 + 名稱（不動機台欄）。
   function pickCustomer(hit: CustomerHit) {
@@ -178,11 +218,11 @@ export function CardBasicFields({
       />
       <AutocompleteField
         id="serial_no"
-        label="機號"
+        label={cardType === "filter" ? "卡號 / 機號" : "機號"}
         required
         value={serialNo}
         onChange={setSerialNo}
-        fetcher={searchMachinesAction}
+        fetcher={searchSameType}
         getKey={(h) => h.id}
         renderHit={(h) =>
           `${h.serial_no}${h.machine_no ? ` · ${h.machine_no}` : ""} · ${h.customer_name}`
@@ -194,14 +234,14 @@ export function CardBasicFields({
         label="機台編號"
         value={machineNo}
         onChange={setMachineNo}
-        fetcher={searchMachinesAction}
+        fetcher={searchSameType}
         getKey={(h) => h.id}
         renderHit={(h) =>
           `${h.machine_no ?? "—"} · ${h.serial_no} · ${h.customer_name}`
         }
         onPick={pickMachine}
       />
-      {PLAIN_FIELDS.map((f) => (
+      {PLAIN_FIELDS[cardType].map((f) => (
         <div key={f.name} className="flex flex-col gap-1.5">
           <label htmlFor={f.name} className="text-ink text-[14px] font-medium">
             {f.label}
@@ -219,6 +259,29 @@ export function CardBasicFields({
           )}
         </div>
       ))}
+      {cardType === "filter" &&
+        SPEC_FIELDS.map((f) => (
+          <div key={f.name} className="flex flex-col gap-1.5 sm:col-span-2">
+            <label
+              htmlFor={f.name}
+              className="text-ink text-[14px] font-medium"
+            >
+              {f.label}
+              <span className="text-text-muted ml-2 text-[13px] font-normal">
+                {f.hint}
+              </span>
+            </label>
+            <textarea
+              id={f.name}
+              name={f.name}
+              rows={3}
+              defaultValue={values?.[f.name] ?? ""}
+              className="border-border focus:border-primary rounded-lg border px-3 py-2 text-[15px] outline-none"
+            />
+          </div>
+        ))}
+      {/* 建卡時由此決定卡別；更新時 server action 一律以 DB 的卡別為準。 */}
+      <input type="hidden" name="card_type" value={cardType} />
     </div>
   );
 }

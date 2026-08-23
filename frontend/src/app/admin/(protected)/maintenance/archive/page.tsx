@@ -29,6 +29,10 @@ export default async function MaintenanceArchivePage() {
         </Link>
       ),
     },
+    {
+      header: "卡別",
+      cell: (m) => (m.card_type === "filter" ? "過濾系統" : "空壓機"),
+    },
     { header: "客戶", cell: (m) => m.customer_name },
     { header: "機型", cell: (m) => m.model ?? "—" },
     { header: "封存時間", cell: (m) => rocDateTime(m.archived_at) },

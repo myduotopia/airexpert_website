@@ -7,7 +7,20 @@ export function cleanText(
   return s === "" ? null : s;
 }
 
+/**
+ * 卡別。compressor = 空壓機保養紀錄卡（固定 9 欄）；
+ * filter = 過濾系統（乾燥機）保養紀錄卡（每張卡自訂耗材欄）。
+ * 放在純函式模組（非 server-only）以便 client 元件也能引用。
+ */
+export type MxCardType = "compressor" | "filter";
+
+/** 把任意輸入收斂成合法卡別；認不得一律回 compressor（與 DB 預設值一致）。 */
+export function parseCardType(v: unknown): MxCardType {
+  return v === "filter" ? "filter" : "compressor";
+}
+
 export interface MachinePayload {
+  card_type: MxCardType;
   serial_no: string;
   machine_no: string | null;
   location: string | null;
@@ -15,12 +28,15 @@ export interface MachinePayload {
   model: string | null;
   horsepower: string | null;
   voltage: string | null;
+  filter_spec: string | null;
+  drain_spec: string | null;
 }
 
 export function machinePayloadFromForm(fd: FormData): MachinePayload {
   const serial = cleanText(fd.get("serial_no"));
   if (!serial) throw new Error("機號為必填。");
   return {
+    card_type: parseCardType(fd.get("card_type")),
     serial_no: serial,
     machine_no: cleanText(fd.get("machine_no")),
     location: cleanText(fd.get("location")),
@@ -28,6 +44,8 @@ export function machinePayloadFromForm(fd: FormData): MachinePayload {
     model: cleanText(fd.get("model")),
     horsepower: cleanText(fd.get("horsepower")),
     voltage: cleanText(fd.get("voltage")),
+    filter_spec: cleanText(fd.get("filter_spec")),
+    drain_spec: cleanText(fd.get("drain_spec")),
   };
 }
 
@@ -59,6 +77,100 @@ export function recordPayloadFromForm(fd: FormData): RecordPayload {
   };
 }
 
+function str(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+// ── 過濾系統（乾燥機）卡：動態耗材欄位 ────────────────────────────
+// 欄位定義存 mx_machine_columns（一卡多列），紀錄值存 mx_records.values
+// 的 jsonb：{ "<column_id>": "1只", ... }。以下皆為純函式，無 I/O。
+
+/**
+ * 表單送出的一筆耗材欄定義。
+ * id 為既有欄位的 uuid；新增的欄位為 null（由 DB 產生 id）。
+ */
+export interface ColumnDef {
+  id: string | null;
+  label: string;
+}
+
+/**
+ * 解析欄位編輯器送出的隱藏欄位 columns_json。
+ * 容錯：非陣列 / 非物件 / label 空白一律丟棄，永不 throw（表單不該因髒資料整頁爆掉）。
+ * 回傳順序即為欄位由左到右的順序。
+ */
+export function parseColumnDefs(
+  raw: FormDataEntryValue | string | null | undefined,
+): ColumnDef[] {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((item) => {
+      const o = (item ?? {}) as Record<string, unknown>;
+      const label = cleanText(str(o.label));
+      if (!label) return null;
+      const id = cleanText(str(o.id));
+      return { id, label };
+    })
+    .filter((c): c is ColumnDef => c !== null);
+}
+
+/** 動態耗材欄在表單中的欄位名。與 FilterRecordFields 的 input name 一致。 */
+export function columnFieldName(columnId: string): string {
+  return `col_${columnId}`;
+}
+
+export interface FilterRecordPayload {
+  service_date: string | null;
+  technician: string | null;
+  note: string | null;
+  /** { "<column_id>": "值" }；全部留空時為 null，避免存一堆 {}。 */
+  values: Record<string, string> | null;
+}
+
+/**
+ * 過濾卡的維護紀錄表單 → DB payload。
+ * 只讀取 columns 內確實存在的欄位 id，避免表單被塞入任意 key 汙染 jsonb；
+ * 值為空的欄位不寫入（讀取端一律以「缺 key = 未填」處理）。
+ */
+export function filterRecordPayloadFromForm(
+  fd: FormData,
+  columns: { id: string }[],
+): FilterRecordPayload {
+  const values: Record<string, string> = {};
+  for (const col of columns) {
+    const v = cleanText(fd.get(columnFieldName(col.id)));
+    if (v !== null) values[col.id] = v;
+  }
+  return {
+    service_date: cleanText(fd.get("service_date")),
+    technician: cleanText(fd.get("technician")),
+    note: cleanText(fd.get("note")),
+    values: Object.keys(values).length > 0 ? values : null,
+  };
+}
+
+/**
+ * 讀取端：把 DB 的 values jsonb 收斂成 Record<string, string>。
+ * 舊列可能是 null，或（極端情況）被寫入非物件；一律回空物件而非 throw。
+ */
+export function readRecordValues(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string") out[k] = v;
+    else if (typeof v === "number") out[k] = String(v);
+  }
+  return out;
+}
+
 /** 機號比對用正規化：lower + trim。與 migration 的 unique index lower(btrim()) 對齊。 */
 export function normalizeSerial(v: string | null | undefined): string {
   return (v ?? "").trim().toLowerCase();
@@ -77,10 +189,6 @@ export interface ExtractedDraft {
     voltage: string;
   };
   records: RecordPayload[];
-}
-
-function str(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
 }
 
 /** 把 Gemini 回傳的 JSON 物件安全轉成型別化 draft；全空的維護列丟棄。 */
