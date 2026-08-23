@@ -33,6 +33,7 @@ export default async function EditRecordPage({
             service_date: record.service_date ?? undefined,
             technician: record.technician ?? undefined,
             note: record.note ?? undefined,
+            service_type: record.service_type,
             values: readRecordValues(record.values),
           }}
         />
@@ -51,6 +52,7 @@ export default async function EditRecordPage({
             filter_system: record.filter_system ?? undefined,
             technician: record.technician ?? undefined,
             note: record.note ?? undefined,
+            service_type: record.service_type,
           }}
         />
       )}

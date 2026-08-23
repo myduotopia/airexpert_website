@@ -1,11 +1,14 @@
 "use client";
 // 過濾（乾燥機）卡的維護紀錄欄位群。
-// 固定欄：日期 / 維護員 / 備註；中間的耗材欄由該張卡的 mx_machine_columns 動態產生，
+// 固定欄：日期 / 服務類型 / 維護員 / 備註；中間的耗材欄由該張卡的
+// mx_machine_columns 動態產生，
 // input name 為 columnFieldName(column.id)（= `col_<uuid>`），與
 // filterRecordPayloadFromForm() 的讀取端一致。
 import type { ReactNode } from "react";
 import { columnFieldName } from "@/lib/admin/maintenance-normalize";
+import type { ServiceType } from "@/lib/admin/maintenance-service-type";
 import { MinguoDateInput } from "./MinguoDateInput";
+import { SERVICE_TYPE_SELECT_CLASS, ServiceTypeOptions } from "./RecordForm";
 
 export interface FilterColumn {
   id: string;
@@ -16,6 +19,8 @@ export interface FilterRecordValues {
   service_date?: string;
   technician?: string;
   note?: string;
+  /** 服務類型；未判定時為 undefined / null（下拉顯示「未判定」）。 */
+  service_type?: ServiceType | null;
   /** { "<column_id>": "值" }，來自 mx_records.values。 */
   values?: Record<string, string>;
 }
@@ -43,6 +48,22 @@ export function FilterRecordFields({
           name="service_date"
           defaultIso={values?.service_date}
         />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="service_type"
+          className="text-ink text-[14px] font-medium"
+        >
+          服務類型
+        </label>
+        <select
+          id="service_type"
+          name="service_type"
+          defaultValue={values?.service_type ?? ""}
+          className={SERVICE_TYPE_SELECT_CLASS}
+        >
+          <ServiceTypeOptions />
+        </select>
       </div>
       {columns.map((c) => {
         const field = columnFieldName(c.id);

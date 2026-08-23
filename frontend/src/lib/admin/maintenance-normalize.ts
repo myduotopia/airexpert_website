@@ -1,5 +1,11 @@
 // 表單字串 → DB payload 的清洗（純函式，無 I/O，好單測）。
 
+import {
+  classifyServiceType,
+  parseServiceType,
+  type ServiceType,
+} from "./maintenance-service-type";
+
 export function cleanText(
   v: FormDataEntryValue | string | null,
 ): string | null {
@@ -60,6 +66,8 @@ export interface RecordPayload {
   filter_system: string | null;
   technician: string | null;
   note: string | null;
+  /** 服務類型；null = 未判定（由人工補）。 */
+  service_type: ServiceType | null;
 }
 
 export function recordPayloadFromForm(fd: FormData): RecordPayload {
@@ -74,6 +82,7 @@ export function recordPayloadFromForm(fd: FormData): RecordPayload {
     filter_system: cleanText(fd.get("filter_system")),
     technician: cleanText(fd.get("technician")),
     note: cleanText(fd.get("note")),
+    service_type: parseServiceType(fd.get("service_type")),
   };
 }
 
@@ -147,6 +156,11 @@ export interface FilterRecordPayload {
   service_date: string | null;
   technician: string | null;
   note: string | null;
+  /**
+   * 服務類型；null = 未判定。過濾卡沒有空壓機的四個耗材欄，classifyServiceType
+   * 的規則對它不成立，故不自動推導，一律由表單下拉人工指定。
+   */
+  service_type: ServiceType | null;
   /** { "<column_id>": "值" }；全部留空時為 null，避免存一堆 {}。 */
   values: Record<string, string> | null;
 }
@@ -169,6 +183,7 @@ export function filterRecordPayloadFromForm(
     service_date: cleanText(fd.get("service_date")),
     technician: cleanText(fd.get("technician")),
     note: cleanText(fd.get("note")),
+    service_type: parseServiceType(fd.get("service_type")),
     values: Object.keys(values).length > 0 ? values : null,
   };
 }
@@ -216,7 +231,7 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
   const records: RecordPayload[] = rawRecords
     .map((r) => {
       const o = (r ?? {}) as Record<string, unknown>;
-      return {
+      const row = {
         service_date: cleanText(str(o.service_date)),
         hours: cleanText(str(o.hours)),
         oil: cleanText(str(o.oil)),
@@ -228,8 +243,17 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
         technician: cleanText(str(o.technician)),
         note: cleanText(str(o.note)),
       };
+      // AI 只是加速：它給的 service_type 需為合法值才採用，否則一律以本地規則推導
+      // （規則的真相來源是 classifyServiceType，見 maintenance-service-type.ts）。
+      return {
+        ...row,
+        service_type:
+          parseServiceType(o.service_type) ?? classifyServiceType(row),
+      };
     })
-    .filter((r) => Object.values(r).some((v) => v !== null));
+    .filter((r) =>
+      Object.entries(r).some(([k, v]) => k !== "service_type" && v !== null),
+    );
 
   return {
     basic: {
@@ -245,4 +269,42 @@ export function parseExtraction(raw: unknown): ExtractedDraft {
     },
     records,
   };
+}
+
+// ── 客戶主檔（0016）─────────────────────────────────────────────
+
+export interface CustomerPayload {
+  name: string;
+  code: string | null;
+  contact_person: string | null;
+  phone: string | null;
+  address: string | null;
+  note: string | null;
+}
+
+/** 客戶編輯表單 → DB payload。客戶名稱為必填，其餘空字串一律轉 null。 */
+export function customerPayloadFromForm(fd: FormData): CustomerPayload {
+  const name = cleanText(fd.get("name"));
+  if (!name) throw new Error("客戶名稱為必填。");
+  return {
+    name,
+    code: cleanText(fd.get("code")),
+    contact_person: cleanText(fd.get("contact_person")),
+    phone: cleanText(fd.get("phone")),
+    address: cleanText(fd.get("address")),
+    note: cleanText(fd.get("note")),
+  };
+}
+
+/** 客戶編號比對用正規化：lower + trim。與 0013 的索引 lower(btrim(code)) 對齊。 */
+export function normalizeCustomerCode(v: string | null | undefined): string {
+  return (v ?? "").trim().toLowerCase();
+}
+
+/**
+ * 卡別顯示文字。card_type 由 #155（過濾系統卡）新增，欄位尚未落地時為
+ * undefined / null，一律視為空壓機卡，確保本頁在 0014/0015 之前也能正常顯示。
+ */
+export function cardTypeLabel(cardType?: string | null): string {
+  return cardType === "filter" ? "過濾系統" : "空壓機";
 }

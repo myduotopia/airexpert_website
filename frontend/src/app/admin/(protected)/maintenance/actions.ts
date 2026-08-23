@@ -11,6 +11,7 @@ import {
   recordPayloadFromForm,
   filterRecordPayloadFromForm,
   parseColumnDefs,
+  customerPayloadFromForm,
   parseExtraction,
   type ColumnDef,
   type ExtractedDraft,
@@ -21,6 +22,7 @@ import { extractMaintenanceCard } from "@/lib/ai/gemini";
 import {
   findMachineBySerial,
   getMachineCardContext,
+  isCustomerCodeTaken,
 } from "@/lib/admin/maintenance";
 
 /**
@@ -600,4 +602,40 @@ export async function deleteMachinePermanentlyAction(
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/maintenance/archive");
   return { ok: true };
+}
+
+/**
+ * 更新客戶主檔（0016 欄位）。客戶編號重複時**不擋**，僅回傳軟性警告
+ * ——0013 刻意未對 code 設唯一約束（回填資料可能重複）。
+ */
+export async function updateCustomerAction(
+  customerId: string,
+  fd: FormData,
+): Promise<ActionResult & { warning?: string }> {
+  await requireRole(["office"]);
+  const supabase = await getServerSupabase();
+  try {
+    const payload = customerPayloadFromForm(fd);
+    const { error } = await supabase
+      .from("mx_customers")
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq("id", customerId);
+    if (error) return { ok: false, error: error.message };
+
+    // 客戶名稱 / 編號會出現在保養卡列表與卡詳情，一併失效。
+    revalidatePath("/admin/maintenance", "layout");
+
+    const duplicated = payload.code
+      ? await isCustomerCodeTaken(payload.code, customerId)
+      : false;
+    if (duplicated) {
+      return {
+        ok: true,
+        warning: `已儲存，但客戶編號「${payload.code}」已被其他客戶使用，請確認是否正確。`,
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }

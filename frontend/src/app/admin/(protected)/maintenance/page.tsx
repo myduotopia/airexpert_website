@@ -8,6 +8,7 @@ import {
   type AdminRow,
 } from "@/components/admin/AdminTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
+import { cardTypeLabel } from "@/lib/admin/maintenance-normalize";
 import { rocDate } from "@/lib/admin/minguo";
 import { archiveMachineAction } from "./actions";
 
@@ -19,11 +20,6 @@ const TABS: { key: "all" | MxCardType; label: string }[] = [
   { key: "compressor", label: "空壓機" },
   { key: "filter", label: "過濾系統" },
 ];
-
-const CARD_TYPE_LABEL: Record<MxCardType, string> = {
-  compressor: "空壓機",
-  filter: "過濾系統",
-};
 
 /** ?type= 收斂成分頁 key；認不得一律回 all。 */
 function parseTab(v: string | string[] | undefined): "all" | MxCardType {
@@ -49,7 +45,7 @@ export default async function MaintenanceListPage({
     { header: "操作", className: "text-right whitespace-nowrap" },
   ];
   const rows: AdminRow[] = machines.map((m) => {
-    const cardTypeLabel = CARD_TYPE_LABEL[m.card_type] ?? m.card_type;
+    const typeLabel = cardTypeLabel(m.card_type);
     return {
       key: m.id,
       cells: [
@@ -60,8 +56,14 @@ export default async function MaintenanceListPage({
         >
           {m.serial_no}
         </Link>,
-        cardTypeLabel,
-        m.customer_name,
+        typeLabel,
+        <Link
+          key="customer"
+          href={`/admin/maintenance/customers/${m.customer_id}`}
+          className="text-ink hover:text-primary-deep"
+        >
+          {m.customer_name}
+        </Link>,
         m.model ?? "—",
         rocDate(m.last_service_date),
         <div key="actions" className="flex justify-end">
@@ -74,14 +76,14 @@ export default async function MaintenanceListPage({
       ],
       sortValues: [
         m.serial_no,
-        cardTypeLabel,
+        typeLabel,
         m.customer_name,
         m.model,
         m.last_service_date,
         null,
       ],
       search:
-        `${m.serial_no} ${cardTypeLabel} ${m.customer_name} ${m.model ?? ""}`.toLowerCase(),
+        `${m.serial_no} ${typeLabel} ${m.customer_name} ${m.model ?? ""}`.toLowerCase(),
     };
   });
 
@@ -95,6 +97,12 @@ export default async function MaintenanceListPage({
           </p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href="/admin/maintenance/customers"
+            className="border-border hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border px-4 text-[14px] font-semibold"
+          >
+            客戶
+          </Link>
           <Link
             href="/admin/maintenance/archive"
             className="border-border hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border px-4 text-[14px] font-semibold"

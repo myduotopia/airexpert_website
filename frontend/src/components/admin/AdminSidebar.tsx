@@ -3,14 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { navForRole } from "@/lib/admin/nav-config";
+import { activeNavHref, navForRole } from "@/lib/admin/nav-config";
 import type { AdminRole } from "@/lib/admin/auth";
 import { logoutAction } from "@/app/admin/actions";
-
-function isActive(pathname: string, href: string): boolean {
-  if (href === "/admin") return pathname === "/admin";
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
 
 export function AdminSidebar({
   email,
@@ -21,6 +16,10 @@ export function AdminSidebar({
 }) {
   const pathname = usePathname();
   const nav = navForRole(role);
+  const activeHref = activeNavHref(
+    pathname,
+    nav.filter((i) => i.enabled).map((i) => i.href),
+  );
   // 行動版（< lg）側欄改為抽屜：預設收起，漢堡鈕開啟、點連結 / 遮罩 / 關閉鈕關閉。
   // lg 以上維持靜態欄位，行為與原本一致。
   const [open, setOpen] = useState(false);
@@ -100,7 +99,7 @@ export function AdminSidebar({
         <nav className="flex-1 overflow-y-auto px-3 py-3">
           <ul className="flex flex-col gap-0.5">
             {nav.map((item) => {
-              const active = isActive(pathname, item.href);
+              const active = item.href === activeHref;
               if (!item.enabled) {
                 return (
                   <li key={item.key}>
