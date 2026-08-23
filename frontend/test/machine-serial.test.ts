@@ -40,6 +40,14 @@ describe("customerSerialPrefix", () => {
     );
   });
 
+  it("截斷以字元為單位，不會把 CJK 擴充區的字剖成半個", () => {
+    // 「𠮷」是 surrogate pair；用 String#slice 截會留下半個而變亂碼（DB 會拒寫）。
+    const out = customerSerialPrefix("試𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷公司");
+    const lone = out.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "");
+    expect(/[\uD800-\uDFFF]/.test(lone)).toBe(false);
+    expect(Array.from(out)).toHaveLength(12);
+  });
+
   it("空字串 / 只有贅字時回空字串", () => {
     expect(customerSerialPrefix("")).toBe("");
     expect(customerSerialPrefix("   ")).toBe("");
@@ -112,7 +120,7 @@ describe("parsePrefixedSerial", () => {
     });
   });
 
-  it("過濾器型號不會被誤判成前綴", () => {
+  it("多段型號 / 後段不像機號代號的型號不會被誤判成前綴", () => {
     expect(parsePrefixedSerial("LM-P-010")).toEqual({
       prefix: null,
       suffix: "LM-P-010",
@@ -120,6 +128,24 @@ describe("parsePrefixedSerial", () => {
     expect(parsePrefixedSerial("AL-010N")).toEqual({
       prefix: null,
       suffix: "AL-010N",
+    });
+  });
+
+  // 已知極限：單段型號與「英文前綴-代號」字面上無從區分，故意釘住現況，
+  // 提醒未來的呼叫端只把結果當顯示提示，不要拿去改寫使用者輸入的機號。
+  it("已知極限：單段型號會被當成帶前綴（與短英文客戶前綴同形）", () => {
+    expect(parsePrefixedSerial("AL-010")).toEqual({
+      prefix: "AL",
+      suffix: "010",
+    });
+    expect(parsePrefixedSerial("BMF8-8")).toEqual({
+      prefix: "BMF8",
+      suffix: "8",
+    });
+    // 收緊規則就會連這種正當的英文客戶前綴一起拆不回來，所以維持現況。
+    expect(parsePrefixedSerial("AIRTAC-1")).toEqual({
+      prefix: "AIRTAC",
+      suffix: "1",
     });
   });
 

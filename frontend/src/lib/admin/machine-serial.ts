@@ -53,7 +53,8 @@ function toHalfWidth(v: string): string {
  * 4. 去掉所有空白與連字號 —— 連字號保留給「前綴-機號」的分隔語意，
  *    前綴自身不得含連字號，否則 parsePrefixedSerial 無法切回來。
  * 5. 過長時只截短「本體」，保留結尾的分廠括號（如 `(二廠)`），
- *    避免同一客戶的不同分廠被截成同一個前綴而互撞。
+ *    避免同一客戶的不同分廠被截成同一個前綴而互撞。截斷以「字元（code point）」
+ *    為單位，避免把 CJK 擴充區（surrogate pair）的字剖成半個而產生亂碼。
  *
  * 例：「和成欣業(股)公司(二廠) 25」→「和成欣業(二廠)」；「兆利科技」→「兆利科技」。
  */
@@ -69,10 +70,13 @@ export function customerSerialPrefix(customerName: string): string {
   const m = /^(.*?)((?:\([^()]*\))+)$/.exec(s);
   const base = m ? m[1] : s;
   const tail = m ? m[2] : "";
-  return (
-    (base.length > MAX_PREFIX_BASE ? base.slice(0, MAX_PREFIX_BASE) : base) +
-    tail
-  );
+  // 以 code point 切，String#slice 會把 surrogate pair 剖半（如「𠮷」）。
+  const chars = Array.from(base);
+  const cut =
+    chars.length > MAX_PREFIX_BASE
+      ? chars.slice(0, MAX_PREFIX_BASE).join("")
+      : base;
+  return cut + tail;
 }
 
 /**
@@ -104,8 +108,13 @@ export function buildPrefixedSerial(
 
 /**
  * 反向拆解「前綴-機號」。判定保守，只有「單一連字號 + 後段看起來是機號代號」
- * 才算帶前綴；其餘（原廠機號 `J751307001`、過濾器型號 `LM-P-010`、`AL-010N`）
- * 一律回 `{ prefix: null, suffix: 原字串 }`，避免把型號誤判成前綴。
+ * 才算帶前綴；沒有連字號（原廠機號 `J751307001`）或後段還有連字號
+ * （過濾器型號 `LM-P-010`）一律回 `{ prefix: null, suffix: 原字串 }`。
+ *
+ * 已知極限：**單段型號與「前綴-代號」在字面上無法區分**。像 `AL-010`、
+ * `AD480-1`、`BMF8-8`（卡片上的機型）會被判成帶前綴，而 `AIRTAC-1` 這種
+ * 短英文客戶前綴也長得一樣，收緊規則就會反過來拆不回來。因此本函式只適合
+ * 「顯示 / 提示」用途，**不要**拿它的結果去改寫或覆蓋使用者輸入的機號。
  */
 export function parsePrefixedSerial(serial: string): {
   prefix: string | null;
