@@ -553,6 +553,12 @@ export type ExtractResult =
  *
  * customerId 為 null（辨識到的客戶對不上任何既有客戶）時不自動比對，改回傳
  * otherCustomer=true 的提示卡（其他客戶有同「機號」的卡），由核對畫面預設「建立新卡」。
+ *
+ * 但**過濾卡不做這個跨客戶提示**：過濾卡的「機號」是過濾器型號（AD480／100HA），
+ * 不是身分。拿它跨客戶查只會撈到「某家碰巧也買了同款乾燥機的客戶」，提示裡點名的
+ * 公司與眼前這張照片毫無關係——這正是 round 1 拿掉「跨客戶比代號」那一支的同一個
+ * 理由（零資訊量的提示比沒有提示更糟）。客戶對不上這件事本身，已由核對畫面上方的
+ * 「客戶對不上既有客戶」橫幅講明，那才是員工真正要處理的事。
  */
 async function matchCard(
   basic: {
@@ -562,18 +568,22 @@ async function matchCard(
   cardType: MxCardType,
   customerId: string | null,
 ): Promise<CardMatch | null> {
-  const hit: MachineIdentityHit | null = customerId
-    ? await findMachine({
-        customerId,
-        machineNo: basic.machine_no,
-        serialNo: basic.serial_no,
-        cardType,
-      })
-    : // 客戶未定：只能拿「機號」跨客戶提示（代號跨客戶必然重複，拿它比等於亂猜）。
-      await findMachineAcrossCustomers({
-        serialNo: basic.serial_no,
-        cardType,
-      });
+  let hit: MachineIdentityHit | null = null;
+  if (customerId) {
+    hit = await findMachine({
+      customerId,
+      machineNo: basic.machine_no,
+      serialNo: basic.serial_no,
+      cardType,
+    });
+  } else if (cardType !== "filter") {
+    // 客戶未定：只能拿「機號」跨客戶提示（代號跨客戶必然重複，拿它比等於亂猜）。
+    // 空壓機的機號是原廠序號，跨客戶命中真的就是同一台機器，值得提示。
+    hit = await findMachineAcrossCustomers({
+      serialNo: basic.serial_no,
+      cardType,
+    });
+  }
   if (!hit) return null;
   const columns =
     cardType === "filter"

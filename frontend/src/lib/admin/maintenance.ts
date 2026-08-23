@@ -394,9 +394,19 @@ function pickIdentityMatch(
     return { row: untagged, confident: serialIdentifies };
   }
 
-  // 照片沒有代號：優先挑同樣沒有代號的那張（0018 保證同機號至多一張，且它正是
-  // 「一直沒有代號的那台」）。
-  if (untagged) return { row: untagged, confident: true };
+  // 照片沒有代號：優先挑同樣沒有代號的那張（0018 保證同機號至多一張）。
+  //
+  // 但「照片沒讀到代號」不等於「這台機器沒有代號」—— 代號常是手寫在卡邊的，漏讀是
+  // 常態（下一段之所以要 sameSerial.length === 1 就是承認這件事）。因此過濾卡若同機號
+  // 底下**還有別張有代號的卡**，就等於資料已明說「這個客戶有兩台以上同型機」，此時挑
+  // 沒代號的那張同樣是擲骰子（只是骰子偏心），不可預設附加：照片可能正是那台 B機，
+  // 而 B機 的維護列一旦接到沒代號的那張卡上，卡面完全看不出來。
+  // 空壓機不受影響：機號是原廠序號，同機號本來就是同一台，多張只是重複建卡。
+  if (untagged)
+    return {
+      row: untagged,
+      confident: serialIdentifies || sameSerial.length === 1,
+    };
   // 只剩「有代號」的卡可挑。剛好一張時當候選還算合理；兩張以上（同客戶兩台 AD480，
   // 一張 A機 一張 B機）取第一張純粹是擲骰子，絕不可預設附加。
   const first = sameSerial[0];
@@ -447,6 +457,11 @@ export async function findMachineByTag(
  * 刻意**不比機台代號**：代號是客戶內部稱呼，「A機」「1號機」跨客戶本來就必然重複
  * （這正是 #165 的前提）。拿代號跨客戶比等於隨機挑一家有 A機 的客戶當提示 —— 提示
  * 幾乎必為誤報，員工照著勾「附加」就會把維護列寫進毫不相干的客戶卡裡。
+ *
+ * ⚠️ 同理，**過濾卡的提示用途也不該呼叫這支**：過濾卡的「機號」是過濾器型號
+ * （AD480／100HA），跨客戶命中只代表「有另一家客戶也買了同款乾燥機」，零資訊量。
+ * 拍照辨識端（actions.matchCard）因此只在空壓機卡上叫它。這支本身仍收 cardType，
+ * 是為了「查所有在用 AD480 的客戶」這類**明確要跨客戶**的查詢保留彈性。
  */
 export async function findMachineAcrossCustomers(input: {
   serialNo?: string | null;

@@ -157,12 +157,42 @@ describe("findMachine — 客戶範圍內的比對", () => {
     expect(hit?.confident).toBe(false);
   });
 
-  it("照片沒代號、比到沒代號的卡 → confident（0018 保證同機號至多一張）", async () => {
+  it("過濾卡：照片沒代號、比到唯一一張同型號卡（沒代號）→ confident", async () => {
+    // 既有資料的常態：客戶只有一張 AD480 卡、還沒補代號，照片也沒讀到代號。
+    // 資料裡沒有任何「還有第二台」的跡象 → 這一步不該讓員工多按一下。
+    fakeSupabase([row("m-1", null, "AD480")]);
+    const hit = await findMachine({
+      customerId: "cust-1",
+      serialNo: "AD480",
+      cardType: "filter",
+    });
+    expect(hit?.id).toBe("m-1");
+    expect(hit?.confident).toBe(true);
+  });
+
+  it("過濾卡：照片沒代號、同型號底下另有「有代號」的卡 → 挑沒代號那張但 not confident", async () => {
+    // 過渡狀態：客戶兩台 AD480，一張已補「A機」、一張還沒補代號。
+    // 照片沒讀到代號**不代表**這台沒有代號（代號常手寫在卡邊，漏讀是常態），
+    // 所以照片可能正是 A機 那台。此時預設附加就會把 A機 的維護列靜靜接到另一張卡上。
     fakeSupabase([row("m-1", "A機", "AD480"), row("m-2", null, "AD480")]);
     const hit = await findMachine({
       customerId: "cust-1",
       serialNo: "AD480",
       cardType: "filter",
+    });
+    expect(hit?.id).toBe("m-2");
+    expect(hit?.confident).toBe(false);
+  });
+
+  it("空壓機卡：照片沒代號、同機號底下另有「有代號」的卡 → 仍 confident（原廠序號＝同一台）", async () => {
+    fakeSupabase([
+      row("m-1", "A機", "J751307001"),
+      row("m-2", null, "J751307001"),
+    ]);
+    const hit = await findMachine({
+      customerId: "cust-1",
+      serialNo: "J751307001",
+      cardType: "compressor",
     });
     expect(hit?.id).toBe("m-2");
     expect(hit?.confident).toBe(true);

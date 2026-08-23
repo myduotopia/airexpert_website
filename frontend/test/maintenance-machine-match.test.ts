@@ -355,6 +355,35 @@ describe("extractCardFromImageAction — 先解析客戶，再在客戶內找機
     expect(res.customerResolved).toBe(false);
   });
 
+  it("過濾卡 + 客戶對不上 → 連跨客戶提示都不做（型號不是身分）", async () => {
+    // 過濾卡的「機號」是過濾器型號（AD480），跨客戶命中只代表「另一家也買了同款
+    // 乾燥機」，提示裡點名的公司與這張照片毫無關係 —— 零資訊量的提示比沒有更糟
+    // （同 round 1 拿掉「跨客戶比代號」的理由）。客戶對不上這件事由上方橫幅講明。
+    extractMaintenanceCard.mockResolvedValue({
+      raw: {
+        basic: {
+          customer_name: "沒見過的公司",
+          customer_code: "",
+          serial_no: "過濾AD480",
+          machine_no: "B機",
+        },
+        records: [{ service_date: "2026-01-23", filter_system: "乾燥機濾芯" }],
+      },
+      model: "gemini",
+    });
+    selectRows.mx_customers = []; // 查無此客戶
+    const res = await extractCardFromImageAction(input);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.cards.compressor).toBeNull();
+    expect(res.cards.filter).not.toBeNull();
+    expect(findMachine).not.toHaveBeenCalled();
+    expect(findMachineAcrossCustomers).not.toHaveBeenCalled();
+    expect(res.filterMatch).toBeNull();
+    // 員工要拿到的訊號是「客戶對不上」，不是某家不相干公司的 AD480。
+    expect(res.customerResolved).toBe(false);
+  });
+
   it("客戶對不上、其他客戶也沒有同識別卡 → 就是一張全新的卡", async () => {
     stubExtraction();
     selectRows.mx_customers = [];
