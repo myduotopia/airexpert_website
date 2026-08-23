@@ -3,7 +3,10 @@ import {
   cleanText,
   machinePayloadFromForm,
   recordPayloadFromForm,
+  customerPayloadFromForm,
   normalizeSerial,
+  normalizeCustomerCode,
+  cardTypeLabel,
   parseExtraction,
 } from "@/lib/admin/maintenance-normalize";
 
@@ -80,5 +83,47 @@ describe("parseExtraction", () => {
     const out = parseExtraction({});
     expect(out.basic.serial_no).toBe("");
     expect(out.records).toEqual([]);
+  });
+});
+
+describe("customerPayloadFromForm", () => {
+  it("清洗客戶主檔欄位，空字串轉 null", () => {
+    const fd = new FormData();
+    fd.set("name", "  超勁賀股份有限公司 ");
+    fd.set("code", " A-001 ");
+    fd.set("contact_person", "王先生");
+    fd.set("phone", "  ");
+    fd.set("address", "台中市…");
+    fd.set("note", "");
+    const out = customerPayloadFromForm(fd);
+    expect(out.name).toBe("超勁賀股份有限公司");
+    expect(out.code).toBe("A-001");
+    expect(out.contact_person).toBe("王先生");
+    expect(out.phone).toBeNull();
+    expect(out.address).toBe("台中市…");
+    expect(out.note).toBeNull();
+  });
+
+  it("缺客戶名稱時丟錯", () => {
+    expect(() => customerPayloadFromForm(new FormData())).toThrow(/客戶名稱/);
+  });
+});
+
+describe("normalizeCustomerCode", () => {
+  it("lower + trim，與 0013 索引對齊", () => {
+    expect(normalizeCustomerCode(" A-001 ")).toBe("a-001");
+    expect(normalizeCustomerCode(null)).toBe("");
+    expect(normalizeCustomerCode(undefined)).toBe("");
+  });
+});
+
+describe("cardTypeLabel", () => {
+  it("card_type 尚未落地（undefined / null）時視為空壓機卡", () => {
+    expect(cardTypeLabel(undefined)).toBe("空壓機");
+    expect(cardTypeLabel(null)).toBe("空壓機");
+  });
+
+  it("filter → 過濾系統", () => {
+    expect(cardTypeLabel("filter")).toBe("過濾系統");
   });
 });

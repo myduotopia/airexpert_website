@@ -20,6 +20,10 @@ export default async function MachineDetailPage({
   const data = await getMachine(machineId);
   if (!data) notFound();
   const { machine, customer, records } = data;
+  // 客戶為防呆佔位（id 為空）時不做成連結，避免連到 /customers/ 空白路徑。
+  const customerHref = customer.id
+    ? `/admin/maintenance/customers/${customer.id}`
+    : null;
 
   const columns: Column<MxRecord>[] = [
     { header: "日期", cell: (r) => rocDate(r.service_date) },
@@ -55,9 +59,18 @@ export default async function MachineDetailPage({
       <div className="flex items-center justify-between">
         <h1 className="text-ink text-[24px] font-bold">
           {machine.serial_no}
-          <span className="text-text-muted ml-2 text-[16px] font-normal">
-            {customer.name}
-          </span>
+          {customerHref ? (
+            <Link
+              href={customerHref}
+              className="text-text-muted hover:text-primary-deep ml-2 text-[16px] font-normal"
+            >
+              {customer.name}
+            </Link>
+          ) : (
+            <span className="text-text-muted ml-2 text-[16px] font-normal">
+              {customer.name}
+            </span>
+          )}
         </h1>
         <Link
           href={`/admin/maintenance/${machineId}/edit`}
@@ -89,7 +102,21 @@ export default async function MachineDetailPage({
         </div>
         <div>
           <dt className="text-text-muted">客戶編號</dt>
-          <dd className="text-ink">{customer.code ?? "—"}</dd>
+          <dd className="text-ink">
+            {/* 無客戶編號時不做成連結——否則連結文字會是「—」，
+                螢幕閱讀器只會念出一個破折號（可辨識連結目的失效）。
+                此情境仍可由標題旁的客戶名稱進客戶頁。 */}
+            {customerHref && customer.code ? (
+              <Link
+                href={customerHref}
+                className="text-ink hover:text-primary-deep underline-offset-2 hover:underline"
+              >
+                {customer.code}
+              </Link>
+            ) : (
+              (customer.code ?? "—")
+            )}
+          </dd>
         </div>
         <div>
           <dt className="text-text-muted">機台編號</dt>
