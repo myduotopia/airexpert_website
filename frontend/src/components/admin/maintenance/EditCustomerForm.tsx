@@ -47,7 +47,17 @@ export function EditCustomerForm({
     setBusy(true);
     setError(null);
     setWarning(null);
-    const res = await updateCustomerAction(customerId, fd);
+    let res: Awaited<ReturnType<typeof updateCustomerAction>>;
+    try {
+      res = await updateCustomerAction(customerId, fd);
+    } catch (e) {
+      // 送不出去（斷網、server action 本身失敗）時的保底。不接的話這個 rejection
+      // 會冒到最近的 error boundary，而本專案沒有 error.tsx，結果就是整頁換成通用
+      // 錯誤畫面、剛改的內容一起消失。
+      setBusy(false);
+      setError((e as Error)?.message || "儲存失敗，請確認網路後再試一次。");
+      return;
+    }
     setBusy(false);
     if (!res.ok) {
       setError(res.error);

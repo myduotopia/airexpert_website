@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { CardBasicFields, type CardBasicValues } from "./CardBasicForm";
 import { ColumnsEditor, type ColumnItem } from "./ColumnsEditor";
 import type { MxCardType } from "@/lib/admin/maintenance-normalize";
+import type { ActionResult } from "@/lib/admin/crud";
 import { updateMachineAction } from "@/app/admin/(protected)/maintenance/actions";
 
 export function EditMachineForm({
@@ -25,7 +26,17 @@ export function EditMachineForm({
   async function onSubmit(fd: FormData) {
     setBusy(true);
     setError(null);
-    const res = await updateMachineAction(machineId, fd);
+    let res: ActionResult;
+    try {
+      res = await updateMachineAction(machineId, fd);
+    } catch (e) {
+      // 送不出去（斷網、server action 本身失敗）時的保底。不接的話這個 rejection
+      // 會冒到最近的 error boundary，而本專案沒有 error.tsx，結果就是整頁換成通用
+      // 錯誤畫面、剛改的內容一起消失。
+      setBusy(false);
+      setError((e as Error)?.message || "儲存失敗，請確認網路後再試一次。");
+      return;
+    }
     setBusy(false);
     if (!res.ok) {
       setError(res.error);
