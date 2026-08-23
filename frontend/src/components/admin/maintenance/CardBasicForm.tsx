@@ -27,17 +27,17 @@ export interface CardBasicValues {
   drain_spec?: string;
 }
 
-type PlainField = {
+type PlainFieldDef = {
   name: keyof CardBasicValues;
   label: string;
   type?: string;
   roc?: boolean;
 };
 
-// 非受控（沿用 defaultValue）的其餘欄位；roc=true 者改用民國日期輸入。
+// 其餘欄位；roc=true 者改用民國日期輸入（MinguoDateInput 內部已是受控）。
 // 空壓機卡與過濾（乾燥機）卡的表頭不同：乾燥機卡沒有馬力 / 電壓 / 購買時間，
 // 改為兩塊多行規格清單（過濾器、排水器 / 馬達葉片），見下方 SPEC_FIELDS。
-const PLAIN_FIELDS: Record<MxCardType, PlainField[]> = {
+const PLAIN_FIELDS: Record<MxCardType, PlainFieldDef[]> = {
   compressor: [
     { name: "location", label: "使用地點" },
     { name: "purchased_at", label: "購買時間", roc: true },
@@ -71,6 +71,53 @@ const SPEC_FIELDS: {
 
 const INPUT_CLASS =
   "border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none";
+const AREA_CLASS =
+  "border-border focus:border-primary rounded-lg border px-3 py-2 text-[15px] outline-none";
+
+// 以下兩個輸入元件刻意「受控」（useState 種入初值）而非 defaultValue：
+// React 19 的 <form action={fn}> 會在 action 結束後自動 reset 表單
+// （react-dom 的 startHostTransition → requestFormReset），非受控欄位會被清回初值。
+// 建卡失敗（例如撞機號）時表單留在原地讓人修正，這幾欄卻會整排被清空，員工改完
+// 機號再送出就建出一張少了使用地點 / 機型 / 馬力 / 電壓的卡。受控欄位不受 reset 影響。
+// 同 app/admin/(protected)/home/sections/primitives.tsx 的作法。
+
+/** 一般單行文字欄（受控）。 */
+function PlainInput({
+  name,
+  type,
+  initial,
+}: {
+  name: string;
+  type?: string;
+  initial: string;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <input
+      id={name}
+      name={name}
+      type={type ?? "text"}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      className={INPUT_CLASS}
+    />
+  );
+}
+
+/** 多行規格欄（受控）。 */
+function SpecTextarea({ name, initial }: { name: string; initial: string }) {
+  const [value, setValue] = useState(initial);
+  return (
+    <textarea
+      id={name}
+      name={name}
+      rows={3}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      className={AREA_CLASS}
+    />
+  );
+}
 
 /**
  * 具建議下拉的受控輸入。value/onChange 由父層控制；輸入時 debounce 查詢 fetcher，
@@ -264,12 +311,10 @@ export function CardBasicFields({
               defaultIso={values?.[f.name]}
             />
           ) : (
-            <input
-              id={fieldName(f.name)}
+            <PlainInput
               name={fieldName(f.name)}
-              type={f.type ?? "text"}
-              defaultValue={values?.[f.name] ?? ""}
-              className={INPUT_CLASS}
+              type={f.type}
+              initial={values?.[f.name] ?? ""}
             />
           )}
         </div>
@@ -286,12 +331,9 @@ export function CardBasicFields({
                 {f.hint}
               </span>
             </label>
-            <textarea
-              id={fieldName(f.name)}
+            <SpecTextarea
               name={fieldName(f.name)}
-              rows={3}
-              defaultValue={values?.[f.name] ?? ""}
-              className="border-border focus:border-primary rounded-lg border px-3 py-2 text-[15px] outline-none"
+              initial={values?.[f.name] ?? ""}
             />
           </div>
         ))}
