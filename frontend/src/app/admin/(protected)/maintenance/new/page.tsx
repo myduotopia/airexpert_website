@@ -1,8 +1,6 @@
 import { requireRole } from "@/lib/admin/auth";
-import { CardBasicFields } from "@/components/admin/maintenance/CardBasicForm";
-import { ColumnsEditor } from "@/components/admin/maintenance/ColumnsEditor";
+import { NewMachineForm } from "@/components/admin/maintenance/NewMachineForm";
 import { parseCardType } from "@/lib/admin/maintenance-normalize";
-import { createMachineAction } from "../actions";
 
 export const metadata = { title: "新增保養卡 · 後台" };
 
@@ -21,16 +19,7 @@ export default async function NewMachinePage({
       <h1 className="text-ink mb-6 text-[24px] font-bold">
         {cardType === "filter" ? "新增過濾系統保養卡" : "新增空壓機保養卡"}
       </h1>
-      <form action={createMachineAction} className="flex flex-col gap-6">
-        <CardBasicFields cardType={cardType} />
-        {cardType === "filter" && <ColumnsEditor />}
-        <button
-          type="submit"
-          className="bg-primary hover:bg-primary-deep h-11 self-start rounded-lg px-6 text-[15px] font-semibold text-white"
-        >
-          建立
-        </button>
-      </form>
+      <NewMachineForm cardType={cardType} />
     </div>
   );
 }

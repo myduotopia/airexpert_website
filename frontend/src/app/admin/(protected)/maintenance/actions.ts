@@ -238,48 +238,67 @@ async function syncMachineColumns(
   }
 }
 
-/** 建立新卡（含客戶）。表單需帶 customer_name + 機器欄位。成功後導向卡詳情。 */
-export async function createMachineAction(fd: FormData): Promise<void> {
+export type CreateMachineResult =
+  | { ok: true; machineId: string }
+  | { ok: false; error: string };
+
+/**
+ * 建立新卡（含客戶）。表單需帶 customer_name + 機器欄位。
+ *
+ * 回傳 result 而非 throw：Next.js 在 production 會把 server action 丟出的 Error
+ * 訊息抹成 digest，而本專案沒有 error.tsx，員工只會看到通用的錯誤頁、整張表單
+ * 剛打的內容也全部消失 —— 撞機號 / 機號未填這種「改一個欄位就能送出」的情況
+ * 尤其不該用整頁錯誤來回報。導頁改由 client 端 router.push（見 NewMachineForm，
+ * 與 EditMachineForm 一致）。
+ */
+export async function createMachineAction(
+  fd: FormData,
+): Promise<CreateMachineResult> {
   await requireRole(["office"]);
   const supabase = await getServerSupabase();
 
-  const customerName = String(fd.get("customer_name") ?? "").trim();
-  if (!customerName) throw new Error("客戶名稱為必填。");
-  const customerCode = String(fd.get("customer_code") ?? "").trim();
-  const payload = machinePayloadFromForm(fd);
+  try {
+    const customerName = String(fd.get("customer_name") ?? "").trim();
+    if (!customerName) return { ok: false, error: "客戶名稱為必填。" };
+    const customerCode = String(fd.get("customer_code") ?? "").trim();
+    // machinePayloadFromForm（機號必填）等純函式驗證會 throw，由下方 catch 收成 result。
+    const payload = machinePayloadFromForm(fd);
 
-  const customerId = await findOrCreateCustomer(supabase, {
-    code: customerCode,
-    name: customerName,
-  });
-  const { data, error } = await supabase
-    .from("mx_machines")
-    .insert({ ...payload, customer_id: customerId })
-    .select("id")
-    .single();
-  if (error) {
-    if (error.code === "23505")
-      throw new Error("此機號已存在，請改用既有卡片。");
-    throw new Error(`建立保養卡失敗：${error.message}`);
-  }
-  const machineId = (data as { id: string }).id;
-
-  if (payload.card_type === "filter") {
-    // 建卡與建欄非同一交易；欄位寫入失敗就把剛建的卡刪掉，避免留下沒有欄位的空卡。
-    try {
-      await syncMachineColumns(
-        supabase,
-        machineId,
-        parseColumnDefs(fd.get("columns_json")),
-      );
-    } catch (e) {
-      await supabase.from("mx_machines").delete().eq("id", machineId);
-      throw e;
+    const customerId = await findOrCreateCustomer(supabase, {
+      code: customerCode,
+      name: customerName,
+    });
+    const { data, error } = await supabase
+      .from("mx_machines")
+      .insert({ ...payload, customer_id: customerId })
+      .select("id")
+      .single();
+    if (error) {
+      if (error.code === "23505")
+        return { ok: false, error: "此機號已存在，請改用既有卡片。" };
+      return { ok: false, error: `建立保養卡失敗：${error.message}` };
     }
-  }
+    const machineId = (data as { id: string }).id;
 
-  revalidatePath("/admin/maintenance");
-  redirect(`/admin/maintenance/${machineId}`);
+    if (payload.card_type === "filter") {
+      // 建卡與建欄非同一交易；欄位寫入失敗就把剛建的卡刪掉，避免留下沒有欄位的空卡。
+      try {
+        await syncMachineColumns(
+          supabase,
+          machineId,
+          parseColumnDefs(fd.get("columns_json")),
+        );
+      } catch (e) {
+        await supabase.from("mx_machines").delete().eq("id", machineId);
+        throw e;
+      }
+    }
+
+    revalidatePath("/admin/maintenance");
+    return { ok: true, machineId };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 /** 更新既有卡的基本資訊（含客戶名）。 */

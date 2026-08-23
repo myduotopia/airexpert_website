@@ -7,6 +7,7 @@ import {
   type FilterColumn,
   type FilterRecordValues,
 } from "./FilterRecordForm";
+import type { ActionResult } from "@/lib/admin/crud";
 import { updateRecordAction } from "@/app/admin/(protected)/maintenance/actions";
 
 /**
@@ -29,7 +30,17 @@ function EditRecordShell({
   async function onSubmit(fd: FormData) {
     setBusy(true);
     setError(null);
-    const res = await updateRecordAction(recordId, machineId, fd);
+    let res: ActionResult;
+    try {
+      res = await updateRecordAction(recordId, machineId, fd);
+    } catch (e) {
+      // 送不出去（斷網、server action 本身失敗）時的保底。不接的話這個 rejection
+      // 會冒到最近的 error boundary，而本專案沒有 error.tsx，結果就是整頁換成通用
+      // 錯誤畫面、剛改的內容一起消失。
+      setBusy(false);
+      setError((e as Error)?.message || "儲存失敗，請確認網路後再試一次。");
+      return;
+    }
     setBusy(false);
     if (!res.ok) {
       setError(res.error);
