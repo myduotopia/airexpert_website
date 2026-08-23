@@ -7,6 +7,7 @@ import {
   parseExtraction,
   parseCardType,
   parseColumnDefs,
+  MAX_COLUMN_DEFS,
   columnFieldName,
   filterRecordPayloadFromForm,
   readRecordValues,
@@ -93,11 +94,41 @@ describe("parseColumnDefs", () => {
     expect(parseColumnDefs(JSON.stringify({ label: "A" }))).toEqual([]);
     expect(parseColumnDefs("")).toEqual([]);
     expect(parseColumnDefs(null)).toEqual([]);
+    expect(parseColumnDefs(JSON.stringify(["x", 1, null, [], true]))).toEqual(
+      [],
+    );
+    expect(
+      parseColumnDefs(JSON.stringify([{ id: 42, label: { a: 1 } }])),
+    ).toEqual([]);
+  });
+
+  it("keeps only the first entry per repeated column id", () => {
+    const raw = JSON.stringify([
+      { id: "a", label: "第一次" },
+      { id: "b", label: "B" },
+      { id: "a", label: "重複" },
+      { id: null, label: "新欄" },
+      { id: null, label: "另一個新欄" },
+    ]);
+    expect(parseColumnDefs(raw)).toEqual([
+      { id: "a", label: "第一次" },
+      { id: "b", label: "B" },
+      { id: null, label: "新欄" },
+      { id: null, label: "另一個新欄" },
+    ]);
+  });
+
+  it("caps a hostile huge array at MAX_COLUMN_DEFS", () => {
+    const raw = JSON.stringify(
+      Array.from({ length: 5000 }, (_, i) => ({ id: null, label: `c${i}` })),
+    );
+    expect(parseColumnDefs(raw)).toHaveLength(MAX_COLUMN_DEFS);
   });
 });
 
 describe("filterRecordPayloadFromForm", () => {
-  // 重現 xlsx 的 KF115-3：7 個動態耗材欄。
+  // 重現 xlsx 的 KF115-3 表格：日期 + 6 個動態耗材欄 + 維護員（+ 備註）。
+  // 日期 / 維護員 / 備註 是兩種卡共用的固定欄，只有耗材欄進 mx_machine_columns。
   const columns = [
     { id: "c1", label: "EA350-Q 濾蕊" },
     { id: "c2", label: "EA350-S 濾蕊" },

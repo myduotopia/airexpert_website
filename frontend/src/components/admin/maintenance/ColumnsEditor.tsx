@@ -92,9 +92,15 @@ export function ColumnsEditor({ initial }: { initial?: ColumnItem[] }) {
               <span className="text-text-muted w-6 shrink-0 text-center text-[13px]">
                 {i + 1}
               </span>
+              {/*
+                既有欄位（id 不為 null）的名稱必填：server 端會把空白名稱視為
+                「這一欄不要了」而刪掉欄位定義，所以不能讓使用者不小心清空欄名
+                就靜靜掉一整欄。新增中的空白列（id 為 null）則允許直接送出丟棄。
+              */}
               <input
                 type="text"
                 value={row.label}
+                required={row.id !== null}
                 aria-label={`第 ${i + 1} 個耗材欄位名稱`}
                 placeholder="欄位名稱"
                 onChange={(e) =>
@@ -156,7 +162,7 @@ export function ColumnsEditor({ initial }: { initial?: ColumnItem[] }) {
       </div>
 
       <p className="text-text-muted text-[13px]">
-        刪除欄位只會移除欄位定義；既有紀錄中該欄的值仍保留在資料庫，只是不再顯示。
+        刪除欄位只會移除欄位定義，不會動到既有紀錄；但該欄的值將不再顯示，且日後編輯到該筆紀錄時會一併清除，請確認後再刪。
       </p>
 
       <input type="hidden" name="columns_json" value={payload} />

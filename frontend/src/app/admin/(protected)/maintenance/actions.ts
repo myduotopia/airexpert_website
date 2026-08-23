@@ -304,7 +304,10 @@ export async function updateMachineAction(
       if (error.code === "23505") return { ok: false, error: "此機號已存在。" };
       return { ok: false, error: error.message };
     }
-    if (ctx.card_type === "filter") {
+    // 只有表單真的帶了 columns_json 才動欄位定義。缺這個欄位就當「這次不改欄位」，
+    // 避免非本表單送出的請求（少帶一個 field）把整張卡的欄位定義全部刪掉；
+    // 正常送出時就算欄位清空也會帶 "[]"，仍會走到同步。
+    if (ctx.card_type === "filter" && fd.has("columns_json")) {
       await syncMachineColumns(
         supabase,
         machineId,

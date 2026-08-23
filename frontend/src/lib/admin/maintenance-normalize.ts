@@ -95,8 +95,15 @@ export interface ColumnDef {
 }
 
 /**
+ * 一張卡的耗材欄上限。實際的卡最多 7 欄（xlsx 三個分頁），
+ * 此上限只用來擋畸形 / 惡意的 columns_json（避免同步時打出上千個 DB 請求）。
+ */
+export const MAX_COLUMN_DEFS = 50;
+
+/**
  * 解析欄位編輯器送出的隱藏欄位 columns_json。
  * 容錯：非陣列 / 非物件 / label 空白一律丟棄，永不 throw（表單不該因髒資料整頁爆掉）。
+ * 重複的 id 只取第一筆，超過 MAX_COLUMN_DEFS 的部分截斷。
  * 回傳順序即為欄位由左到右的順序。
  */
 export function parseColumnDefs(
@@ -111,15 +118,23 @@ export function parseColumnDefs(
     return [];
   }
   if (!Array.isArray(parsed)) return [];
-  return parsed
-    .map((item) => {
-      const o = (item ?? {}) as Record<string, unknown>;
-      const label = cleanText(str(o.label));
-      if (!label) return null;
-      const id = cleanText(str(o.id));
-      return { id, label };
-    })
-    .filter((c): c is ColumnDef => c !== null);
+  const seen = new Set<string>();
+  const out: ColumnDef[] = [];
+  for (const item of parsed) {
+    if (out.length >= MAX_COLUMN_DEFS) break;
+    const o = (item ?? {}) as Record<string, unknown>;
+    const label = cleanText(str(o.label));
+    if (!label) continue;
+    const id = cleanText(str(o.id));
+    // 同一個 id 出現兩次會讓 syncMachineColumns 對同一列送出兩次 update
+    // （sort_order 互相覆蓋），結果是靜靜少掉一欄；重複者只留第一筆。
+    if (id !== null) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+    }
+    out.push({ id, label });
+  }
+  return out;
 }
 
 /** 動態耗材欄在表單中的欄位名。與 FilterRecordFields 的 input name 一致。 */
