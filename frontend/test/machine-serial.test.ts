@@ -40,12 +40,20 @@ describe("customerSerialPrefix", () => {
     );
   });
 
-  it("截斷以字元為單位，不會把 CJK 擴充區的字剖成半個", () => {
-    // 「𠮷」是 surrogate pair；用 String#slice 截會留下半個而變亂碼（DB 會拒寫）。
-    const out = customerSerialPrefix("試𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷公司");
-    const lone = out.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "");
-    expect(/[\uD800-\uDFFF]/.test(lone)).toBe(false);
+  it("截斷以字元（code point）為單位，不會把 CJK 擴充區的字剖成半個", () => {
+    // 「𠮷」是 surrogate pair（UTF-16 佔 2 格）。本體給 13 個字，確保真的走到
+    // 截斷分支；用 String#slice 會在第 12 個 UTF-16 格切斷、留下半個而變亂碼。
+    const out = customerSerialPrefix(`試${"𠮷".repeat(12)}公司`);
+    expect(out).toBe(`試${"𠮷".repeat(11)}`);
     expect(Array.from(out)).toHaveLength(12);
+    // 配對掉所有 surrogate pair 後不應再剩落單的 surrogate。
+    const paired = out.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "");
+    expect(/[\uD800-\uDFFF]/.test(paired)).toBe(false);
+  });
+
+  it("本體長度剛好等於上限時不截斷", () => {
+    const out = customerSerialPrefix(`試${"𠮷".repeat(11)}公司`);
+    expect(out).toBe(`試${"𠮷".repeat(11)}`);
   });
 
   it("空字串 / 只有贅字時回空字串", () => {

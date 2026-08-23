@@ -171,7 +171,11 @@ export function CardBasicFields({
   const [customerName, setCustomerName] = useState(values?.customer_name ?? "");
   const [serialNo, setSerialNo] = useState(values?.serial_no ?? "");
   const [machineNo, setMachineNo] = useState(values?.machine_no ?? "");
-  const [conflict, setConflict] = useState<SerialConflict | null>(null);
+  // 連同「當初查的是哪個機號」一起存，才能在使用者改掉機號後立刻停止顯示舊結果。
+  const [conflict, setConflict] = useState<{
+    serial: string;
+    hit: SerialConflict;
+  } | null>(null);
   const serialRef = useRef<HTMLInputElement | null>(null);
 
   // 客戶名稱改變時只更新這個提示字，**不**動已輸入的機號（避免覆蓋人工值）。
@@ -188,7 +192,7 @@ export function CardBasicFields({
       }
       try {
         const hit = await checkSerialConflictAction(serial, machineId);
-        if (!cancelled) setConflict(hit);
+        if (!cancelled) setConflict(hit ? { serial, hit } : null);
       } catch {
         // 預檢僅為輔助提示，查詢失敗就當作沒有衝突（送出時仍有 server 端把關）。
         if (!cancelled) setConflict(null);
@@ -199,6 +203,14 @@ export function CardBasicFields({
       clearTimeout(t);
     };
   }, [serialNo, machineId]);
+
+  // 只有「預檢時查的機號」仍等於目前輸入時才顯示衝突。否則使用者照提示改完機號後，
+  // 紅字還會停在畫面上（而且寫的是舊機號）到 debounce + 往返結束為止。
+  // 比對比照 unique index 的 lower(btrim())，純大小寫變動不會讓紅字閃掉。
+  const activeConflict =
+    conflict && conflict.serial.toLowerCase() === serialNo.trim().toLowerCase()
+      ? conflict.hit
+      : null;
 
   // 選客戶 → 帶入客戶編號 + 名稱（不動機台欄）。
   function pickCustomer(hit: CustomerHit) {
@@ -279,14 +291,13 @@ export function CardBasicFields({
         }
         hint="可用「客戶名稱-A」形式，例：兆利科技-A"
         footer={
-          conflict && (
+          activeConflict && (
             <p className="text-[13px] text-red-600">
-              此機號已被「{conflict.customer_name || "（未命名客戶）"}
-              」的卡使用（{
-                conflict.serial_no
-              }）。請改用「客戶名稱-A」形式，或{" "}
+              此機號已被「{activeConflict.customer_name || "（未命名客戶）"}
+              」的卡使用（{activeConflict.serial_no}
+              ）。請改用「客戶名稱-A」形式，或{" "}
               <a
-                href={`/admin/maintenance/${conflict.id}`}
+                href={`/admin/maintenance/${activeConflict.id}`}
                 target="_blank"
                 rel="noreferrer"
                 className="font-medium underline"

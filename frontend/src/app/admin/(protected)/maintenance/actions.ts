@@ -199,36 +199,55 @@ function serialConflictMessage(hit: SerialConflict | null): string {
   return `機號「${hit.serial_no}」已被「${who}」的卡使用。${SERIAL_CONFLICT_MESSAGE}`;
 }
 
-/** 建立新卡（含客戶）。表單需帶 customer_name + 機器欄位。成功後導向卡詳情。 */
-export async function createMachineAction(fd: FormData): Promise<void> {
+export type CreateMachineResult =
+  | { ok: true; machineId: string }
+  | { ok: false; error: string };
+
+/**
+ * 建立新卡（含客戶）。表單需帶 customer_name + 機器欄位。
+ *
+ * 回傳 result 而非 throw：Next.js 在 production 會把 server action 丟出的
+ * Error 訊息抹成 digest，員工只會看到通用錯誤頁並且整張表單的輸入全沒了 ——
+ * 機號衝突的引導訊息（「可改用『客戶名稱-A』形式」）就永遠傳不到人眼前。
+ * 導頁改由 client 端 router.push（沿用本專案其餘後台表單的作法）。
+ */
+export async function createMachineAction(
+  fd: FormData,
+): Promise<CreateMachineResult> {
   await requireRole(["office"]);
   const supabase = await getServerSupabase();
 
-  const customerName = String(fd.get("customer_name") ?? "").trim();
-  if (!customerName) throw new Error("客戶名稱為必填。");
-  const customerCode = String(fd.get("customer_code") ?? "").trim();
-  const payload = machinePayloadFromForm(fd);
+  try {
+    const customerName = String(fd.get("customer_name") ?? "").trim();
+    if (!customerName) return { ok: false, error: "客戶名稱為必填。" };
+    const customerCode = String(fd.get("customer_code") ?? "").trim();
+    const payload = machinePayloadFromForm(fd);
 
-  // 建卡前先預檢機號，直接給出「撞到誰」的訊息，不必等 DB 丟 23505。
-  const conflict = await checkSerialConflictAction(payload.serial_no);
-  if (conflict) throw new Error(serialConflictMessage(conflict));
+    // 建卡前先預檢機號，直接給出「撞到誰」的訊息，不必等 DB 丟 23505。
+    const conflict = await checkSerialConflictAction(payload.serial_no);
+    if (conflict) return { ok: false, error: serialConflictMessage(conflict) };
 
-  const customerId = await findOrCreateCustomer(supabase, {
-    code: customerCode,
-    name: customerName,
-  });
-  const { data, error } = await supabase
-    .from("mx_machines")
-    .insert({ ...payload, customer_id: customerId })
-    .select("id")
-    .single();
-  if (error) {
-    // 預檢與 insert 之間仍可能被別人搶先（race），或撞到封存卡以外的邊界。
-    if (error.code === "23505") throw new Error(SERIAL_CONFLICT_MESSAGE);
-    throw new Error(`建立保養卡失敗：${error.message}`);
+    const customerId = await findOrCreateCustomer(supabase, {
+      code: customerCode,
+      name: customerName,
+    });
+    const { data, error } = await supabase
+      .from("mx_machines")
+      .insert({ ...payload, customer_id: customerId })
+      .select("id")
+      .single();
+    if (error) {
+      // 預檢與 insert 之間仍可能被別人搶先（race），或撞到封存卡以外的邊界。
+      if (error.code === "23505")
+        return { ok: false, error: SERIAL_CONFLICT_MESSAGE };
+      return { ok: false, error: `建立保養卡失敗：${error.message}` };
+    }
+    revalidatePath("/admin/maintenance");
+    return { ok: true, machineId: (data as { id: string }).id };
+  } catch (e) {
+    // machinePayloadFromForm（機號必填）等純函式驗證也走同一條回報路徑。
+    return { ok: false, error: (e as Error).message };
   }
-  revalidatePath("/admin/maintenance");
-  redirect(`/admin/maintenance/${(data as { id: string }).id}`);
 }
 
 /** 更新既有卡的基本資訊（含客戶名）。 */
