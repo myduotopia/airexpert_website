@@ -44,6 +44,11 @@ describe("isQuantityMark", () => {
     expect(isQuantityMark("AD480×1")).toBe(false);
     expect(isQuantityMark("內×1 外×1")).toBe(false);
     expect(isQuantityMark("散熱器清潔")).toBe(false);
+    expect(isQuantityMark("NA")).toBe(false);
+    expect(isQuantityMark("N/A")).toBe(false);
+    // 勾記集合含 V（手寫打勾常寫成 V），但夾在文字中的 V 不可誤判。
+    expect(isQuantityMark("16V×1")).toBe(false);
+    expect(isQuantityMark("V190")).toBe(false);
   });
 });
 
@@ -132,9 +137,65 @@ describe("classifyServiceType — 參考卡片實際列", () => {
     expect(classifyServiceType(row({}))).toBeNull();
   });
 
-  it("只有日期／時數／維護員（判定欄全空）→ null", () => {
-    // 時數與維護員不參與判定，故仍為未判定。
-    expect(classifyServiceType(row({}))).toBeNull();
+  it("耗材欄寫 0 或四位數（時數誤落欄）不算耗材數量 → null", () => {
+    expect(classifyServiceType(row({ oil_filter: "0" }))).toBeNull();
+    expect(classifyServiceType(row({ oil: "37446" }))).toBeNull();
+  });
+});
+
+// 第二張卡 old_website_data/1787033191871.jpg（同一台 J751307001 的續卡）。
+describe("classifyServiceType — 參考卡片二實際列", () => {
+  it("114.2.11 專用油=4／機油濾=1、過濾系統=散熱器組清潔 → 保養優先於維修", () => {
+    expect(
+      classifyServiceType(
+        row({ oil: "4", oil_filter: "1", filter_system: "散熱器組清潔" }),
+      ),
+    ).toBe("maintenance");
+  });
+
+  it("114.7.9 只有過濾系統=16V×1 → 維修（V 不可被當成勾記）", () => {
+    expect(classifyServiceType(row({ filter_system: "16V×1" }))).toBe("repair");
+  });
+
+  it("114.11.27 專用油=1／機油濾=1、油氣分離器格寫「油鏡×1只」→ 保養", () => {
+    expect(
+      classifyServiceType(
+        row({
+          oil: "1",
+          oil_filter: "1",
+          oil_separator: "油鏡×1只",
+          filter_system: "散熱器組清潔",
+        }),
+      ),
+    ).toBe("maintenance");
+  });
+
+  it("114.11.11 整列只有跨欄的「馬達修理×1式」→ 維修", () => {
+    expect(classifyServiceType(row({ note: "馬達修理×1式" }))).toBe("repair");
+  });
+});
+
+describe("classifyServiceType — NA（不適用）不算維修", () => {
+  it("變頻器／過濾系統／備註寫 NA、N/A → 未判定而非維修", () => {
+    expect(classifyServiceType(row({ inverter: "NA" }))).toBeNull();
+    expect(classifyServiceType(row({ filter_system: "N/A" }))).toBeNull();
+    expect(classifyServiceType(row({ note: "n/a" }))).toBeNull();
+    expect(
+      classifyServiceType(row({ inverter: "NA", filter_system: "NA." })),
+    ).toBeNull();
+  });
+
+  it("NA 不影響前兩條規則", () => {
+    expect(classifyServiceType(row({ oil: "例", note: "NA" }))).toBe(
+      "inspection",
+    );
+    expect(classifyServiceType(row({ oil_filter: "1", inverter: "NA" }))).toBe(
+      "maintenance",
+    );
+  });
+
+  it("含 NA 的完整敘述仍是維修", () => {
+    expect(classifyServiceType(row({ note: "NA 段已更換" }))).toBe("repair");
   });
 });
 
@@ -158,6 +219,11 @@ describe("classifyServiceType — 規則邊界", () => {
 
   it("空白字元不算內容", () => {
     expect(classifyServiceType(row({ note: "   " }))).toBeNull();
+  });
+
+  it("只有標點的格子不算內容（OCR 雜訊）", () => {
+    expect(classifyServiceType(row({ note: "。" }))).toBeNull();
+    expect(classifyServiceType(row({ inverter: "、" }))).toBeNull();
   });
 });
 

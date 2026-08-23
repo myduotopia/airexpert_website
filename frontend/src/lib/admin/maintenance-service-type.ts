@@ -7,11 +7,12 @@
 //      任一直接寫了「純數量記號」（1~99、x1／×1、/、✓、○、│ 等勾記）。
 //   3. 維修 repair — 否則，變頻器／過濾系統／備註任一寫了「非數量的文字內容」
 //      （自由文字，例「油鏡×1只」「散熱器組清潔」「乾燥機12"散熱馬達+葉片」）。
+//      「NA」「N/A」= 不適用，視同空白格，不算自由文字。
 //   4. 皆不符 → null（判不出來，由人工在核對畫面補）。
 //
-// 此檔為規則的唯一真相來源：AI 辨識只是加速，回傳值一律以本檔覆核
-// （見 maintenance-normalize.parseExtraction）。SQL 版同規則見
-// supabase/migrations/0014_record_service_type.sql。
+// 此檔為規則的真相來源：AI 辨識只是加速，AI 沒給 service_type 或給了非法值時，
+// 一律回頭用本檔推導（見 maintenance-normalize.parseExtraction）。SQL 版同規則見
+// supabase/migrations/0014_record_service_type.sql，兩邊改動需同步。
 
 export type ServiceType = "inspection" | "maintenance" | "repair";
 
@@ -71,10 +72,21 @@ export function isQuantityMark(v: string | null | undefined): boolean {
   return Array.from(s).every((c) => TICK_MARKS.includes(c));
 }
 
+/**
+ * 「NA」「N/A」= 不適用／該次未做該項。辨識 prompt 明確要求手寫的 NA 原樣填入
+ * （見 lib/ai/gemini.ts 手寫符號語彙），它代表「沒做這項」而非「做了維修」，
+ * 因此視同空白格，不可當成自由文字。
+ */
+const NOT_APPLICABLE_RE = /^n\s*[./／]?\s*a$/i;
+
+function isNotApplicable(v: string | null | undefined): boolean {
+  return NOT_APPLICABLE_RE.test(normalizeCell(v));
+}
+
 /** 該格是否寫了「非數量的文字內容」（自由文字 → 維修的判準）。 */
 function hasFreeText(v: string | null | undefined): boolean {
   const s = normalizeCell(v);
-  return s !== "" && !isQuantityMark(v);
+  return s !== "" && !isQuantityMark(v) && !isNotApplicable(v);
 }
 
 /**

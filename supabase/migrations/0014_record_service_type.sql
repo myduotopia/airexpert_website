@@ -11,13 +11,17 @@
 --   2. 保養 — 否則，四個耗材欄（oil / oil_filter / air_filter / oil_separator）
 --      任一為「純數量記號」（1~99、x1／×1、/、✓、○、│ 等勾記，可帶結尾句點）。
 --   3. 維修 — 否則，inverter / filter_system / note 任一含「非數量的文字內容」。
+--      「NA」「N/A」= 不適用（辨識 prompt 要求原樣填入），視同空白格，不算自由文字。
 --   4. 皆不符 → 留 null，由人工在後台逐列補。
 --
 -- 侷限（刻意不追求 100% 正確，寧可留 null 也不亂猜）：
 --   * 只看已辨識成文字的欄位值；OCR 對欄錯誤（值落到隔壁欄）會導致誤判。
 --   * 手寫變形（如「〃」「同上」未在辨識階段展開、「例」被辨識成「列」）無法回填。
 --   * 一列同時做了保養與維修時，依規則只會標成「保養」（保養優先）。
---   * 回填只寫 service_type is null 的列，人工已修正過的值不會被覆蓋。
+--   * 回填只寫 service_type is null 的列，人工已修正過的值不會被覆蓋
+--     （但人工「刻意清成 null」的列，重跑本檔時會再被回填一次）。
+--   * 下方 regex 的 \s 只涵蓋 ASCII 空白；若某格只有全形空白 U+3000／NBSP，
+--     SQL 會當成有內容、TS 端則當成空白。實務上不會出現，故不特別處理。
 -- ============================================================
 
 -- ── 欄位 + check 約束 + 索引 ─────────────────────────────────
@@ -51,7 +55,11 @@ do $$
 declare
   -- 「純數量記號」：1~99、x1／×1，或單一/連續勾記；允許結尾句點、頓號與空白。
   qty constant text :=
-    '^\s*([1-9][0-9]?|[xX×]\s*[1-9][0-9]?|[/／\\＼✓✔○◯〇│|∣ｌVv]+)\s*[.。、,，]?\s*$';
+    '^\s*([1-9][0-9]?|[xX×]\s*[1-9][0-9]?|[/／\\＼✓✔○◯〇│|∣ｌVv]+)\s*[.。、,，]*\s*$';
+  -- 「NA」「N/A」= 不適用／該次未做該項 → 視同沒寫東西，不算自由文字。
+  na constant text := '^\s*[Nn]\s*[./／]?\s*[Aa]\s*[.。、,，]*\s*$';
+  -- 只有空白或標點 = 沒寫東西（對齊 TS normalizeCell 會剝掉結尾標點的行為）。
+  blank constant text := '^[\s.。、,，]*$';
 begin
   -- 1. 例檢
   update mx_records
@@ -75,8 +83,14 @@ begin
      set service_type = 'repair'
    where service_type is null
      and (
-       (btrim(coalesce(inverter, ''))      <> '' and coalesce(inverter, '')      !~ qty)
-       or (btrim(coalesce(filter_system, '')) <> '' and coalesce(filter_system, '') !~ qty)
-       or (btrim(coalesce(note, ''))          <> '' and coalesce(note, '')          !~ qty)
+       (coalesce(inverter, '') !~ blank
+          and coalesce(inverter, '') !~ qty
+          and coalesce(inverter, '') !~ na)
+       or (coalesce(filter_system, '') !~ blank
+          and coalesce(filter_system, '') !~ qty
+          and coalesce(filter_system, '') !~ na)
+       or (coalesce(note, '') !~ blank
+          and coalesce(note, '') !~ qty
+          and coalesce(note, '') !~ na)
      );
 end $$;
