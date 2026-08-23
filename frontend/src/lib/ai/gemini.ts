@@ -449,7 +449,8 @@ export async function extractMaintenanceCard(
   "records": [
     { "service_date": "日期(YYYY-MM-DD)", "hours": "時數", "oil": "專用油",
       "oil_filter": "機油濾清器", "air_filter": "空氣濾清器", "oil_separator": "油氣分離器",
-      "inverter": "變頻器", "filter_system": "過濾系統", "technician": "維護員", "note": "備註" }
+      "inverter": "變頻器", "filter_system": "過濾系統", "technician": "維護員", "note": "備註",
+      "service_type": "inspection|maintenance|repair 或空字串" }
   ]
 }
 
@@ -457,6 +458,15 @@ export async function extractMaintenanceCard(
 - 例：「112.4.20」→ 2023-04-20；「115.5.23」→ 2026-05-23。
 - 購買時間常只有「年/月」(如「購買112/04」)：換算後補該月 01 日 → 2023-04-01。
 - 只要判斷得出年份就務必輸出，不要因為缺日而留空。
+
+【服務類型 service_type — 三選一互斥，依下列「優先順序」判定（順序即為 if / else-if）】
+1. 例檢 inspection —「專用油」欄辨識到「例」（含「例.」「例行」等變形）。
+2. 保養 maintenance — 否則，若耗材欄（專用油／機油濾清器／空氣濾清器／油氣分離器）
+   直接寫了耗材數量（例：機油濾清器底下的格子寫「1」）。
+3. 維修 repair — 否則，若寫上其他耗材名稱與數量（通常是自由文字，例：「油鏡×1只」
+   「散熱器組清潔」「彈性元件×1／回油視窗×1」「乾燥機12"散熱馬達+葉片」）。
+判不出來就回空字串 ""，不要猜。注意「保養優先於維修」：同一列既有耗材數量、變頻器欄
+又有自由文字時，一律歸「保養 maintenance」。
 
 【表格對欄 — 非常重要，請嚴格遵守】維護表的欄位由左到右固定為這 9 欄：
   日期 → 時數 → 專用油 → 機油濾清器 → 空氣濾清器 → 油氣分離器 → 變頻器 → 過濾系統 → 維護員

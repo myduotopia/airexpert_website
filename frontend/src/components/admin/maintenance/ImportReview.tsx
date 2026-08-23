@@ -6,7 +6,13 @@ import { compressImage } from "@/lib/admin/image-compress";
 import { uploadMediaDirect } from "@/lib/admin/upload-client";
 import { CardBasicFields } from "./CardBasicForm";
 import { MinguoDateInput } from "./MinguoDateInput";
-import type { RecordValues } from "./RecordForm";
+import {
+  SERVICE_TYPE_SELECT_CLASS,
+  ServiceTypeOptions,
+  type RecordValues,
+  type TextFieldName,
+} from "./RecordForm";
+import { parseServiceType } from "@/lib/admin/maintenance-service-type";
 import {
   extractCardFromImageAction,
   commitImportAction,
@@ -14,7 +20,8 @@ import {
 } from "@/app/admin/(protected)/maintenance/actions";
 import type { RecordPayload } from "@/lib/admin/maintenance-normalize";
 
-const RECORD_FIELDS: (keyof RecordValues)[] = [
+// service_type 不在此列，改由 RecordFieldsIndexed 以下拉單獨呈現。
+const RECORD_FIELDS: TextFieldName[] = [
   "service_date",
   "hours",
   "oil",
@@ -26,7 +33,7 @@ const RECORD_FIELDS: (keyof RecordValues)[] = [
   "technician",
   "note",
 ];
-const RECORD_LABELS: Record<keyof RecordValues, string> = {
+const RECORD_LABELS: Record<TextFieldName, string> = {
   service_date: "日期",
   hours: "時數",
   oil: "專用油",
@@ -52,6 +59,7 @@ function toRecordValues(r: RecordPayload): RecordValues {
     filter_system: r.filter_system ?? undefined,
     technician: r.technician ?? undefined,
     note: r.note ?? undefined,
+    service_type: r.service_type,
   };
 }
 
@@ -64,6 +72,16 @@ function RecordFieldsIndexed({
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="flex flex-col gap-1.5">
+        <label className="text-ink text-[14px] font-medium">服務類型</label>
+        <select
+          name={`records[${index}][service_type]`}
+          defaultValue={values?.service_type ?? ""}
+          className={SERVICE_TYPE_SELECT_CLASS}
+        >
+          <ServiceTypeOptions />
+        </select>
+      </div>
       {RECORD_FIELDS.map((f) => (
         <div key={f} className="flex flex-col gap-1.5">
           <label className="text-ink text-[14px] font-medium">
@@ -106,9 +124,13 @@ function collectRecords(fd: FormData, count: number): RecordPayload[] {
       filter_system: get("filter_system"),
       technician: get("technician"),
       note: get("note"),
+      service_type: parseServiceType(get("service_type")),
     });
   }
-  return rows.filter((r) => Object.values(r).some((v) => v !== null));
+  // service_type 不算「有填內容」：只選了類型卻整列空白的仍視為空列丟棄。
+  return rows.filter((r) =>
+    Object.entries(r).some(([k, v]) => k !== "service_type" && v !== null),
+  );
 }
 
 export function ImportReview() {

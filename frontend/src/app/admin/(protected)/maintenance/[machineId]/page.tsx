@@ -6,17 +6,77 @@ import { DataTable, type Column } from "@/components/admin/DataTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import type { MxRecord } from "@/lib/admin/maintenance";
 import { rocDate } from "@/lib/admin/minguo";
+import { ServiceTypeBadge } from "@/components/admin/maintenance/ServiceTypeBadge";
+import {
+  SERVICE_TYPES,
+  SERVICE_TYPE_LABELS,
+  type ServiceType,
+} from "@/lib/admin/maintenance-service-type";
 import { deleteRecordAction } from "../actions";
 
 export const metadata = { title: "保養卡 · 後台" };
 
+/** 將 ?type= 收斂到允許值；非法或未帶 → null（全部）。 */
+function resolveServiceType(raw: string | undefined): ServiceType | null {
+  return (SERVICE_TYPES as readonly string[]).includes(raw ?? "")
+    ? (raw as ServiceType)
+    : null;
+}
+
+/** 服務類型篩選頁籤（純連結，無 client JS）。 */
+function ServiceTypeTabs({
+  machineId,
+  current,
+  counts,
+}: {
+  machineId: string;
+  current: ServiceType | null;
+  counts: Record<ServiceType, number>;
+}) {
+  const tabs: { value: ServiceType | null; label: string }[] = [
+    { value: null, label: "全部" },
+    ...SERVICE_TYPES.map((t) => ({
+      value: t,
+      label: `${SERVICE_TYPE_LABELS[t]}（${counts[t]}）`,
+    })),
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {tabs.map((t) => {
+        const active = t.value === current;
+        const href = t.value
+          ? `/admin/maintenance/${machineId}?type=${t.value}`
+          : `/admin/maintenance/${machineId}`;
+        return (
+          <Link
+            key={t.value ?? "all"}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={`inline-flex h-9 items-center rounded-lg border px-3 text-[13px] font-medium ${
+              active
+                ? "border-primary bg-primary text-white"
+                : "border-border hover:bg-surface-muted text-ink"
+            }`}
+          >
+            {t.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export default async function MachineDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ machineId: string }>;
+  // Next.js 16：params / searchParams 皆為非同步。
+  searchParams: Promise<{ type?: string }>;
 }) {
   await requireRole(["office"]);
   const { machineId } = await params;
+  const { type } = await searchParams;
   const data = await getMachine(machineId);
   if (!data) notFound();
   const { machine, customer, records } = data;
@@ -25,8 +85,24 @@ export default async function MachineDetailPage({
     ? `/admin/maintenance/customers/${customer.id}`
     : null;
 
+  const activeType = resolveServiceType(type);
+  const counts = SERVICE_TYPES.reduce(
+    (acc, t) => {
+      acc[t] = records.filter((r) => r.service_type === t).length;
+      return acc;
+    },
+    {} as Record<ServiceType, number>,
+  );
+  const visibleRecords = activeType
+    ? records.filter((r) => r.service_type === activeType)
+    : records;
+
   const columns: Column<MxRecord>[] = [
     { header: "日期", cell: (r) => rocDate(r.service_date) },
+    {
+      header: "類型",
+      cell: (r) => <ServiceTypeBadge type={r.service_type} />,
+    },
     { header: "時數", cell: (r) => r.hours ?? "—" },
     { header: "專用油", cell: (r) => r.oil ?? "—" },
     { header: "機油濾", cell: (r) => r.oil_filter ?? "—" },
@@ -124,7 +200,7 @@ export default async function MachineDetailPage({
         </div>
       </dl>
 
-      <div className="mt-8 mb-4 flex items-center justify-between">
+      <div className="mt-8 mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-ink text-[18px] font-bold">
           維護紀錄（{records.length}）
         </h2>
@@ -135,11 +211,22 @@ export default async function MachineDetailPage({
           新增維護紀錄
         </Link>
       </div>
+      <div className="mb-3">
+        <ServiceTypeTabs
+          machineId={machineId}
+          current={activeType}
+          counts={counts}
+        />
+      </div>
       <DataTable
-        rows={records}
+        rows={visibleRecords}
         columns={columns}
         getKey={(r) => r.id}
-        empty="尚無維護紀錄。"
+        empty={
+          activeType
+            ? `沒有「${SERVICE_TYPE_LABELS[activeType]}」的維護紀錄。`
+            : "尚無維護紀錄。"
+        }
       />
     </div>
   );

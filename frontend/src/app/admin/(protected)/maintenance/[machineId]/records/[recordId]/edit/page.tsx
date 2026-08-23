@@ -34,6 +34,7 @@ export default async function EditRecordPage({
           filter_system: record.filter_system ?? undefined,
           technician: record.technician ?? undefined,
           note: record.note ?? undefined,
+          service_type: record.service_type,
         }}
       />
     </div>

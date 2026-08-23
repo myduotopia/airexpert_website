@@ -5,6 +5,7 @@ import {
   normalizeSerial,
   normalizeCustomerCode,
 } from "./maintenance-normalize";
+import type { ServiceType } from "./maintenance-service-type";
 
 export interface MxCustomer {
   id: string;
@@ -59,6 +60,8 @@ export interface MxRecord {
   filter_system: string | null;
   technician: string | null;
   note: string | null;
+  /** 服務類型（例檢／保養／維修）；null = 未判定。 */
+  service_type: ServiceType | null;
   source: "manual" | "photo";
   created_at: string;
 }

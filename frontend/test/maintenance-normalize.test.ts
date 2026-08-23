@@ -47,6 +47,18 @@ describe("recordPayloadFromForm", () => {
     expect(out.oil).toBe("V190");
     expect(out.technician).toBeNull();
   });
+
+  it("收下合法的 service_type，非法值視為未判定", () => {
+    const fd = new FormData();
+    fd.set("service_type", "inspection");
+    expect(recordPayloadFromForm(fd).service_type).toBe("inspection");
+
+    const bad = new FormData();
+    bad.set("service_type", "例檢");
+    expect(recordPayloadFromForm(bad).service_type).toBeNull();
+
+    expect(recordPayloadFromForm(new FormData()).service_type).toBeNull();
+  });
 });
 
 describe("normalizeSerial", () => {
@@ -77,6 +89,49 @@ describe("parseExtraction", () => {
     expect(out.basic.machine_no).toBe("M-01");
     expect(out.records).toHaveLength(1);
     expect(out.records[0].hours).toBe("8342");
+  });
+
+  it("採用 AI 給的合法 service_type", () => {
+    const out = parseExtraction({
+      records: [
+        { service_date: "2023-07-12", oil: "例", service_type: "repair" },
+      ],
+    });
+    // AI 明確給了合法值就尊重它（人工仍可在核對畫面改）。
+    expect(out.records[0].service_type).toBe("repair");
+  });
+
+  it("AI 缺值或給非法值時，改用本地規則推導", () => {
+    const out = parseExtraction({
+      records: [
+        // 缺 service_type → 專用油=例 → 例檢
+        { service_date: "2023-07-12", oil: "例" },
+        // 非法值 → 耗材欄有量 → 保養
+        {
+          service_date: "2023-08-22",
+          oil: "4",
+          oil_filter: "1",
+          service_type: "保養",
+        },
+        // 空字串 → 變頻器自由文字 → 維修
+        { service_date: "2023-05-15", inverter: "AD480×1", service_type: "" },
+        // 都判不出來 → null
+        { service_date: "2023-06-20", hours: "3508" },
+      ],
+    });
+    expect(out.records.map((r) => r.service_type)).toEqual([
+      "inspection",
+      "maintenance",
+      "repair",
+      null,
+    ]);
+  });
+
+  it("只有 service_type 的列仍視為空列丟棄", () => {
+    const out = parseExtraction({
+      records: [{ service_type: "inspection" }],
+    });
+    expect(out.records).toEqual([]);
   });
 
   it("tolerates missing fields and non-array records", () => {
