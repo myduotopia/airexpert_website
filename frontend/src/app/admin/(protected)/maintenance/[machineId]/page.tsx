@@ -8,10 +8,12 @@ import type { MxRecord } from "@/lib/admin/maintenance";
 import { rocDate } from "@/lib/admin/minguo";
 import { ServiceTypeBadge } from "@/components/admin/maintenance/ServiceTypeBadge";
 import {
-  parseServiceType,
-  SERVICE_TYPES,
-  SERVICE_TYPE_LABELS,
-  type ServiceType,
+  isUnclassified,
+  parseServiceTypeFilter,
+  SERVICE_TYPE_FILTERS,
+  SERVICE_TYPE_FILTER_LABELS,
+  UNCLASSIFIED,
+  type ServiceTypeFilter,
 } from "@/lib/admin/maintenance-service-type";
 import { deleteRecordAction } from "../actions";
 
@@ -24,14 +26,15 @@ function ServiceTypeTabs({
   counts,
 }: {
   machineId: string;
-  current: ServiceType | null;
-  counts: Record<ServiceType, number>;
+  current: ServiceTypeFilter | null;
+  counts: Record<ServiceTypeFilter, number>;
 }) {
-  const tabs: { value: ServiceType | null; label: string }[] = [
+  // null = 全部（不帶 ?type=）；UNCLASSIFIED 是「只看未判定」的哨兵，不是「不篩選」。
+  const tabs: { value: ServiceTypeFilter | null; label: string }[] = [
     { value: null, label: "全部" },
-    ...SERVICE_TYPES.map((t) => ({
+    ...SERVICE_TYPE_FILTERS.map((t) => ({
       value: t,
-      label: `${SERVICE_TYPE_LABELS[t]}（${counts[t]}）`,
+      label: `${SERVICE_TYPE_FILTER_LABELS[t]}（${counts[t]}）`,
     })),
   ];
   return (
@@ -80,17 +83,22 @@ export default async function MachineDetailPage({
     : null;
 
   // ?type= 收斂到允許值；非法、重複帶（陣列）或未帶 → null（全部）。
-  const activeType = parseServiceType(type);
-  const counts = SERVICE_TYPES.reduce(
+  const activeType = parseServiceTypeFilter(type);
+  const counts = SERVICE_TYPE_FILTERS.reduce(
     (acc, t) => {
-      acc[t] = records.filter((r) => r.service_type === t).length;
+      acc[t] =
+        t === UNCLASSIFIED
+          ? records.filter(isUnclassified).length
+          : records.filter((r) => r.service_type === t).length;
       return acc;
     },
-    {} as Record<ServiceType, number>,
+    {} as Record<ServiceTypeFilter, number>,
   );
-  const visibleRecords = activeType
-    ? records.filter((r) => r.service_type === activeType)
-    : records;
+  const visibleRecords = !activeType
+    ? records
+    : activeType === UNCLASSIFIED
+      ? records.filter(isUnclassified)
+      : records.filter((r) => r.service_type === activeType);
 
   const columns: Column<MxRecord>[] = [
     { header: "日期", cell: (r) => rocDate(r.service_date) },
@@ -219,7 +227,7 @@ export default async function MachineDetailPage({
         getKey={(r) => r.id}
         empty={
           activeType
-            ? `沒有「${SERVICE_TYPE_LABELS[activeType]}」的維護紀錄。`
+            ? `沒有「${SERVICE_TYPE_FILTER_LABELS[activeType]}」的維護紀錄。`
             : "尚無維護紀錄。"
         }
       />

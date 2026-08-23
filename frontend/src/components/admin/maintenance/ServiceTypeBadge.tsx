@@ -2,6 +2,7 @@
 import {
   SERVICE_TYPE_BADGE_CLASSES,
   SERVICE_TYPE_LABELS,
+  UNCLASSIFIED_LABEL,
   type ServiceType,
 } from "@/lib/admin/maintenance-service-type";
 
@@ -14,7 +15,7 @@ export function ServiceTypeBadge({ type }: { type: ServiceType | null }) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium whitespace-nowrap ${className}`}
     >
-      {type ? SERVICE_TYPE_LABELS[type] : "未判定"}
+      {type ? SERVICE_TYPE_LABELS[type] : UNCLASSIFIED_LABEL}
     </span>
   );
 }

@@ -3,8 +3,12 @@ import {
   classifyServiceType,
   isQuantityMark,
   parseServiceType,
+  parseServiceTypeFilter,
   SERVICE_TYPES,
+  SERVICE_TYPE_FILTERS,
+  SERVICE_TYPE_FILTER_LABELS,
   SERVICE_TYPE_LABELS,
+  UNCLASSIFIED,
   type ServiceTypeInput,
 } from "@/lib/admin/maintenance-service-type";
 
@@ -40,6 +44,12 @@ describe("isQuantityMark", () => {
     expect(isQuantityMark(null)).toBe(false);
     expect(isQuantityMark("   ")).toBe(false);
     expect(isQuantityMark("0")).toBe(false);
+    // 規格為 1~9：兩位數多半是「時數」欄（83／88）對欄偏移掉進來的，不算耗材數量。
+    expect(isQuantityMark("10")).toBe(false);
+    expect(isQuantityMark("83")).toBe(false);
+    expect(isQuantityMark("99")).toBe(false);
+    expect(isQuantityMark("×12")).toBe(false);
+    expect(isQuantityMark("37446")).toBe(false);
     expect(isQuantityMark("例")).toBe(false);
     expect(isQuantityMark("AD480×1")).toBe(false);
     expect(isQuantityMark("內×1 外×1")).toBe(false);
@@ -137,9 +147,14 @@ describe("classifyServiceType — 參考卡片實際列", () => {
     expect(classifyServiceType(row({}))).toBeNull();
   });
 
-  it("耗材欄寫 0 或四位數（時數誤落欄）不算耗材數量 → null", () => {
+  it("耗材欄寫 0、兩位數或五位數（時數誤落欄）不算耗材數量 → null", () => {
     expect(classifyServiceType(row({ oil_filter: "0" }))).toBeNull();
     expect(classifyServiceType(row({ oil: "37446" }))).toBeNull();
+    // 時數欄是「83」疊在「37446」上；對欄偏移把 83 推進耗材欄時不可讀成保養。
+    expect(classifyServiceType(row({ oil: "83" }))).toBeNull();
+    expect(classifyServiceType(row({ oil_filter: "88" }))).toBeNull();
+    expect(classifyServiceType(row({ air_filter: "84" }))).toBeNull();
+    expect(classifyServiceType(row({ oil_separator: "10" }))).toBeNull();
   });
 });
 
@@ -217,6 +232,18 @@ describe("classifyServiceType — 規則邊界", () => {
     expect(classifyServiceType(row({ inverter: "1" }))).toBeNull();
   });
 
+  it("變頻器／過濾系統／備註只有數字（時數誤落欄）→ 不算自由文字，維持未判定", () => {
+    expect(classifyServiceType(row({ inverter: "83" }))).toBeNull();
+    expect(classifyServiceType(row({ filter_system: "37446" }))).toBeNull();
+    expect(classifyServiceType(row({ note: "0" }))).toBeNull();
+    expect(classifyServiceType(row({ note: "×12" }))).toBeNull();
+  });
+
+  it("數字後面接文字仍是自由文字 → 維修", () => {
+    expect(classifyServiceType(row({ note: "83 更換" }))).toBe("repair");
+    expect(classifyServiceType(row({ filter_system: "16V×1" }))).toBe("repair");
+  });
+
   it("空白字元不算內容", () => {
     expect(classifyServiceType(row({ note: "   " }))).toBeNull();
   });
@@ -235,8 +262,33 @@ describe("parseServiceType", () => {
     expect(parseServiceType("例檢")).toBeNull();
     expect(parseServiceType(undefined)).toBeNull();
     expect(parseServiceType(3)).toBeNull();
-    // 卡詳情頁以此收斂 ?type=；同名參數重複帶時 Next 會給陣列，需視為未篩選。
+    // 同名參數重複帶時 Next 會給陣列，需視為未篩選。
     expect(parseServiceType(["repair"])).toBeNull();
+    // 「未判定」是篩選用哨兵，不是合法的 service_type，寫入路徑必須擋掉。
+    expect(parseServiceType(UNCLASSIFIED)).toBeNull();
+  });
+});
+
+describe("parseServiceTypeFilter", () => {
+  it("接受三個合法值與『未判定』哨兵", () => {
+    expect(parseServiceTypeFilter("inspection")).toBe("inspection");
+    expect(parseServiceTypeFilter(" repair ")).toBe("repair");
+    expect(parseServiceTypeFilter(UNCLASSIFIED)).toBe(UNCLASSIFIED);
+    expect(parseServiceTypeFilter(` ${UNCLASSIFIED} `)).toBe(UNCLASSIFIED);
+  });
+
+  it("未帶／非法／重複帶（陣列）→ null＝不篩選（全部）", () => {
+    expect(parseServiceTypeFilter(undefined)).toBeNull();
+    expect(parseServiceTypeFilter("")).toBeNull();
+    expect(parseServiceTypeFilter("未判定")).toBeNull();
+    expect(parseServiceTypeFilter("null")).toBeNull();
+    expect(parseServiceTypeFilter(3)).toBeNull();
+    expect(parseServiceTypeFilter([UNCLASSIFIED])).toBeNull();
+  });
+
+  it("哨兵不會與真實 service_type 相撞", () => {
+    expect(SERVICE_TYPES).not.toContain(UNCLASSIFIED);
+    expect(SERVICE_TYPE_FILTERS).toEqual([...SERVICE_TYPES, UNCLASSIFIED]);
   });
 });
 
@@ -246,5 +298,14 @@ describe("SERVICE_TYPE_LABELS", () => {
     expect(SERVICE_TYPE_LABELS.inspection).toBe("例檢");
     expect(SERVICE_TYPE_LABELS.maintenance).toBe("保養");
     expect(SERVICE_TYPE_LABELS.repair).toBe("維修");
+  });
+
+  it("篩選標籤含三類 + 未判定", () => {
+    expect(SERVICE_TYPE_FILTER_LABELS).toEqual({
+      inspection: "例檢",
+      maintenance: "保養",
+      repair: "維修",
+      [UNCLASSIFIED]: "未判定",
+    });
   });
 });

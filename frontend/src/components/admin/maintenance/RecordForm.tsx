@@ -5,6 +5,7 @@ import { MinguoDateInput } from "./MinguoDateInput";
 import {
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
+  UNCLASSIFIED_LABEL,
   type ServiceType,
 } from "@/lib/admin/maintenance-service-type";
 
@@ -33,7 +34,7 @@ export const SERVICE_TYPE_SELECT_CLASS =
 export function ServiceTypeOptions(): ReactNode {
   return (
     <>
-      <option value="">未判定</option>
+      <option value="">{UNCLASSIFIED_LABEL}</option>
       {SERVICE_TYPES.map((t) => (
         <option key={t} value={t}>
           {SERVICE_TYPE_LABELS[t]}
