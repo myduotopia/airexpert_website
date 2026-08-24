@@ -1001,8 +1001,14 @@ export async function archiveMachineAction(
   return { ok: true };
 }
 
-/** 從封存區復原一張卡（form action）。 */
-export async function restoreMachineAction(machineId: string): Promise<void> {
+/**
+ * 從封存區復原一張卡（ActionButton 以 bind 帶入 id）。
+ * 失敗一律回 result 不 throw：23505 的說明是員工真的要照著做的處置步驟，
+ * 而 throw 出去的訊息在 production 會被 Next.js 抹成 digest（#168）。
+ */
+export async function restoreMachineAction(
+  machineId: string,
+): Promise<ActionResult> {
   await requireRole(["office"]);
   const supabase = await getServerSupabase();
   const { error } = await supabase
@@ -1012,14 +1018,17 @@ export async function restoreMachineAction(machineId: string): Promise<void> {
   if (error) {
     // 邊界：封存後又用同代號 / 同機號建了新的使用中卡片，復原會撞部分唯一索引（23505）。
     if (error.code === "23505") {
-      throw new Error(
-        "此客戶名下已有相同卡別、相同代號 / 機號的使用中卡片，無法復原。請先處理該卡，或改為永久刪除此封存卡。",
-      );
+      return {
+        ok: false,
+        error:
+          "此客戶名下已有相同卡別、相同代號 / 機號的使用中卡片，無法復原。請先處理該卡，或改為永久刪除此封存卡。",
+      };
     }
-    throw new Error(`復原失敗：${error.message}`);
+    return { ok: false, error: `復原失敗：${error.message}` };
   }
   revalidatePath("/admin/maintenance");
   revalidatePath("/admin/maintenance/archive");
+  return { ok: true };
 }
 
 /** 永久刪除一張卡（連同維護紀錄，FK cascade）。DeleteButton 以 bind 帶入 id。 */
