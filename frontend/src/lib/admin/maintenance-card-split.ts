@@ -306,9 +306,11 @@ function hasDryerEvidence(r: RecordPayload): boolean {
  * #166 的分流路徑（表頭沒有過濾標記）專用：把 AI 標的 `belongs_to = "compressor"`
  * 從「帶硬證據的列」上拿掉，交還 classifyRecord 判。
  *
- * 為什麼非做不可：辨識 prompt 在 card_kind = "compressor" 時要求 AI
- * 「所有列一律 belongs_to = compressor」。這條路徑的表頭正好就是沒有過濾標記，
- * 所以 AI 給的 compressor 是**那條規則的產物、不是看照片下的判斷**，沒有證據力。
+ * 為什麼非做不可：辨識 prompt 原本在 card_kind = "compressor" 時要求 AI
+ * 「所有列一律 belongs_to = compressor」；那條規則已隨 #166 一併改掉（見 gemini.ts
+ * 的【每一列的歸屬】），但這道網仍要留著 —— 模型不保證照做，而「這張是空壓機卡
+ * ⇒ 每列都是空壓機」正是它最容易自己補上的推論，且這條路徑的表頭恰好就是沒有過濾
+ * 標記。此時 AI 給的 compressor 分不出是判斷還是推論，一律視為沒有證據力。
  * 不清掉的話 hasFilterRowEvidence 開了門、列卻全被 AI 標回空壓機，split.filter
  * 永遠是空的 → hasFilterContent 為 false → 過濾卡照樣是 null，#166 在正式環境
  * 等於完全沒生效（單元測試的 fixture 都沒帶 belongs_to，因此測不出來）。
@@ -469,8 +471,9 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
   const byRowEvidence =
     header.kind === "compressor" && hasFilterRowEvidence(input.records);
   const splitByRow = header.kind === "mixed" || byRowEvidence;
-  // 「AI 一列 filter 都沒標」＝ 它在套 prompt 的『card_kind=compressor 就一律標
-  // compressor』那條規則，此時它的 compressor 標記沒有證據力，硬證據要蓋過去。
+  // 「AI 一列 filter 都沒標」＝ 它在套「空壓機卡就一律標 compressor」這種推論
+  // （prompt 已不再這樣要求，但模型仍可能自己補上），此時它的 compressor 標記
+  // 沒有證據力，硬證據要蓋過去。
   const aiForcedAllCompressor =
     byRowEvidence &&
     !input.records.some((r) => parseBelongsTo(r.belongs_to) === "filter");
