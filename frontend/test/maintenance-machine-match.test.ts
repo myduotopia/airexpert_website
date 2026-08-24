@@ -119,6 +119,7 @@ const fakeSupabase = {
 const findMachine = vi.fn();
 const findMachineByTag = vi.fn();
 const findMachineAcrossCustomers = vi.fn();
+const getMachineCardContext = vi.fn();
 const extractMaintenanceCard = vi.fn();
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -133,7 +134,7 @@ vi.mock("@/lib/admin/maintenance", () => ({
   findMachineByTag: (...args: unknown[]) => findMachineByTag(...args),
   findMachineAcrossCustomers: (...args: unknown[]) =>
     findMachineAcrossCustomers(...args),
-  getMachineCardContext: vi.fn(async () => null),
+  getMachineCardContext: (...args: unknown[]) => getMachineCardContext(...args),
   isCustomerCodeTaken: vi.fn(async () => false),
   listMachineColumns: vi.fn(async () => []),
 }));
@@ -143,6 +144,7 @@ vi.mock("@/lib/supabase-server", () => ({
 
 import {
   createMachineAction,
+  updateMachineAction,
   extractCardFromImageAction,
 } from "@/app/admin/(protected)/maintenance/actions";
 
@@ -174,6 +176,7 @@ beforeEach(() => {
   findMachine.mockReset().mockResolvedValue(null);
   findMachineByTag.mockReset().mockResolvedValue(null);
   findMachineAcrossCustomers.mockReset().mockResolvedValue(null);
+  getMachineCardContext.mockReset().mockResolvedValue(null);
   extractMaintenanceCard.mockReset();
 });
 
@@ -268,6 +271,68 @@ describe("createMachineAction — 唯一性範圍是 (客戶, 卡別)", () => {
     spy.mockRestore();
     expect(res.ok).toBe(false);
     expect(res.ok === false && res.error).toContain("機台代號");
+  });
+});
+
+// 0019 把卡別納進唯一鍵之後，「拿哪一個卡別去比對」變成會影響對錯的參數。
+// 編輯既有卡時，卡別**只能**以 DB 為準：表單上的 card_type 是 hidden input，
+// 改掉它若能左右預檢，就會拿錯誤的卡別去查，放行 DB 其實會擋的代號、或反過來
+// 擋下 DB 其實接受的代號，而員工看到的錯誤訊息還會指名一種不存在的卡。
+describe("updateMachineAction — 卡別一律以 DB 為準（0019）", () => {
+  it("表單謊報卡別也不算數：預檢與寫入都用 DB 的卡別", async () => {
+    selectRows.mx_customers = [{ id: "cust-1" }];
+    getMachineCardContext.mockResolvedValue({
+      card_type: "compressor",
+      columns: [],
+    });
+    const res = await updateMachineAction(
+      "m-1",
+      form({ card_type: "filter", machine_no: "A機", serial_no: "AD480" }),
+    );
+    expect(res.ok).toBe(true);
+    expect(findMachineByTag).toHaveBeenCalledWith(
+      "cust-1",
+      "A機",
+      "compressor",
+      "m-1",
+    );
+    const patch = recorded.find(
+      (r) => r.table === "mx_machines" && r.kind === "update",
+    )?.payload as Record<string, unknown>;
+    expect(patch.card_type).toBe("compressor");
+  });
+
+  it("撞 23505 時的文案用 DB 的卡別，不是表單謊報的那個", async () => {
+    selectRows.mx_customers = [{ id: "cust-1" }];
+    getMachineCardContext.mockResolvedValue({
+      card_type: "compressor",
+      columns: [],
+    });
+    const spy = vi
+      .spyOn(fakeSupabase, "from")
+      .mockImplementation((table: string) => {
+        const q = new Query(table);
+        if (table === "mx_machines") {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (q as any).then = (onfulfilled: (v: Res) => unknown) =>
+            Promise.resolve(
+              onfulfilled({
+                data: null,
+                error: { message: "duplicate", code: "23505" },
+              }),
+            );
+        }
+        return q;
+      });
+    const res = await updateMachineAction(
+      "m-1",
+      form({ card_type: "filter", machine_no: "A機" }),
+    );
+    spy.mockRestore();
+    expect(res.ok).toBe(false);
+    const msg = res.ok === false ? res.error : "";
+    expect(msg).toContain("此客戶的空壓機卡已有代號「A機」");
+    expect(msg).toContain("過濾系統卡仍可使用「A機」");
   });
 });
 
