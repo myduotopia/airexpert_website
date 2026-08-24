@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // #165 機台識別改三段式後的比對行為。三件事錯了會靜靜壞資料，純函式測不到：
-//   1. 建卡 / 改卡的衝突預檢是 (客戶, 機台代號)，而不是全域機號。
+//   1. 建卡 / 改卡的衝突預檢是 (客戶, 卡別, 機台代號)（0019），而不是全域機號。
 //   2. 機號改為選填：只有機台代號的卡要建得起來。
 //   3. 拍照辨識**先解析客戶、再在該客戶內找機台**；客戶對不上時不自動比對，
 //      只回一張 otherCustomer 提示卡（UI 預設不附加）。
@@ -177,7 +177,7 @@ beforeEach(() => {
   extractMaintenanceCard.mockReset();
 });
 
-describe("createMachineAction — 唯一性是 per-customer", () => {
+describe("createMachineAction — 唯一性範圍是 (客戶, 卡別)", () => {
   it("只填機台代號、機號留空也能建卡（機號已改選填）", async () => {
     selectRows.mx_customers = [{ id: "cust-1" }];
     const res = await createMachineAction(
@@ -191,22 +191,30 @@ describe("createMachineAction — 唯一性是 per-customer", () => {
     });
   });
 
-  it("同一客戶內代號重複 → 預檢擋下，訊息指名是哪個代號", async () => {
+  it("同一客戶、同一卡別內代號重複 → 預檢擋下，訊息指名卡別與代號", async () => {
     selectRows.mx_customers = [{ id: "cust-1" }];
     findMachineByTag.mockResolvedValue({
       id: "m-1",
       machine_no: "A機",
       serial_no: "AD480",
+      card_type: "compressor",
       customer_name: "兆利科技股份有限公司",
     });
     const res = await createMachineAction(
       form({ machine_no: "A機", serial_no: "AD480" }),
     );
     expect(res.ok).toBe(false);
-    expect(res.ok === false && res.error).toContain("此客戶已有代號「A機」");
+    const msg = res.ok === false ? res.error : "";
+    expect(msg).toContain("此客戶的空壓機卡已有代號「A機」");
+    // 訊息要讓員工知道「另一種卡仍可叫 A機」，否則會以為整個客戶只能有一個 A機。
+    expect(msg).toContain("過濾系統卡仍可使用「A機」");
     // 預檢擋下就不該再送 insert（也就不會撞 23505）。
     expect(rowsInsertedInto("mx_machines")).toHaveLength(0);
-    expect(findMachineByTag).toHaveBeenCalledWith("cust-1", "A機");
+    expect(findMachineByTag).toHaveBeenCalledWith(
+      "cust-1",
+      "A機",
+      "compressor",
+    );
   });
 
   it("代號預檢框在「這個客戶」內：不同客戶用同一個代號互不干擾", async () => {
@@ -215,10 +223,29 @@ describe("createMachineAction — 唯一性是 per-customer", () => {
       form({ customer_name: "和成欣業(股)公司", machine_no: "A機" }),
     );
     expect(res.ok).toBe(true);
-    expect(findMachineByTag).toHaveBeenCalledWith("cust-2", "A機");
+    expect(findMachineByTag).toHaveBeenCalledWith(
+      "cust-2",
+      "A機",
+      "compressor",
+    );
   });
 
-  it("沒有代號、機號在同一客戶內重複（23505）→ 引導補代號", async () => {
+  // 0019：代號的唯一範圍加入卡別。現場的乾燥機就擺在 A機 旁邊，紙卡上往往也
+  // 標成「A機」——預檢若不帶卡別，就會擋下 DB 其實接受的資料。
+  it("預檢帶著卡別：過濾卡沿用空壓機的「A機」不該被擋", async () => {
+    selectRows.mx_customers = [{ id: "cust-1" }];
+    const res = await createMachineAction(
+      form({ card_type: "filter", machine_no: "A機", serial_no: "AD480" }),
+    );
+    expect(res.ok).toBe(true);
+    expect(findMachineByTag).toHaveBeenCalledWith("cust-1", "A機", "filter");
+    expect(rowsInsertedInto("mx_machines")[0]).toMatchObject({
+      card_type: "filter",
+      machine_no: "A機",
+    });
+  });
+
+  it("沒有代號、機號在同一客戶同一卡別內重複（23505）→ 引導補代號", async () => {
     selectRows.mx_customers = [{ id: "cust-1" }];
     // 這一段只驗訊息選擇邏輯：insert 由假 client 回 23505。
     const spy = vi

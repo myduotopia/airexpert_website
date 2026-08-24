@@ -220,7 +220,8 @@ export function readRecordValues(raw: unknown): Record<string, string> {
 
 /**
  * 機號比對用正規化：lower + trim。
- * 與 0018 的 mx_machines_customer_serial_key（customer_id, lower(btrim(serial_no))）對齊。
+ * 與 0019 的 mx_machines_customer_serial_key
+ * （customer_id, card_type, lower(btrim(serial_no))）對齊。
  */
 export function normalizeSerial(v: string | null | undefined): string {
   return (v ?? "").trim().toLowerCase();
@@ -228,7 +229,8 @@ export function normalizeSerial(v: string | null | undefined): string {
 
 /**
  * 機台代號比對用正規化：lower + trim。
- * 與 0018 的 mx_machines_customer_tag_key（customer_id, lower(btrim(machine_no))）對齊。
+ * 與 0019 的 mx_machines_customer_tag_key
+ * （customer_id, card_type, lower(btrim(machine_no))）對齊。
  * 與 normalizeSerial 規則相同，但兩者對應的是不同的索引，故分開命名以免日後改錯邊。
  */
 export function normalizeMachineNo(v: string | null | undefined): string {

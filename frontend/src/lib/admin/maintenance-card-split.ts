@@ -395,10 +395,10 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
             ...basic,
             // 過濾卡的機號建議用去掉「過濾」前綴的型號；filter_spec 保留原文。
             serial_no: filterCardSerial(basic.filter_spec),
-            // 機台代號（A機／1號機）在同一客戶內唯一、且不分卡別（0018）：
-            // 混合卡的兩張草稿若都帶同一個代號會互撞，故只有「整張就是過濾卡」
-            // （沒有空壓機卡跟它搶）時才沿用表頭的代號。
-            machine_no: compressor === null ? basic.machine_no : "",
+            // 機台代號（A機／1號機）的唯一範圍自 0019 起是 (客戶, 卡別)，兩張草稿
+            // 卡別不同，帶同一個代號不會互撞，故混合卡的過濾卡也沿用表頭的代號。
+            // 這正是現場的實情：乾燥機就擺在 A機 旁邊，紙卡上往往也標成「A機」，
+            // 員工不必再為了避開衝突而重打一次代號。
             // 乾燥機卡沒有馬力 / 電壓 / 購買時間（見 #155），一律留空由員工補。
             purchased_at: "",
             model: "",

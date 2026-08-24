@@ -11,6 +11,7 @@ vi.mock("@/lib/supabase-server", () => ({ getServerSupabase }));
 import {
   findMachine,
   findMachineAcrossCustomers,
+  findMachineByTag,
 } from "@/lib/admin/maintenance";
 
 type Row = Record<string, unknown>;
@@ -81,7 +82,7 @@ describe("findMachine — 客戶範圍內的比對", () => {
     expect(getServerSupabase).not.toHaveBeenCalled();
   });
 
-  it("有代號 → 以代號比對（不分大小寫、去頭尾空白，同 0018 的索引）", async () => {
+  it("有代號 → 以代號比對（不分大小寫、去頭尾空白，同 0019 的索引）", async () => {
     fakeSupabase([row("m-1", "A機", "AD480"), row("m-2", "b機", "AD480")]);
     const hit = await findMachine({
       customerId: "cust-1",
@@ -124,7 +125,7 @@ describe("findMachine — 客戶範圍內的比對", () => {
   // 比不到只是多開一張重複卡（看得見、刪得掉）；比錯是把維護列靜靜接到同客戶的
   // 另一台機器上（看不出來）。分不出來的情況一律 confident=false，UI 不預設附加。
 
-  it("代號命中 → confident（代號在同一客戶內唯一）", async () => {
+  it("代號命中 → confident（代號在同一客戶、同一卡別內唯一）", async () => {
     fakeSupabase([row("m-1", "A機", "J751307001")]);
     const hit = await findMachine({ customerId: "cust-1", machineNo: "A機" });
     expect(hit?.confident).toBe(true);
@@ -251,6 +252,45 @@ describe("findMachineAcrossCustomers — 只比機號", () => {
   it("沒有機號 → 不查 DB（代號跨客戶必然重複，拿它比等於亂猜）", async () => {
     fakeSupabase([row("m-9", "A機", null)]);
     expect(await findMachineAcrossCustomers({ serialNo: "" })).toBeNull();
+    expect(getServerSupabase).not.toHaveBeenCalled();
+  });
+});
+
+// 建卡 / 改卡的衝突預檢。比對範圍**必須**與 0019 的 mx_machines_customer_tag_key
+// (customer_id, card_type, lower(btrim(machine_no))) 一致 —— 少帶卡別就會擋下
+// DB 其實接受的資料（乾燥機卡沿用空壓機的「A機」）。
+describe("findMachineByTag — 預檢範圍是 (客戶, 卡別, 代號)", () => {
+  it("查詢框在該客戶、該卡別、未封存", async () => {
+    const calls = fakeSupabase([]);
+    await findMachineByTag("cust-1", "A機", "filter");
+    expect(calls).toContainEqual({ method: "is", args: ["archived_at", null] });
+    expect(calls).toContainEqual({
+      method: "eq",
+      args: ["customer_id", "cust-1"],
+    });
+    expect(calls).toContainEqual({
+      method: "eq",
+      args: ["card_type", "filter"],
+    });
+  });
+
+  it("同客戶同卡別的同代號 → 命中且 confident", async () => {
+    fakeSupabase([row("m-1", " a機 ", "J751307001")]);
+    const hit = await findMachineByTag("cust-1", "A機", "compressor");
+    expect(hit?.id).toBe("m-1");
+    expect(hit?.confident).toBe(true);
+  });
+
+  it("編輯既有卡時排除自己", async () => {
+    fakeSupabase([row("m-1", "A機", "J751307001")]);
+    expect(
+      await findMachineByTag("cust-1", "A機", "compressor", "m-1"),
+    ).toBeNull();
+  });
+
+  it("沒有代號 → 不查 DB", async () => {
+    fakeSupabase([row("m-1", "A機", "J751307001")]);
+    expect(await findMachineByTag("cust-1", " ", "compressor")).toBeNull();
     expect(getServerSupabase).not.toHaveBeenCalled();
   });
 });

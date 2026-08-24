@@ -612,6 +612,14 @@ describe("buildCardDrafts — 樣態 A（整張是過濾系統卡）", () => {
   it("預設勾選匯入", () => {
     expect(shouldImportFilterCard(out.filter)).toBe(true);
   });
+
+  it("整張是過濾卡時，代號照樣沿用表頭", () => {
+    const tagged = buildCardDrafts({
+      basic: { ...CARD_A.basic, machine_no: "A機" },
+      records: CARD_A.records,
+    });
+    expect(tagged.filter?.basic.machine_no).toBe("A機");
+  });
 });
 
 describe("buildCardDrafts — 樣態 B（一張卡兩台機器）", () => {
@@ -656,6 +664,18 @@ describe("buildCardDrafts — 樣態 B（一張卡兩台機器）", () => {
     expect(out.filter?.basic.customer_name).toBe(
       out.compressor?.basic.customer_name,
     );
+  });
+
+  // 0019：機台代號的唯一範圍是 (客戶, 卡別)，兩張草稿卡別不同，帶同一個代號
+  // 不會互撞。0018 時代為了閃開衝突而把過濾卡的代號清空，那是繞路不是需求 ——
+  // 現場的乾燥機就擺在 A機 旁邊，紙卡上往往也標成「A機」，沿用才省得員工重打。
+  it("混合卡：兩張草稿都沿用表頭的機台代號", () => {
+    const tagged = buildCardDrafts({
+      basic: { ...CARD_B.basic, machine_no: "A機" },
+      records: CARD_B.records,
+    });
+    expect(tagged.compressor?.basic.machine_no).toBe("A機");
+    expect(tagged.filter?.basic.machine_no).toBe("A機");
   });
 });
 

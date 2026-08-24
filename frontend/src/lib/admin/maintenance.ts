@@ -236,6 +236,9 @@ export async function getMachineCardContext(machineId: string): Promise<{
 //   * 過濾卡的「機號」其實是過濾器型號（100HA／AD480），兩家客戶買同款就一樣；
 //   * 機台代號（A機／1號機）是客戶內部稱呼，跨客戶必然重複。
 // 因此 0018 把唯一索引改成 per-customer，這裡的查詢一律**先框在一個客戶內**。
+// 0019 再把「卡別」納入唯一鍵（識別範圍 = (客戶, 卡別)）：同一客戶的乾燥機卡可以
+// 沿用空壓機的「A機」——現場的乾燥機就擺在 A機 旁邊，紙卡上往往也這樣標。
+// 所以本區所有比對除了框客戶，也一律框卡別。
 
 /** 機台比對的命中結果。帶客戶資訊供 UI 顯示與跨客戶提示使用。 */
 export interface MachineIdentityHit {
@@ -311,7 +314,7 @@ function toIdentityHit(
  * 拍照辨識分流（#158）產出兩張草稿卡時，兩張各自以自己的卡別比對。
  *
  * 一次把該客戶的未封存卡撈回本地比對（一個客戶的機台是個位數～十幾台），
- * 正規化規則才能與 0018 的 lower(btrim(...)) 索引完全一致，不必煩惱 ilike 的跳脫。
+ * 正規化規則才能與 0018／0019 的 lower(btrim(...)) 索引完全一致，不必煩惱 ilike 的跳脫。
  */
 export async function findMachine(input: {
   customerId: string;
@@ -367,7 +370,8 @@ function pickIdentityMatch(
   serial: string,
   cardType: MxCardType,
 ): IdentityMatch | null {
-  // 代號在同一客戶內唯一（0018 的 mx_machines_customer_tag_key）→ 命中即確定。
+  // 代號在 (客戶, 卡別) 內唯一（0019 的 mx_machines_customer_tag_key）。rows 已由
+  // findMachine 以 card_type 篩過，故命中即確定。
   if (tag) {
     const byTag = rows.find((m) => normalizeMachineNo(m.machine_no) === tag);
     if (byTag) return { row: byTag, confident: true };
@@ -376,7 +380,8 @@ function pickIdentityMatch(
   const sameSerial = rows.filter(
     (m) => normalizeSerial(m.serial_no) === serial,
   );
-  // 沒有代號的卡＝0018 的 mx_machines_customer_serial_key 作用範圍，同機號至多一張。
+  // 沒有代號的卡＝0019 的 mx_machines_customer_serial_key 作用範圍，
+  // 同 (客戶, 卡別) 下同機號至多一張（rows 已以 card_type 篩過）。
   const untagged = sameSerial.find(
     (m) => normalizeMachineNo(m.machine_no) === "",
   );
@@ -394,7 +399,7 @@ function pickIdentityMatch(
     return { row: untagged, confident: serialIdentifies };
   }
 
-  // 照片沒有代號：優先挑同樣沒有代號的那張（0018 保證同機號至多一張）。
+  // 照片沒有代號：優先挑同樣沒有代號的那張（0019 保證同 (客戶, 卡別) 下同機號至多一張）。
   //
   // 但「照片沒讀到代號」不等於「這台機器沒有代號」—— 代號常是手寫在卡邊的，漏讀是
   // 常態（下一段之所以要 sameSerial.length === 1 就是承認這件事）。因此過濾卡若同機號
@@ -418,14 +423,20 @@ function pickIdentityMatch(
 }
 
 /**
- * 同一客戶內是否已有相同機台代號的卡（衝突預檢）。
- * **不分卡別** —— 0018 的 mx_machines_customer_tag_key 也沒有分，
- * 同一客戶的空壓機卡與過濾卡不能共用一個代號。
+ * 同一客戶、**同一卡別**內是否已有相同機台代號的卡（衝突預檢）。
+ *
+ * 比對範圍必須與 0019 的 mx_machines_customer_tag_key
+ * (customer_id, card_type, lower(btrim(machine_no))) 完全一致。0018 的版本不分
+ * 卡別，這支當時也刻意不分；0019 把卡別納入唯一鍵之後，若這裡還是不分卡別，
+ * 預檢就會擋下 DB 其實接受的資料 —— 乾燥機卡沿用空壓機的「A機」正是 0019
+ * 要放行的情況（現場的乾燥機就擺在 A機 旁邊，紙卡上往往也標成 A機）。
+ *
  * excludeMachineId 用於編輯既有卡時排除自己。
  */
 export async function findMachineByTag(
   customerId: string,
   machineNo: string | null | undefined,
+  cardType: MxCardType,
   excludeMachineId?: string,
 ): Promise<MachineIdentityHit | null> {
   const tag = normalizeMachineNo(machineNo);
@@ -435,7 +446,8 @@ export async function findMachineByTag(
     .from("mx_machines")
     .select(IDENTITY_SELECT)
     .is("archived_at", null)
-    .eq("customer_id", customerId);
+    .eq("customer_id", customerId)
+    .eq("card_type", cardType);
   if (error) throw new Error(`查詢機台代號失敗：${error.message}`);
   const hit = (data ?? [])
     .map((row) => row as IdentityRow)
@@ -443,7 +455,7 @@ export async function findMachineByTag(
       (m) =>
         normalizeMachineNo(m.machine_no) === tag && m.id !== excludeMachineId,
     );
-  // 代號在同一客戶內唯一，命中就是確定的同一張卡。
+  // 代號在同一客戶、同一卡別內唯一，命中就是確定的同一張卡。
   return hit ? toIdentityHit(hit, true) : null;
 }
 

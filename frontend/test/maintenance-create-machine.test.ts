@@ -211,7 +211,10 @@ describe("createMachineAction — 錯誤回報（不得 throw）", () => {
     failOn["mx_machines:insert"] = "23505";
     const res = await createMachineAction(form({}));
     expect(res.ok).toBe(false);
-    expect(res.ok === false && res.error).toContain("此機號已存在");
+    // 0019 起唯一範圍是 (客戶, 卡別)，文案要講明是哪一種卡。
+    expect(res.ok === false && res.error).toContain(
+      "此客戶的空壓機卡已有相同機號",
+    );
   });
 
   it("其他 DB 錯誤 → 回 { ok: false } 並帶出原始訊息", async () => {

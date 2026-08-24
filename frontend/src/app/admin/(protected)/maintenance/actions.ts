@@ -13,6 +13,7 @@ import {
   parseColumnDefs,
   customerPayloadFromForm,
   parseExtraction,
+  cardTypeLabel,
   MACHINE_IDENTITY_REQUIRED_MESSAGE,
   MAX_COLUMN_DEFS,
   type ColumnDef,
@@ -91,23 +92,41 @@ async function findOrCreateCustomer(
 }
 
 // ── 機台識別衝突的錯誤文案（#165）─────────────────────────────────
-// 唯一性是 per-customer：同一客戶內代號不得重複、沒有代號的卡機號不得重複。
-// 跨客戶的同代號 / 同機號是正常的（A機、AD480 本來就會重複），不再有
-// 「此卡號已被其他卡使用」這種說法。
+// 識別範圍是 (客戶, 卡別)（0019）：同一客戶的**同一卡別**內代號不得重複、
+// 沒有代號的卡機號不得重複。跨客戶的同代號 / 同機號是正常的（A機、AD480 本來
+// 就會重複），不再有「此卡號已被其他卡使用」這種說法；同一客戶的乾燥機卡沿用
+// 空壓機的「A機」也是正常的（現場的乾燥機就擺在 A機 旁邊）。文案因此一定要
+// 講明是「哪一種卡」撞號，否則員工會誤以為整個客戶只能有一個 A機。
 
-/** 撞到同客戶既有代號時的訊息。 */
-function tagConflictMessage(hit: { machine_no: string | null }): string {
-  return `此客戶已有代號「${hit.machine_no ?? ""}」的卡，請改用其他代號，或直接編輯那張卡。`;
+/** 卡別的完整顯示名：「空壓機卡」／「過濾系統卡」。 */
+function cardLabel(cardType: MxCardType): string {
+  return `${cardTypeLabel(cardType)}卡`;
 }
 
-/** 撞到 0018 部分唯一索引（23505）時的訊息，依有無代號給不同引導。 */
+/** 另一種卡別的顯示名（用來說明「同代號在另一種卡上是可以的」）。 */
+function otherCardLabel(cardType: MxCardType): string {
+  return cardLabel(cardType === "filter" ? "compressor" : "filter");
+}
+
+/** 撞到同客戶、同卡別既有代號時的訊息。 */
+function tagConflictMessage(hit: {
+  machine_no: string | null;
+  card_type: MxCardType;
+}): string {
+  const tag = hit.machine_no ?? "";
+  return `此客戶的${cardLabel(hit.card_type)}已有代號「${tag}」，請改用其他代號，或直接編輯那張卡。（代號只需在同一種卡別內不重複，${otherCardLabel(hit.card_type)}仍可使用「${tag}」）`;
+}
+
+/** 撞到 0019 部分唯一索引（23505）時的訊息，依有無代號給不同引導。 */
 function identityConflictMessage(payload: {
   machine_no: string | null;
   serial_no: string | null;
+  card_type: MxCardType;
 }): string {
+  const self = cardLabel(payload.card_type);
   if (payload.machine_no)
-    return `此客戶已有代號「${payload.machine_no}」的卡，請改用其他代號。`;
-  return `此機號已存在於同一客戶名下，請改用既有卡片，或補上機台代號（例：A機）以區分。`;
+    return `此客戶的${self}已有代號「${payload.machine_no}」，請改用其他代號。（代號只需在同一種卡別內不重複，${otherCardLabel(payload.card_type)}仍可使用「${payload.machine_no}」）`;
+  return `此客戶的${self}已有相同機號，請改用既有卡片，或補上機台代號（例：A機）以區分。`;
 }
 
 // ── 表單 autocomplete（typeahead）搜尋 ─────────────────────────────
@@ -313,9 +332,14 @@ export async function createMachineAction(
       name: customerName,
     });
 
-    // 衝突預檢：機台代號在同一客戶內唯一（0018）。先查再插，讓員工在表單上看到
-    // 是哪一張卡撞號，而不是收到一句 23505。
-    const conflict = await findMachineByTag(customerId, payload.machine_no);
+    // 衝突預檢：機台代號在 (客戶, 卡別) 內唯一（0019）。先查再插，讓員工在表單上
+    // 看到是哪一張卡撞號，而不是收到一句 23505。比對範圍**必須**帶卡別，否則會擋下
+    // DB 其實接受的資料（乾燥機卡沿用空壓機的「A機」）。
+    const conflict = await findMachineByTag(
+      customerId,
+      payload.machine_no,
+      payload.card_type,
+    );
     if (conflict) return { ok: false, error: tagConflictMessage(conflict) };
 
     const { data, error } = await supabase
@@ -386,11 +410,13 @@ export async function updateMachineAction(
       customerId = (row as { customer_id: string } | null)?.customer_id ?? null;
     }
 
-    // 衝突預檢：機台代號在同一客戶內唯一（0018），排除自己這張卡。
+    // 衝突預檢：機台代號在 (客戶, 卡別) 內唯一（0019），排除自己這張卡。
+    // 卡別以 DB 為準（ctx.card_type）——表單不得改卡別，見上方。
     if (customerId) {
       const conflict = await findMachineByTag(
         customerId,
         payload.machine_no,
+        ctx.card_type,
         machineId,
       );
       if (conflict) return { ok: false, error: tagConflictMessage(conflict) };
@@ -402,7 +428,13 @@ export async function updateMachineAction(
       .eq("id", machineId);
     if (error) {
       if (error.code === "23505")
-        return { ok: false, error: identityConflictMessage(payload) };
+        return {
+          ok: false,
+          error: identityConflictMessage({
+            ...payload,
+            card_type: ctx.card_type,
+          }),
+        };
       return { ok: false, error: error.message };
     }
     // 只有表單真的帶了 columns_json 才動欄位定義。缺這個欄位就當「這次不改欄位」，
@@ -756,14 +788,18 @@ async function insertImportedMachine(
     .select("id")
     .single();
   if (error) {
-    // 唯一性已是 per-customer（0018）：撞號一定是「同一個客戶名下」的既有卡，
-    // 不再有「卡號被別的客戶佔走」這回事。
+    // 唯一性的範圍是 (客戶, 卡別)（0019）：撞號一定是「同一個客戶、同一種卡」的
+    // 既有卡，不再有「卡號被別的客戶佔走」、也不再有「被另一種卡佔走」這回事。
+    // 訊息本身已點名卡別（「此客戶的過濾系統卡已有…」），故不再加 `${label}：`
+    // 前綴 —— 員工照樣看得出是兩張草稿卡中的哪一張撞號，也不會讀到「空壓機卡：
+    // 此客戶的空壓機卡…」這種疊字。
     if (error.code === "23505")
       throw new Error(
-        `${label}：${identityConflictMessage({
+        identityConflictMessage({
           machine_no: basic.machine_no.trim() || null,
           serial_no: basic.serial_no.trim() || null,
-        })}`,
+          card_type: cardType,
+        }),
       );
     throw new Error(`建立${label}失敗：${error.message}`);
   }
@@ -956,10 +992,10 @@ export async function restoreMachineAction(machineId: string): Promise<void> {
     .update({ archived_at: null })
     .eq("id", machineId);
   if (error) {
-    // 邊界：封存後又用同機號建了新的使用中卡片，復原會撞部分唯一索引（23505）。
+    // 邊界：封存後又用同代號 / 同機號建了新的使用中卡片，復原會撞部分唯一索引（23505）。
     if (error.code === "23505") {
       throw new Error(
-        "此客戶名下已有相同代號 / 機號的使用中卡片，無法復原。請先處理該卡，或改為永久刪除此封存卡。",
+        "此客戶名下已有相同卡別、相同代號 / 機號的使用中卡片，無法復原。請先處理該卡，或改為永久刪除此封存卡。",
       );
     }
     throw new Error(`復原失敗：${error.message}`);
