@@ -208,9 +208,14 @@ export function normalizeCardHeader(
  * 「乾燥機專屬」耗材關鍵字：出現這些字幾乎可斷定這張紙上真的有第二台機器。
  * 注意「散熱器」（空壓機的散熱器組清洗 / 清潔）刻意不列入，只認「散熱馬達」，
  * 否則樣態 B 的「散熱器組清洗」會被誤判成乾燥機的維護。
+ *
+ * 「CKD」「AD480」這兩個英數 token 前面另外擋一個「不可再接英文字母」：它們是
+ * 純 ASCII 子字串，不加這道關的話 LOAD 20 / HEAD 12 會被當成 AD480、
+ * BACKDOOR / lockdown 會被當成 CKD。#166 之後這種誤命中的代價不再只是「某一列
+ * 歸錯卡」，而是憑空多出一整張過濾卡草稿，故一律收緊。中文關鍵字不需要這道關。
  */
 const DRYER_KEYWORD_RE =
-  /乾燥機|乾燥桶|乾修|排水器|濾蕊|濾芯|濾心|散熱馬達|葉片|CKD|AD\s?\d{2,}/i;
+  /乾燥機|乾燥桶|乾修|排水器|濾蕊|濾芯|濾心|散熱馬達|葉片|(?:^|[^A-Za-z])(?:CKD(?![A-Za-z])|AD\s?\d{2,})/i;
 
 /**
  * 過濾系統的耗材關鍵字（＝乾燥機專屬關鍵字再加上「過濾」）。命中即判為過濾卡的內容。
@@ -274,10 +279,41 @@ export function hasFilterRowEvidence(
   records: (RecordPayload & { belongs_to?: BelongsTo | null })[],
 ): boolean {
   return records.some(
-    (r) =>
-      parseBelongsTo(r.belongs_to) === "filter" ||
-      DRYER_KEYWORD_RE.test(`${filterCellText(r)} ${str(r.note)}`),
+    (r) => parseBelongsTo(r.belongs_to) === "filter" || hasDryerEvidence(r),
   );
+}
+
+/** 單一列是否帶「乾燥機專屬」硬證據（見 DRYER_KEYWORD_RE）。 */
+function hasDryerEvidence(r: RecordPayload): boolean {
+  return DRYER_KEYWORD_RE.test(`${filterCellText(r)} ${str(r.note)}`);
+}
+
+/**
+ * #166 的分流路徑（表頭沒有過濾標記）專用：把 AI 標的 `belongs_to = "compressor"`
+ * 從「帶硬證據的列」上拿掉，交還 classifyRecord 判。
+ *
+ * 為什麼非做不可：辨識 prompt 在 card_kind = "compressor" 時要求 AI
+ * 「所有列一律 belongs_to = compressor」。這條路徑的表頭正好就是沒有過濾標記，
+ * 所以 AI 給的 compressor 是**那條規則的產物、不是看照片下的判斷**，沒有證據力。
+ * 不清掉的話 hasFilterRowEvidence 開了門、列卻全被 AI 標回空壓機，split.filter
+ * 永遠是空的 → hasFilterContent 為 false → 過濾卡照樣是 null，#166 在正式環境
+ * 等於完全沒生效（單元測試的 fixture 都沒帶 belongs_to，因此測不出來）。
+ *
+ * 只清「compressor」且只清「有硬證據」的列：
+ * - AI 標的 filter 一律保留（那是判斷，不是規則）。
+ * - 沒有硬證據的列保留 AI 的 compressor（例：散熱器組清潔）。
+ * - 表頭本來就有過濾標記（mixed）時不套用：那條路徑的 prompt 要求 AI 逐列判斷，
+ *   它給的 compressor 是真的判斷，不該被關鍵字推翻。
+ * - 只要 AI 在這張紙上標出過**任何一列** filter，整個覆寫就不套用（見呼叫端）：
+ *   那證明它有在逐列分辨，不是在套「一律 compressor」那條規則，此時它給的
+ *   compressor 同樣是判斷。此情形下過濾卡本來就會由那一列撐起來，不需要覆寫。
+ */
+function dropForcedCompressor(
+  r: RecordPayload & { belongs_to?: BelongsTo | null },
+): RecordPayload & { belongs_to?: BelongsTo | null } {
+  return parseBelongsTo(r.belongs_to) === "compressor" && hasDryerEvidence(r)
+    ? { ...r, belongs_to: null }
+    : r;
 }
 
 /**
@@ -416,11 +452,20 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
 
   // 整張是過濾卡（樣態 A）時不分流：那張紙上的專用油、時數也是寫給過濾卡的，
   // 不該被關鍵字拆走。其餘情形只要「表頭說有兩台」或「列中有乾燥機硬證據」就分流。
-  const splitByRow =
-    header.kind === "mixed" ||
-    (header.kind === "compressor" && hasFilterRowEvidence(input.records));
+  const byRowEvidence =
+    header.kind === "compressor" && hasFilterRowEvidence(input.records);
+  const splitByRow = header.kind === "mixed" || byRowEvidence;
+  // 「AI 一列 filter 都沒標」＝ 它在套 prompt 的『card_kind=compressor 就一律標
+  // compressor』那條規則，此時它的 compressor 標記沒有證據力，硬證據要蓋過去。
+  const aiForcedAllCompressor =
+    byRowEvidence &&
+    !input.records.some((r) => parseBelongsTo(r.belongs_to) === "filter");
   const rows: RecordDraft[] = splitByRow
-    ? splitRecordsByCard(input.records).all
+    ? splitRecordsByCard(
+        aiForcedAllCompressor
+          ? input.records.map(dropForcedCompressor)
+          : input.records,
+      ).all
     : input.records.map((r) =>
         withBelongsTo(r, header.kind === "filter" ? "filter" : "compressor"),
       );
