@@ -8,7 +8,14 @@
 --
 -- 這是「放寬」不是「收緊」：任何在 (客戶, 代號) 上唯一的資料，在
 -- (客戶, 卡別, 代號) 上必然也唯一。故不需事前重複檢查，既有列不可能違反。
--- 套用：Supabase Dashboard → SQL Editor 貼上執行。
+--
+-- ⚠️ 本檔已於 2026-08-24 手動套用到正式 Supabase 專案。此檔僅為補齊 migration
+--    歷史，不要再跑一次。（真要重跑其實無害——全檔是 drop index if exists + create，
+--    不像 0018 有 add constraint 會卡住——但沒有理由這麼做。）
+--
+-- 已知殘留：0018 對 mx_machines.machine_no 下的 column comment 仍寫「同一客戶內唯一」，
+--    本檔生效後應為「同一客戶、同一卡別內唯一」。那是 DB 端的敘述性註解、不影響行為，
+--    待下次有需要動 mx_machines 的 migration 時一併更正。
 
 drop index if exists mx_machines_customer_tag_key;
 
