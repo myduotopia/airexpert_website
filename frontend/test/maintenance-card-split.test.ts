@@ -706,6 +706,24 @@ describe("filterCellText / suggestFilterColumns", () => {
       ]),
     ).toEqual(["濾蕊", "排水器"]);
   });
+
+  // 「排水器」那條 hint 與 DRYER_KEYWORD_RE 共用同一份 token source：
+  // 少了前面那道「不可再接英文字母」，LOAD 20 / BACKDOOR 會讓過濾卡憑空
+  // 多出一欄「排水器」讓員工自己刪。
+  it("英數 token 同樣不可當子字串誤命中（欄名建議）", () => {
+    expect(suggestFilterColumns([rec({ note: "LOAD 20 UNLOAD 30" })])).toEqual(
+      [],
+    );
+    expect(suggestFilterColumns([rec({ note: "BACKDOOR 檢查" })])).toEqual([]);
+    expect(suggestFilterColumns([rec({ inverter: "lockdown" })])).toEqual([]);
+    // 真的寫了型號的仍要建議（行首、接中文、接空格三種位置）。
+    expect(suggestFilterColumns([rec({ filter_system: "CKD" })])).toEqual([
+      "排水器",
+    ]);
+    expect(
+      suggestFilterColumns([rec({ filter_system: "桶下AD 480" })]),
+    ).toEqual(["排水器"]);
+  });
 });
 
 // ── 兩張草稿卡 ────────────────────────────────────────────────────
@@ -1024,6 +1042,27 @@ describe("buildCardDrafts — 樣態 E（表頭無標記但列中有乾燥機內
     });
     expect(out.rows.map((r) => r.belongs_to)).toEqual(["filter", "compressor"]);
     expect(out.filter?.records).toHaveLength(1);
+  });
+
+  // 明文記下「AI 只是部分分辨」時的取捨：它標了一列 filter（→ 覆寫整個停用），
+  // 卻把另一列真的乾燥機列標成 compressor。此時該列會留在空壓機卡上。
+  // 這是可接受的：過濾卡照樣由它標的那一列撐起來（不會整張卡消失，那才是 F1），
+  // 落錯的只是「一列」，員工在核對畫面按「搬到另一張卡」即可。行為與表頭本來就是
+  // mixed 的路徑一致 —— 那條路徑同樣完全尊重 AI 的逐列判斷。
+  it("AI 只部分分辨時：過濾卡仍在，落錯的列由員工搬（與 mixed 路徑一致）", () => {
+    const out = buildCardDrafts({
+      basic: CARD_E.basic,
+      records: [
+        { ...rec({ filter_system: "AD480×1" }), belongs_to: "filter" as const },
+        {
+          ...rec({ inverter: '乾燥機12"散熱馬達+葉片' }),
+          belongs_to: "compressor" as const,
+        },
+      ],
+    });
+    expect(out.kind).toBe("mixed");
+    expect(out.filter?.records).toHaveLength(1);
+    expect(out.rows.map((r) => r.belongs_to)).toEqual(["filter", "compressor"]);
   });
 
   it("表頭本來就有過濾標記（mixed）時不覆寫：AI 的逐列判斷仍最大", () => {

@@ -205,17 +205,31 @@ export function normalizeCardHeader(
 }
 
 /**
+ * 排水器型號的英數 token（CKD / AD480）。這兩個是純 ASCII 子字串，前面一律擋一個
+ * 「不可再接英文字母」，否則 LOAD 20 / HEAD 12 會被當成 AD480、BACKDOOR / lockdown
+ * 會被當成 CKD（正則帶 i）。#166 之後誤命中的代價不再只是「某一列歸錯卡」，而是
+ * 憑空多出一整張過濾卡草稿，故一律收緊。
+ *
+ * 刻意不用 lookbehind：這個模組會被核對畫面（client component）在執行期 import，
+ * 得跑在技術員拍照用的 iOS Safari 上。`(?:^|[^A-Za-z])` 會多吃掉前面那個字元，
+ * 但這裡只用 .test()，不取 match 位置，吃掉無妨。
+ *
+ * 同一份 source 同時給 DRYER_KEYWORD_RE 與 FILTER_COLUMN_HINTS 的「排水器」用：
+ * 兩邊各留一份的話，收緊只收到一半（欄名建議仍會被 LOAD 20 誤觸發）。
+ */
+const DRAIN_TOKEN_SRC = String.raw`(?:^|[^A-Za-z])(?:CKD(?![A-Za-z])|AD\s?\d{2,})`;
+
+/**
  * 「乾燥機專屬」耗材關鍵字：出現這些字幾乎可斷定這張紙上真的有第二台機器。
  * 注意「散熱器」（空壓機的散熱器組清洗 / 清潔）刻意不列入，只認「散熱馬達」，
  * 否則樣態 B 的「散熱器組清洗」會被誤判成乾燥機的維護。
  *
- * 「CKD」「AD480」這兩個英數 token 前面另外擋一個「不可再接英文字母」：它們是
- * 純 ASCII 子字串，不加這道關的話 LOAD 20 / HEAD 12 會被當成 AD480、
- * BACKDOOR / lockdown 會被當成 CKD。#166 之後這種誤命中的代價不再只是「某一列
- * 歸錯卡」，而是憑空多出一整張過濾卡草稿，故一律收緊。中文關鍵字不需要這道關。
+ * 排水器型號的兩個英數 token 另外抽成 DRAIN_TOKEN_SRC（見下），中文關鍵字不需要。
  */
-const DRYER_KEYWORD_RE =
-  /乾燥機|乾燥桶|乾修|排水器|濾蕊|濾芯|濾心|散熱馬達|葉片|(?:^|[^A-Za-z])(?:CKD(?![A-Za-z])|AD\s?\d{2,})/i;
+const DRYER_KEYWORD_RE = new RegExp(
+  `乾燥機|乾燥桶|乾修|排水器|濾蕊|濾芯|濾心|散熱馬達|葉片|${DRAIN_TOKEN_SRC}`,
+  "i",
+);
 
 /**
  * 過濾系統的耗材關鍵字（＝乾燥機專屬關鍵字再加上「過濾」）。命中即判為過濾卡的內容。
@@ -361,7 +375,7 @@ export function splitRecordsByCard(
  */
 const FILTER_COLUMN_HINTS: { label: string; re: RegExp }[] = [
   { label: "濾蕊", re: /濾蕊|濾芯|濾心/ },
-  { label: "排水器", re: /排水器|CKD|AD\s?\d{2,}/i },
+  { label: "排水器", re: new RegExp(`排水器|${DRAIN_TOKEN_SRC}`, "i") },
   { label: "散熱馬達", re: /散熱馬達/ },
   { label: "葉片", re: /葉片/ },
 ];
