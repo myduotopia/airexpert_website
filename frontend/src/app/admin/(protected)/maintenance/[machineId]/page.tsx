@@ -7,6 +7,7 @@ import { DeleteButton } from "@/components/admin/DeleteButton";
 import type { MxMachineColumn, MxRecord } from "@/lib/admin/maintenance";
 import { readRecordValues } from "@/lib/admin/maintenance-normalize";
 import { rocDate } from "@/lib/admin/minguo";
+import { machineDisplayName } from "@/lib/admin/machine-identity";
 import { ServiceTypeBadge } from "@/components/admin/maintenance/ServiceTypeBadge";
 import {
   isUnclassified,
@@ -168,7 +169,8 @@ export default async function MachineDetailPage({
     <div className="mx-auto max-w-[1100px]">
       <div className="flex items-center justify-between">
         <h1 className="text-ink text-[24px] font-bold">
-          {machine.serial_no}
+          {/* 三段式識別「客戶-機台代號-機號」（#165）；旁邊仍掛客戶全名連結。 */}
+          {machineDisplayName(customer, machine)}
           {customerHref ? (
             <Link
               href={customerHref}
@@ -240,8 +242,12 @@ export default async function MachineDetailPage({
           </dd>
         </div>
         <div>
-          <dt className="text-text-muted">機台編號</dt>
+          <dt className="text-text-muted">機台代號</dt>
           <dd className="text-ink">{machine.machine_no ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-text-muted">機號</dt>
+          <dd className="text-ink">{machine.serial_no ?? "—"}</dd>
         </div>
         {isFilter && (
           <>

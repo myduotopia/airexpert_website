@@ -443,7 +443,7 @@ export async function extractMaintenanceCard(
   "card_kind": "compressor | filter | mixed",
   "basic": {
     "customer_name": "客戶名稱", "customer_code": "客戶編號(卡片左上代號，如KC054)",
-    "serial_no": "機號", "machine_no": "機台編號(若卡上有)",
+    "serial_no": "機號", "machine_no": "機台代號(見下方【機台代號】說明)",
     "location": "使用地點", "purchased_at": "購買時間(YYYY-MM-DD)",
     "model": "機型", "horsepower": "馬力", "voltage": "電壓",
     "filter_spec": "表頭的過濾系統型號原文：『過濾 …』或行尾的『＋100HA』，沒有就空字串"
@@ -456,6 +456,19 @@ export async function extractMaintenanceCard(
       "belongs_to": "compressor | filter" }
   ]
 }
+
+【機台代號 machine_no — 客戶內部用來稱呼這台機器的 tag】
+同一個客戶會有好幾台機器，卡上常寫一個好念的代稱來區分，這就是 machine_no。
+常見樣態：「A機」「B機」「1號機」「2號機」「A01 銅器部」。
+可能出現的位置（依常見程度）：
+- 「機型…馬力…電壓…」那一行的**最前面**，例「A機 機型BMF8-8 馬力10HP 電壓220V」
+  → machine_no = "A機"；機型只填 "BMF8-8"，不要把代號吃進 model。
+- 同一行前面帶部門／區域，例「A01 銅器部 機型JNV75/8 馬力100HP 電壓380V」
+  → machine_no = "A01 銅器部"（連同部門一起，那是它的全名）。
+- 卡片**邊上或空白處手寫**的「1號機」「2號機」之類 → 一樣填進 machine_no。
+- 卡上完全找不到代號就填 ""，不要自己編、也不要拿機號或機型充數。
+machine_no 與 serial_no 是兩回事：serial_no 是「機號」那一欄的原廠序號
+（例「機號J751307001」），machine_no 是上述的人用稱呼。兩者都有就都填。
 
 【卡別分流 — 舊資料常把「過濾系統(乾燥機)卡」與「空壓機卡」混寫在同一張紙上】
 紙張標題一律印「空壓機保養紀錄卡」，但實際內容不一定只有空壓機，請先判斷 card_kind：

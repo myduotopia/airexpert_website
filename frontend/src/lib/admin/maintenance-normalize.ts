@@ -31,9 +31,17 @@ export function parseCardType(v: unknown): MxCardType {
   return v === "filter" ? "filter" : "compressor";
 }
 
+/**
+ * 機號 / 機台代號兩者皆空時的錯誤訊息。
+ * 對齊 0018 的 mx_machines_identity_check：一張卡至少要有一段識別。
+ */
+export const MACHINE_IDENTITY_REQUIRED_MESSAGE =
+  "機台代號與機號至少要填一個（例：機台代號「A機」，或機號「J751307001」）。";
+
 export interface MachinePayload {
   card_type: MxCardType;
-  serial_no: string;
+  /** 機號。過濾卡此處放過濾器型號，可留空（改以機台代號識別）。 */
+  serial_no: string | null;
   machine_no: string | null;
   location: string | null;
   purchased_at: string | null;
@@ -46,11 +54,14 @@ export interface MachinePayload {
 
 export function machinePayloadFromForm(fd: FormData): MachinePayload {
   const serial = cleanText(fd.get("serial_no"));
-  if (!serial) throw new Error("機號為必填。");
+  const machineNo = cleanText(fd.get("machine_no"));
+  // 機號不再是必填：現場很多卡只有「A機」這種客戶內部代號，過濾卡的機號位置
+  // 更常常寫的是過濾器型號。但兩段全空的卡沒有任何識別可言，DB 也會擋（0018）。
+  if (!serial && !machineNo) throw new Error(MACHINE_IDENTITY_REQUIRED_MESSAGE);
   return {
     card_type: parseCardType(fd.get("card_type")),
     serial_no: serial,
-    machine_no: cleanText(fd.get("machine_no")),
+    machine_no: machineNo,
     location: cleanText(fd.get("location")),
     purchased_at: cleanText(fd.get("purchased_at")),
     model: cleanText(fd.get("model")),
@@ -207,8 +218,22 @@ export function readRecordValues(raw: unknown): Record<string, string> {
   return out;
 }
 
-/** 機號比對用正規化：lower + trim。與 migration 的 unique index lower(btrim()) 對齊。 */
+/**
+ * 機號比對用正規化：lower + trim。
+ * 與 0019 的 mx_machines_customer_serial_key
+ * （customer_id, card_type, lower(btrim(serial_no))）對齊。
+ */
 export function normalizeSerial(v: string | null | undefined): string {
+  return (v ?? "").trim().toLowerCase();
+}
+
+/**
+ * 機台代號比對用正規化：lower + trim。
+ * 與 0019 的 mx_machines_customer_tag_key
+ * （customer_id, card_type, lower(btrim(machine_no))）對齊。
+ * 與 normalizeSerial 規則相同，但兩者對應的是不同的索引，故分開命名以免日後改錯邊。
+ */
+export function normalizeMachineNo(v: string | null | undefined): string {
   return (v ?? "").trim().toLowerCase();
 }
 

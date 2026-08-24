@@ -7,7 +7,6 @@ import {
   filterCardSerial,
   filterCellText,
   isFilterHeaderText,
-  isSameCustomer,
   normalizeCardHeader,
   parseBelongsTo,
   parseCardKind,
@@ -556,54 +555,6 @@ describe("splitRecordsByCard", () => {
   });
 });
 
-describe("isSameCustomer — 過濾卡比對既有卡時的客戶把關", () => {
-  it("兩邊都有客戶編號 → 比編號（不分大小寫）", () => {
-    expect(
-      isSameCustomer(
-        {
-          customer_code: "KK123-1",
-          customer_name: "和成欣業(股)公司(二廠) 25",
-        },
-        { customer_code: "kk123-1", customer_name: "和成欣業" },
-      ),
-    ).toBe(true);
-    expect(
-      isSameCustomer(
-        {
-          customer_code: "KK123-1",
-          customer_name: "和成欣業(股)公司(二廠) 25",
-        },
-        {
-          customer_code: "KK321-3",
-          customer_name: "和成欣業(股)公司(二廠) 25",
-        },
-      ),
-    ).toBe(false);
-  });
-
-  it("缺客戶編號 → 退回比客戶名稱全等", () => {
-    expect(
-      isSameCustomer(
-        { customer_code: "", customer_name: "本源興(股)公司(三廠)25" },
-        { customer_code: "KK321-3", customer_name: "本源興(股)公司(三廠)25" },
-      ),
-    ).toBe(true);
-    expect(
-      isSameCustomer(
-        { customer_code: "", customer_name: "本源興(股)公司(三廠)25" },
-        { customer_code: "", customer_name: "和成欣業(股)公司(二廠) 25" },
-      ),
-    ).toBe(false);
-  });
-
-  it("兩邊都認不出客戶 → false（寧可讓員工自己建卡，也不要猜錯客戶）", () => {
-    expect(isSameCustomer({}, {})).toBe(false);
-    expect(
-      isSameCustomer({ customer_code: "KK123-1" }, { customer_name: "和成" }),
-    ).toBe(false);
-  });
-});
-
 describe("parseCardKind / parseBelongsTo", () => {
   it("收斂非法值為 null", () => {
     expect(parseCardKind("mixed")).toBe("mixed");
@@ -661,6 +612,14 @@ describe("buildCardDrafts — 樣態 A（整張是過濾系統卡）", () => {
   it("預設勾選匯入", () => {
     expect(shouldImportFilterCard(out.filter)).toBe(true);
   });
+
+  it("整張是過濾卡時，代號照樣沿用表頭", () => {
+    const tagged = buildCardDrafts({
+      basic: { ...CARD_A.basic, machine_no: "A機" },
+      records: CARD_A.records,
+    });
+    expect(tagged.filter?.basic.machine_no).toBe("A機");
+  });
 });
 
 describe("buildCardDrafts — 樣態 B（一張卡兩台機器）", () => {
@@ -705,6 +664,18 @@ describe("buildCardDrafts — 樣態 B（一張卡兩台機器）", () => {
     expect(out.filter?.basic.customer_name).toBe(
       out.compressor?.basic.customer_name,
     );
+  });
+
+  // 0019：機台代號的唯一範圍是 (客戶, 卡別)，兩張草稿卡別不同，帶同一個代號
+  // 不會互撞。0018 時代為了閃開衝突而把過濾卡的代號清空，那是繞路不是需求 ——
+  // 現場的乾燥機就擺在 A機 旁邊，紙卡上往往也標成「A機」，沿用才省得員工重打。
+  it("混合卡：兩張草稿都沿用表頭的機台代號", () => {
+    const tagged = buildCardDrafts({
+      basic: { ...CARD_B.basic, machine_no: "A機" },
+      records: CARD_B.records,
+    });
+    expect(tagged.compressor?.basic.machine_no).toBe("A機");
+    expect(tagged.filter?.basic.machine_no).toBe("A機");
   });
 });
 

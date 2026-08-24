@@ -136,7 +136,9 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/admin/auth", () => ({ requireRole: vi.fn(async () => {}) }));
 vi.mock("@/lib/ai/gemini", () => ({ extractMaintenanceCard: vi.fn() }));
 vi.mock("@/lib/admin/maintenance", () => ({
-  findMachineBySerial: vi.fn(async () => null),
+  findMachine: vi.fn(async () => null),
+  findMachineAcrossCustomers: vi.fn(async () => null),
+  findMachineByTag: vi.fn(async () => null),
   getMachineCardContext: vi.fn(async () => null),
   listMachineColumns: vi.fn(async () => []),
 }));
@@ -287,6 +289,82 @@ describe("commitImportAction — 必填把關（表單為 noValidate）", () => 
     });
     expect(res.ok).toBe(false);
     expect(res.ok === false && res.error).toContain("機號");
+  });
+});
+
+describe("commitImportAction — 卡別維度的識別範圍（0019）", () => {
+  // 混合卡的兩張草稿現在都沿用表頭的機台代號（buildCardDrafts，#165）。
+  // 0019 之後這不會互撞：唯一鍵是 (客戶, 卡別, 代號)，兩張草稿卡別不同。
+  // 這一則釘住「一次 commit 真的把兩張同代號的卡都建了出來、且掛在同一個客戶下」——
+  // 純函式測只看得到草稿長什麼樣，看不到送進 DB 的兩列。
+  it("混合卡：兩張草稿沿用同一個代號，兩張都建得起來且同屬一個客戶", async () => {
+    selectRows.mx_customers = [{ id: "cust-1" }];
+    const res = await commitImportAction({
+      draftId: "",
+      compressor: {
+        machineId: null,
+        basic: basic({ machine_no: "A機" }),
+        records: [],
+      },
+      filter: {
+        machineId: null,
+        basic: basic({ machine_no: "A機", serial_no: "AD480" }),
+        columns: [],
+        records: [],
+      },
+    });
+    expect(res.ok).toBe(true);
+    const rows = rowsInsertedInto("mx_machines");
+    expect(rows.map((r) => [r.card_type, r.machine_no, r.customer_id])).toEqual(
+      [
+        ["compressor", "A機", "cust-1"],
+        ["filter", "A機", "cust-1"],
+      ],
+    );
+    // 同一張紙 → 同一個客戶，不該順手建出第二個客戶。
+    expect(rowsInsertedInto("mx_customers")).toHaveLength(0);
+  });
+
+  // 撞號訊息是員工唯一的線索。0019 之後它必須點名「哪一種卡」，否則員工會以為
+  // 整個客戶只能有一個 A機、跑去改一張根本不衝突的卡。
+  it("撞代號（23505）→ 訊息點名卡別，並說明另一種卡仍可用同代號", async () => {
+    selectRows.mx_customers = [{ id: "cust-1" }];
+    failOn["mx_machines:insert"] = "23505";
+    const res = await commitImportAction({
+      draftId: "",
+      compressor: null,
+      filter: {
+        machineId: null,
+        basic: basic({ machine_no: "A機", serial_no: "AD480" }),
+        columns: [],
+        records: [],
+      },
+    });
+    expect(res.ok).toBe(false);
+    const msg = res.ok === false ? res.error : "";
+    expect(msg).toContain("此客戶的過濾系統卡已有代號「A機」");
+    expect(msg).toContain("空壓機卡仍可使用「A機」");
+    // 舊的 `過濾系統卡：` 前綴已移除；留著會變成「過濾系統卡：此客戶的過濾系統卡…」。
+    expect(msg).not.toContain("過濾系統卡：");
+  });
+
+  it("沒有代號時撞機號（23505）→ 訊息一樣要點名卡別，並引導補代號", async () => {
+    selectRows.mx_customers = [{ id: "cust-1" }];
+    failOn["mx_machines:insert"] = "23505";
+    const res = await commitImportAction({
+      draftId: "",
+      compressor: {
+        machineId: null,
+        basic: basic({ machine_no: "", serial_no: "J751307001" }),
+        records: [],
+      },
+      filter: null,
+    });
+    expect(res.ok).toBe(false);
+    const msg = res.ok === false ? res.error : "";
+    expect(msg).toContain("此客戶的空壓機卡已有相同機號");
+    expect(msg).toContain("機台代號");
+    expect(msg).not.toContain("空壓機卡：");
   });
 });
 

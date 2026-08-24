@@ -3,6 +3,7 @@ import "server-only";
 import { getServerSupabase } from "../supabase-server";
 import {
   normalizeSerial,
+  normalizeMachineNo,
   normalizeCustomerCode,
   type MxCardType,
 } from "./maintenance-normalize";
@@ -41,8 +42,10 @@ export interface MxMachine {
   customer_id: string;
   /** 卡別。既有卡一律為 compressor（DB 預設值）。 */
   card_type: MxCardType;
+  /** 機台代號 tag：客戶內部稱呼（A機／1號機／A01 銅器部）。同一客戶、同一卡別內唯一（0019）。 */
   machine_no: string | null;
-  serial_no: string;
+  /** 機號：空壓機為原廠序號；過濾卡此處放過濾器型號。0018 起可為 null。 */
+  serial_no: string | null;
   location: string | null;
   purchased_at: string | null; // yyyy-mm-dd
   model: string | null;
@@ -226,52 +229,275 @@ export async function getMachineCardContext(machineId: string): Promise<{
   };
 }
 
-/** findMachineBySerial 的命中結果。帶客戶編號 / 名稱供呼叫端判斷是不是同一個客戶的卡。 */
-export interface MachineSerialHit {
+// ── 機台識別比對（#165）───────────────────────────────────────────
+//
+// 機台的唯一鍵是三段式的 (客戶, 機台代號, 機號)，而不是機號自己：
+//   * 空壓機的機號是原廠序號（J751307001），碰巧全球唯一；
+//   * 過濾卡的「機號」其實是過濾器型號（100HA／AD480），兩家客戶買同款就一樣；
+//   * 機台代號（A機／1號機）是客戶內部稱呼，跨客戶必然重複。
+// 因此 0018 把唯一索引改成 per-customer，這裡的查詢一律**先框在一個客戶內**。
+// 0019 再把「卡別」納入唯一鍵（識別範圍 = (客戶, 卡別)）：同一客戶的乾燥機卡可以
+// 沿用空壓機的「A機」——現場的乾燥機就擺在 A機 旁邊，紙卡上往往也這樣標。
+// 所以本區所有比對除了框客戶，也一律框卡別。
+
+/** 機台比對的命中結果。帶客戶資訊供 UI 顯示與跨客戶提示使用。 */
+export interface MachineIdentityHit {
   id: string;
-  serial_no: string;
+  serial_no: string | null;
+  machine_no: string | null;
+  card_type: MxCardType;
+  customer_id: string;
   customer_name: string;
   customer_code: string;
+  /**
+   * true = 這個命中可以當成「確定是同一台機器」，核對畫面才可以預設附加維護列。
+   *
+   * false = 只是「值得給員工看一眼」的候選：資料上分辨不出是不是同一台機器
+   * （例：照片上寫著 B機，但只比到一張沒有代號、機號同為 AD480 的卡 —— 它可能
+   * 就是這台機器只是還沒補代號，也可能是同客戶的另一台 AD480）。
+   * 這種命中一律要顯示警告、附加預設關閉，否則會靜靜把維護列接到別台機器上。
+   */
+  confident: boolean;
+}
+
+/** 比對查詢共用的 select 欄位。 */
+const IDENTITY_SELECT =
+  "id, serial_no, machine_no, card_type, customer_id, mx_customers(name, code)";
+
+type IdentityRow = {
+  id: string;
+  serial_no: string | null;
+  machine_no: string | null;
+  card_type: MxCardType;
+  customer_id: string;
+  mx_customers:
+    | { name: string; code: string | null }
+    | { name: string; code: string | null }[]
+    | null;
+};
+
+function toIdentityHit(
+  row: IdentityRow,
+  confident: boolean,
+): MachineIdentityHit {
+  const c = Array.isArray(row.mx_customers)
+    ? (row.mx_customers[0] ?? null)
+    : row.mx_customers;
+  return {
+    id: row.id,
+    serial_no: row.serial_no,
+    machine_no: row.machine_no,
+    card_type: row.card_type,
+    customer_id: row.customer_id,
+    customer_name: c?.name ?? "",
+    customer_code: c?.code ?? "",
+    confident,
+  };
 }
 
 /**
- * 依機號（正規化後）找現有卡；命中回 MachineSerialHit，否則 null。
+ * 在**指定客戶內**找既有卡，依序：
+ *   1. 有機台代號 → 以代號比對（同客戶同卡別內唯一，這才是人平常在講的識別）
+ *   2. 代號比不到（或本來就沒有代號）→ 以機號比對「沒有代號的卡」
+ *   3. 本來就沒有代號時，最後才退回比對「任何一張同機號的卡」
+ * 全都落空回 null（呼叫端一律解讀為「建新卡」）。
+ *
+ * 第 2 步是既有資料的命脈：現有卡幾乎清一色只有機號、machine_no 是 null，而
+ * #165 之後的辨識 prompt 會積極抓出卡上手寫的「A機」。若「有代號就只比代號」，
+ * 每一次重拍既有卡都會比不到而多開一張重複卡（DB 也擋不住 —— 代號索引與
+ * 機號索引互斥，有代號的新卡不受 mx_machines_customer_serial_key 約束）。
+ *
+ * 但退回比機號**不一定就是同一台機器**，故命中還帶一個 confident 旗標，
+ * 詳見 pickIdentityMatch。
+ *
  * cardType 限定比對範圍（預設空壓機卡），避免把空壓機的維護列附加到過濾卡上；
  * 拍照辨識分流（#158）產出兩張草稿卡時，兩張各自以自己的卡別比對。
+ *
+ * 一次把該客戶的未封存卡撈回本地比對（一個客戶的機台是個位數～十幾台），
+ * 正規化規則才能與 0018／0019 的 lower(btrim(...)) 索引完全一致，不必煩惱 ilike 的跳脫。
  */
-export async function findMachineBySerial(
-  serial: string,
-  cardType: MxCardType = "compressor",
-): Promise<MachineSerialHit | null> {
-  const norm = normalizeSerial(serial);
-  if (!norm) return null;
+export async function findMachine(input: {
+  customerId: string;
+  machineNo?: string | null;
+  serialNo?: string | null;
+  cardType?: MxCardType;
+}): Promise<MachineIdentityHit | null> {
+  const tag = normalizeMachineNo(input.machineNo);
+  const serial = normalizeSerial(input.serialNo);
+  if (!input.customerId || (!tag && !serial)) return null;
+
   const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("mx_machines")
-    .select("id, serial_no, mx_customers(name, code)")
+    .select(IDENTITY_SELECT)
     .is("archived_at", null)
-    .eq("card_type", cardType)
-    .ilike("serial_no", serial.trim());
-  if (error) throw new Error(`查詢機號失敗：${error.message}`);
-  const hit = (data ?? []).find(
-    (m: { serial_no: string }) => normalizeSerial(m.serial_no) === norm,
+    .eq("customer_id", input.customerId)
+    .eq("card_type", input.cardType ?? "compressor");
+  if (error) throw new Error(`查詢機台失敗：${error.message}`);
+
+  const rows = (data ?? []) as IdentityRow[];
+  const hit = pickIdentityMatch(
+    rows,
+    tag,
+    serial,
+    input.cardType ?? "compressor",
   );
-  if (!hit) return null;
-  type Cust = { name: string; code: string | null };
-  const h = hit as {
-    id: string;
-    serial_no: string;
-    mx_customers: Cust | Cust[] | null;
-  };
-  const customer = Array.isArray(h.mx_customers)
-    ? h.mx_customers[0]
-    : h.mx_customers;
+  return hit ? toIdentityHit(hit.row, hit.confident) : null;
+}
+
+/** pickIdentityMatch 的結果：命中的列 + 這個命中能不能當成「確定是同一台」。 */
+interface IdentityMatch {
+  row: IdentityRow;
+  confident: boolean;
+}
+
+/**
+ * findMachine 的本地比對規則（拆出來純函式化，好推理也好單測）。
+ * tag / serial 皆為正規化後的字串，空字串代表「這一段沒有」。
+ *
+ * 「比不到」與「比錯」的代價不對稱：比不到只是多開一張重複卡（看得見、刪得掉），
+ * 比錯是把維護列靜靜接到同客戶的另一台機器上（看不出來）。因此凡是資料上分辨
+ * 不出的情況，一律照樣回傳候選但標成 confident=false，由核對畫面顯示警告、
+ * 附加預設關閉，讓看得到照片的人決定。
+ *
+ * 關鍵不對稱：**空壓機的機號是原廠序號，同一客戶不會有第二台同機號的機器；
+ * 過濾卡的「機號」其實是過濾器型號（AD480），同一客戶可以有兩台**（這正是 #165
+ * 驗收條件之一）。所以「只比到機號」這件事，在空壓機卡上是確定，在過濾卡上不是。
+ */
+function pickIdentityMatch(
+  rows: IdentityRow[],
+  tag: string,
+  serial: string,
+  cardType: MxCardType,
+): IdentityMatch | null {
+  // 代號在 (客戶, 卡別) 內唯一（0019 的 mx_machines_customer_tag_key）。rows 已由
+  // findMachine 以 card_type 篩過，故命中即確定。
+  if (tag) {
+    const byTag = rows.find((m) => normalizeMachineNo(m.machine_no) === tag);
+    if (byTag) return { row: byTag, confident: true };
+  }
+  if (!serial) return null;
+  const sameSerial = rows.filter(
+    (m) => normalizeSerial(m.serial_no) === serial,
+  );
+  // 沒有代號的卡＝0019 的 mx_machines_customer_serial_key 作用範圍，
+  // 同 (客戶, 卡別) 下同機號至多一張（rows 已以 card_type 篩過）。
+  const untagged = sameSerial.find(
+    (m) => normalizeMachineNo(m.machine_no) === "",
+  );
+  // 機號本身足以指認一台機器嗎？空壓機的原廠序號可以，過濾卡的型號不行。
+  const serialIdentifies = cardType !== "filter";
+
+  if (tag) {
+    // 照片有代號，但這個客戶沒有這個代號的卡 → 只可能比到「還沒補上代號」的既有卡。
+    // 有代號的卡一律不碰：那是明確標成另一台機器的卡。
+    if (!untagged) return null;
+    // 空壓機：同機號就是同一台，補代號而已 → 確定。
+    // 過濾卡：這張沒代號的 AD480 可能是照片這台（只是還沒補代號），也可能是同客戶
+    // 的另一台 AD480（＝#165 驗收裡「兩台 AD480 靠 A機／B機 區分」的過渡狀態，
+    // 此時另一台還沒建卡）。資料上分不出來 → 不確定。
+    return { row: untagged, confident: serialIdentifies };
+  }
+
+  // 照片沒有代號：優先挑同樣沒有代號的那張（0019 保證同 (客戶, 卡別) 下同機號至多一張）。
+  //
+  // 但「照片沒讀到代號」不等於「這台機器沒有代號」—— 代號常是手寫在卡邊的，漏讀是
+  // 常態（下一段之所以要 sameSerial.length === 1 就是承認這件事）。因此過濾卡若同機號
+  // 底下**還有別張有代號的卡**，就等於資料已明說「這個客戶有兩台以上同型機」，此時挑
+  // 沒代號的那張同樣是擲骰子（只是骰子偏心），不可預設附加：照片可能正是那台 B機，
+  // 而 B機 的維護列一旦接到沒代號的那張卡上，卡面完全看不出來。
+  // 空壓機不受影響：機號是原廠序號，同機號本來就是同一台，多張只是重複建卡。
+  if (untagged)
+    return {
+      row: untagged,
+      confident: serialIdentifies || sameSerial.length === 1,
+    };
+  // 只剩「有代號」的卡可挑。剛好一張時當候選還算合理；兩張以上（同客戶兩台 AD480，
+  // 一張 A機 一張 B機）取第一張純粹是擲骰子，絕不可預設附加。
+  const first = sameSerial[0];
+  if (!first) return null;
   return {
-    id: h.id,
-    serial_no: h.serial_no,
-    customer_name: customer?.name ?? "",
-    customer_code: customer?.code ?? "",
+    row: first,
+    confident: serialIdentifies && sameSerial.length === 1,
   };
+}
+
+/**
+ * 同一客戶、**同一卡別**內是否已有相同機台代號的卡（衝突預檢）。
+ *
+ * 比對範圍必須與 0019 的 mx_machines_customer_tag_key
+ * (customer_id, card_type, lower(btrim(machine_no))) 完全一致。0018 的版本不分
+ * 卡別，這支當時也刻意不分；0019 把卡別納入唯一鍵之後，若這裡還是不分卡別，
+ * 預檢就會擋下 DB 其實接受的資料 —— 乾燥機卡沿用空壓機的「A機」正是 0019
+ * 要放行的情況（現場的乾燥機就擺在 A機 旁邊，紙卡上往往也標成 A機）。
+ *
+ * excludeMachineId 用於編輯既有卡時排除自己。
+ */
+export async function findMachineByTag(
+  customerId: string,
+  machineNo: string | null | undefined,
+  cardType: MxCardType,
+  excludeMachineId?: string,
+): Promise<MachineIdentityHit | null> {
+  const tag = normalizeMachineNo(machineNo);
+  if (!customerId || !tag) return null;
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("mx_machines")
+    .select(IDENTITY_SELECT)
+    .is("archived_at", null)
+    .eq("customer_id", customerId)
+    .eq("card_type", cardType);
+  if (error) throw new Error(`查詢機台代號失敗：${error.message}`);
+  const hit = (data ?? [])
+    .map((row) => row as IdentityRow)
+    .find(
+      (m) =>
+        normalizeMachineNo(m.machine_no) === tag && m.id !== excludeMachineId,
+    );
+  // 代號在同一客戶、同一卡別內唯一，命中就是確定的同一張卡。
+  return hit ? toIdentityHit(hit, true) : null;
+}
+
+/**
+ * 跨客戶找**機號**相同的卡。
+ *
+ * **只用於「辨識出來的客戶對不上任何既有客戶」時的提示**：這種情況下不能自動比對
+ * （硬比就會把 B 客戶的維護列寫到 A 客戶的「AD480」卡上），但完全不提示又會讓員工
+ * 重複建卡。故回傳一張「其他客戶的同機號卡」，由 UI 顯示警告、預設不附加。
+ *
+ * 刻意**不比機台代號**：代號是客戶內部稱呼，「A機」「1號機」跨客戶本來就必然重複
+ * （這正是 #165 的前提）。拿代號跨客戶比等於隨機挑一家有 A機 的客戶當提示 —— 提示
+ * 幾乎必為誤報，員工照著勾「附加」就會把維護列寫進毫不相干的客戶卡裡。
+ *
+ * ⚠️ 同理，**過濾卡的提示用途也不該呼叫這支**：過濾卡的「機號」是過濾器型號
+ * （AD480／100HA），跨客戶命中只代表「有另一家客戶也買了同款乾燥機」，零資訊量。
+ * 拍照辨識端（actions.matchCard）因此只在空壓機卡上叫它。這支本身仍收 cardType，
+ * 是為了「查所有在用 AD480 的客戶」這類**明確要跨客戶**的查詢保留彈性。
+ */
+export async function findMachineAcrossCustomers(input: {
+  serialNo?: string | null;
+  cardType?: MxCardType;
+}): Promise<MachineIdentityHit | null> {
+  const serial = normalizeSerial(input.serialNo);
+  if (!serial) return null;
+
+  const supabase = await getServerSupabase();
+  // 先以 ilike 粗篩（走 0018 的 mx_machines_serial_lookup_idx），再在本地以
+  // 正規化結果精確比對；粗篩必然是超集，故不會誤報。
+  const { data, error } = await supabase
+    .from("mx_machines")
+    .select(IDENTITY_SELECT)
+    .is("archived_at", null)
+    .eq("card_type", input.cardType ?? "compressor")
+    .ilike("serial_no", serial)
+    .limit(20);
+  if (error) throw new Error(`查詢機號失敗：${error.message}`);
+  const hit = (data ?? [])
+    .map((row) => row as IdentityRow)
+    .find((m) => normalizeSerial(m.serial_no) === serial);
+  // 跨客戶的命中永遠只是提示，不是「確定是同一台」——它明擺著屬於別的客戶。
+  return hit ? toIdentityHit(hit, false) : null;
 }
 
 // ── 客戶主檔（0016）─────────────────────────────────────────────

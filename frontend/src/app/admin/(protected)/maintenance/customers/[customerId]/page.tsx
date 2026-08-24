@@ -6,6 +6,7 @@ import type { MxCustomerMachine } from "@/lib/admin/maintenance";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { cardTypeLabel } from "@/lib/admin/maintenance-normalize";
 import { rocDate, rocDateTime } from "@/lib/admin/minguo";
+import { machineTagLabel } from "@/lib/admin/machine-identity";
 
 export const metadata = { title: "客戶 · 後台" };
 
@@ -21,17 +22,18 @@ function machineColumns(archived: boolean): Column<MxCustomerMachine>[] {
       ),
     },
     {
-      header: "機號",
+      // 本頁已經在講同一個客戶，識別只需「機台代號-機號」兩段（#165）；
+      // 拆開的兩段在卡片詳情頁看得到，這裡不再各開一欄重複同樣的值。
+      header: "機台",
       cell: (m) => (
         <Link
           href={`/admin/maintenance/${m.id}`}
           className="text-ink hover:text-primary-deep font-medium"
         >
-          {m.serial_no}
+          {machineTagLabel(m)}
         </Link>
       ),
     },
-    { header: "機台編號", cell: (m) => m.machine_no ?? "—" },
     { header: "機型", cell: (m) => m.model ?? "—" },
     { header: "使用地點", cell: (m) => m.location ?? "—" },
     archived

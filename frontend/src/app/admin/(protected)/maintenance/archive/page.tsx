@@ -6,6 +6,7 @@ import { DataTable, type Column } from "@/components/admin/DataTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { rocDateTime } from "@/lib/admin/minguo";
+import { machineTagLabel } from "@/lib/admin/machine-identity";
 import {
   restoreMachineAction,
   deleteMachinePermanentlyAction,
@@ -19,13 +20,14 @@ export default async function MaintenanceArchivePage() {
 
   const columns: Column<MxMachineListItem>[] = [
     {
-      header: "機號",
+      // 本表另有「客戶」一欄，這裡只出「代號-機號」兩段（#165）。
+      header: "機台",
       cell: (m) => (
         <Link
           href={`/admin/maintenance/${m.id}`}
           className="text-ink hover:text-primary-deep font-medium"
         >
-          {m.serial_no}
+          {machineTagLabel(m)}
         </Link>
       ),
     },
