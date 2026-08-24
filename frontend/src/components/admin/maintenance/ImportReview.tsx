@@ -7,7 +7,9 @@
 //
 // 表單設計要點：
 // - 兩張卡的分頁都「一直掛在 DOM 上」，只用 CSS 隱藏未選取的那個。若改成條件渲染，
-//   切分頁會把非受控 input 卸載，員工改過的值就沒了。
+//   切分頁會把輸入欄卸載（值不論受控與否都存在該欄自己身上），員工改過的值就沒了。
+// - 每一格輸入都用 fields.tsx 的受控元件：匯入失敗時 action 正常回傳，React 19 會
+//   自動 reset 表單，非受控欄會被打回 AI 的原始擷取值，人工修正整批消失（#168）。
 // - 每一列同時渲染「空壓機欄位」與「過濾卡欄位」兩組輸入，各自隱藏。搬列只是改
 //   React state 裡的歸屬，輸入框不會被卸載 → 搬來搬去都不掉資料。
 // - 列的歸屬 / 刪除狀態放 React state，欄位值仍走 FormData（input name 以「原始列
@@ -20,7 +22,8 @@ import { uploadMediaDirect } from "@/lib/admin/upload-client";
 import { CardBasicFields } from "./CardBasicForm";
 import { ColumnsEditor, type ColumnDraft } from "./ColumnsEditor";
 import { MinguoDateInput } from "./MinguoDateInput";
-import { SERVICE_TYPE_SELECT_CLASS, ServiceTypeOptions } from "./RecordForm";
+import { ServiceTypeSelect } from "./RecordForm";
+import { PlainInput } from "./fields";
 import { parseServiceType } from "@/lib/admin/maintenance-service-type";
 import {
   extractCardFromImageAction,
@@ -63,8 +66,6 @@ const CARRIED_TO_FILTER_NOTE = COMPRESSOR_FIELDS.filter(
     f.name !== "inverter" && f.name !== "filter_system" && f.name !== "note",
 );
 
-const INPUT_CLASS =
-  "border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none";
 const FIELD_CLASS = "flex flex-col gap-1.5";
 
 /** 第 i 列、欄位 f 的 input name。i 為原始列索引，永遠不重排。 */
@@ -199,14 +200,10 @@ function RecordRow({
           >
             服務類型
           </label>
-          <select
-            id={rf(i, "service_type")}
+          <ServiceTypeSelect
             name={rf(i, "service_type")}
-            defaultValue={draft.service_type ?? ""}
-            className={SERVICE_TYPE_SELECT_CLASS}
-          >
-            <ServiceTypeOptions />
-          </select>
+            initial={draft.service_type}
+          />
         </div>
         <div className={FIELD_CLASS}>
           <label
@@ -215,12 +212,9 @@ function RecordRow({
           >
             維護員
           </label>
-          <input
-            id={rf(i, "technician")}
+          <PlainInput
             name={rf(i, "technician")}
-            type="text"
-            defaultValue={draft.technician ?? ""}
-            className={INPUT_CLASS}
+            initial={draft.technician ?? ""}
           />
         </div>
       </div>
@@ -239,13 +233,7 @@ function RecordRow({
             >
               {f.label}
             </label>
-            <input
-              id={rf(i, f.name)}
-              name={rf(i, f.name)}
-              type="text"
-              defaultValue={draft[f.name] ?? ""}
-              className={INPUT_CLASS}
-            />
+            <PlainInput name={rf(i, f.name)} initial={draft[f.name] ?? ""} />
           </div>
         ))}
       </div>
@@ -261,12 +249,7 @@ function RecordRow({
               >
                 {c.label || "（未命名欄位）"}
               </label>
-              <input
-                id={rf(i, `col][${c.key}`)}
-                name={rf(i, `col][${c.key}`)}
-                type="text"
-                className={INPUT_CLASS}
-              />
+              <PlainInput name={rf(i, `col][${c.key}`)} initial="" />
             </div>
           ))}
           <div className={`${FIELD_CLASS} sm:col-span-2 lg:col-span-3`}>
@@ -280,13 +263,7 @@ function RecordRow({
                 變頻器」欄原文；分配到上面的耗材欄後可自行刪減
               </span>
             </label>
-            <input
-              id={rf(i, "f_note")}
-              name={rf(i, "f_note")}
-              type="text"
-              defaultValue={filterNote}
-              className={INPUT_CLASS}
-            />
+            <PlainInput name={rf(i, "f_note")} initial={filterNote} />
           </div>
         </div>
         {columns.length === 0 && (

@@ -2,7 +2,6 @@
 
 // 保養卡 server actions（office only）。讀寫走登入者 session，靠 mx_* 的 office RLS 擋。
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import type { ActionResult } from "@/lib/admin/crud";
@@ -470,20 +469,39 @@ async function recordPayloadForMachine(
     : { ...recordPayloadFromForm(fd) };
 }
 
-/** 新增一列維護紀錄（手動；source='manual'）。 */
+export type AddRecordResult =
+  | { ok: true; recordId: string }
+  | { ok: false; error: string };
+
+/**
+ * 新增一列維護紀錄（手動；source='manual'）。
+ *
+ * 回傳 result 而非 throw：Next.js 在 production 會把 server action 丟出的 Error
+ * 訊息抹成 digest，而本專案沒有 error.tsx，員工只會看到通用錯誤頁、剛打的整列
+ * 維護紀錄也全部消失（#168）。導頁改由 client 端 router.push（見 NewRecordForm，
+ * 與 createMachineAction / NewMachineForm 一致）。
+ */
 export async function addRecordAction(
   machineId: string,
   fd: FormData,
-): Promise<void> {
+): Promise<AddRecordResult> {
   await requireRole(["office"]);
   const supabase = await getServerSupabase();
-  const payload = await recordPayloadForMachine(machineId, fd);
-  const { error } = await supabase
-    .from("mx_records")
-    .insert({ ...payload, machine_id: machineId, source: "manual" });
-  if (error) throw new Error(`新增維護紀錄失敗：${error.message}`);
-  revalidatePath(`/admin/maintenance/${machineId}`);
-  redirect(`/admin/maintenance/${machineId}`);
+  try {
+    // recordPayloadForMachine 找不到卡時會 throw，由下方 catch 收成 result。
+    const payload = await recordPayloadForMachine(machineId, fd);
+    const { data, error } = await supabase
+      .from("mx_records")
+      .insert({ ...payload, machine_id: machineId, source: "manual" })
+      .select("id")
+      .single();
+    if (error)
+      return { ok: false, error: `新增維護紀錄失敗：${error.message}` };
+    revalidatePath(`/admin/maintenance/${machineId}`);
+    return { ok: true, recordId: (data as { id: string }).id };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 /** 更新一列維護紀錄。 */
@@ -983,8 +1001,14 @@ export async function archiveMachineAction(
   return { ok: true };
 }
 
-/** 從封存區復原一張卡（form action）。 */
-export async function restoreMachineAction(machineId: string): Promise<void> {
+/**
+ * 從封存區復原一張卡（ActionButton 以 bind 帶入 id）。
+ * 失敗一律回 result 不 throw：23505 的說明是員工真的要照著做的處置步驟，
+ * 而 throw 出去的訊息在 production 會被 Next.js 抹成 digest（#168）。
+ */
+export async function restoreMachineAction(
+  machineId: string,
+): Promise<ActionResult> {
   await requireRole(["office"]);
   const supabase = await getServerSupabase();
   const { error } = await supabase
@@ -994,14 +1018,17 @@ export async function restoreMachineAction(machineId: string): Promise<void> {
   if (error) {
     // 邊界：封存後又用同代號 / 同機號建了新的使用中卡片，復原會撞部分唯一索引（23505）。
     if (error.code === "23505") {
-      throw new Error(
-        "此客戶名下已有相同卡別、相同代號 / 機號的使用中卡片，無法復原。請先處理該卡，或改為永久刪除此封存卡。",
-      );
+      return {
+        ok: false,
+        error:
+          "此客戶名下已有相同卡別、相同代號 / 機號的使用中卡片，無法復原。請先處理該卡，或改為永久刪除此封存卡。",
+      };
     }
-    throw new Error(`復原失敗：${error.message}`);
+    return { ok: false, error: `復原失敗：${error.message}` };
   }
   revalidatePath("/admin/maintenance");
   revalidatePath("/admin/maintenance/archive");
+  return { ok: true };
 }
 
 /** 永久刪除一張卡（連同維護紀錄，FK cascade）。DeleteButton 以 bind 帶入 id。 */

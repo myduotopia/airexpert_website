@@ -3,8 +3,8 @@ import { requireRole } from "@/lib/admin/auth";
 import { listArchivedMachines } from "@/lib/admin/maintenance";
 import type { MxMachineListItem } from "@/lib/admin/maintenance";
 import { DataTable, type Column } from "@/components/admin/DataTable";
+import { ActionButton } from "@/components/admin/ActionButton";
 import { DeleteButton } from "@/components/admin/DeleteButton";
-import { SubmitButton } from "@/components/admin/SubmitButton";
 import { rocDateTime } from "@/lib/admin/minguo";
 import { machineTagLabel } from "@/lib/admin/machine-identity";
 import {
@@ -43,9 +43,11 @@ export default async function MaintenanceArchivePage() {
       className: "text-right whitespace-nowrap",
       cell: (m) => (
         <div className="flex items-center justify-end gap-2">
-          <form action={restoreMachineAction.bind(null, m.id)}>
-            <SubmitButton>復原</SubmitButton>
-          </form>
+          <ActionButton
+            action={restoreMachineAction.bind(null, m.id)}
+            label="復原"
+            pendingLabel="復原中…"
+          />
           <DeleteButton
             onDelete={deleteMachinePermanentlyAction.bind(null, m.id)}
             label="永久刪除"

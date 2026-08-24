@@ -2,6 +2,7 @@
 // 維護紀錄一列的欄位群。可獨立提交（新增/編輯列），或被 ImportReview 逐列內嵌。
 import type { ReactNode } from "react";
 import { MinguoDateInput } from "./MinguoDateInput";
+import { PlainInput, PlainSelect } from "./fields";
 import {
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
@@ -27,20 +28,26 @@ export interface RecordValues {
 /** 純文字（含日期）欄位名；service_type 不在其中，另以下拉呈現。 */
 export type TextFieldName = Exclude<keyof RecordValues, "service_type">;
 
-/** 服務類型下拉的共用樣式與選項（新增／編輯／匯入核對三處共用）。 */
-export const SERVICE_TYPE_SELECT_CLASS =
-  "border-border focus:border-primary h-11 rounded-lg border bg-white px-3 text-[15px] outline-none";
-
-export function ServiceTypeOptions(): ReactNode {
+/**
+ * 服務類型下拉（受控）。新增／編輯／匯入核對三處共用。
+ * name 可帶前綴（匯入核對頁一列一組欄位，見 ImportReview 的 rf()）。
+ */
+export function ServiceTypeSelect({
+  name = "service_type",
+  initial,
+}: {
+  name?: string;
+  initial?: ServiceType | null;
+}): ReactNode {
   return (
-    <>
+    <PlainSelect name={name} initial={initial ?? ""}>
       <option value="">{UNCLASSIFIED_LABEL}</option>
       {SERVICE_TYPES.map((t) => (
         <option key={t} value={t}>
           {SERVICE_TYPE_LABELS[t]}
         </option>
       ))}
-    </>
+    </PlainSelect>
   );
 }
 
@@ -68,14 +75,7 @@ export function RecordFields({ values }: { values?: RecordValues }): ReactNode {
         >
           服務類型
         </label>
-        <select
-          id="service_type"
-          name="service_type"
-          defaultValue={values?.service_type ?? ""}
-          className={SERVICE_TYPE_SELECT_CLASS}
-        >
-          <ServiceTypeOptions />
-        </select>
+        <ServiceTypeSelect initial={values?.service_type} />
       </div>
       {FIELDS.map((f) => (
         <div key={f.name} className="flex flex-col gap-1.5">
@@ -85,13 +85,7 @@ export function RecordFields({ values }: { values?: RecordValues }): ReactNode {
           {f.roc ? (
             <MinguoDateInput name={f.name} defaultIso={values?.[f.name]} />
           ) : (
-            <input
-              id={f.name}
-              name={f.name}
-              type="text"
-              defaultValue={values?.[f.name] ?? ""}
-              className="border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none"
-            />
+            <PlainInput name={f.name} initial={values?.[f.name] ?? ""} />
           )}
         </div>
       ))}

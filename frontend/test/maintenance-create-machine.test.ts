@@ -8,6 +8,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   2. 成功回 { ok: true, machineId }，導頁交給 client（不再 redirect）。
 //   3. 過濾卡的耗材欄同步與「建欄失敗就刪掉剛建的卡」的回滾行為不能被改壞。
 // 以假的 supabase query builder 捕捉送進 DB 的列（同 maintenance-import-commit）。
+//
+// 同一套 harness 也涵蓋 restoreMachineAction（封存區「復原」）：它原本同樣是
+// void + throw，而它的 23505 文案是員工真的要照著做的處置步驟，被抹成 digest
+// 等於整段指示消失。
 
 interface Recorded {
   table: string;
@@ -147,7 +151,10 @@ vi.mock("@/lib/supabase-server", () => ({
   getServerSupabase: vi.fn(async () => fakeSupabase),
 }));
 
-import { createMachineAction } from "@/app/admin/(protected)/maintenance/actions";
+import {
+  createMachineAction,
+  restoreMachineAction,
+} from "@/app/admin/(protected)/maintenance/actions";
 
 /** 組一份新增保養卡表單。columns 給了就當過濾卡的耗材欄定義送出。 */
 function form(
@@ -284,5 +291,43 @@ describe("createMachineAction — 過濾卡的耗材欄同步與回滾", () => {
     );
     expect(res.ok).toBe(true);
     expect(recorded.some((r) => r.table === "mx_machine_columns")).toBe(false);
+  });
+});
+
+describe("restoreMachineAction — 錯誤回報（不得 throw）", () => {
+  it("撞使用中卡片的部分唯一索引（23505）→ 回可照做的處置說明", async () => {
+    failOn["mx_machines:update"] = "23505";
+    const res = await restoreMachineAction("mx_machines-9");
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.error).toContain(
+      "此客戶名下已有相同卡別、相同代號 / 機號的使用中卡片，無法復原",
+    );
+    expect(res.ok === false && res.error).toContain("永久刪除");
+    // 沒復原成功就不該洗掉列表快取。
+    expect(revalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it("其他 DB 錯誤 → 回 { ok: false } 並帶出原始訊息", async () => {
+    failOn["mx_machines:update"] = "permission denied for table mx_machines";
+    const res = await restoreMachineAction("mx_machines-9");
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.error).toContain("復原失敗");
+    expect(res.ok === false && res.error).toContain("permission denied");
+    expect(revalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it("成功 → 回 { ok: true }，清空 archived_at 並失效兩張列表的快取", async () => {
+    const res = await restoreMachineAction("mx_machines-9");
+    expect(res).toEqual({ ok: true });
+    const updates = recorded.filter(
+      (r) => r.table === "mx_machines" && r.kind === "update",
+    );
+    expect(updates).toHaveLength(1);
+    expect(updates[0].payload).toEqual({ archived_at: null });
+    expect(updates[0].filters).toEqual([
+      { fn: "eq", args: ["id", "mx_machines-9"] },
+    ]);
+    expect(revalidateSpy).toHaveBeenCalledWith("/admin/maintenance");
+    expect(revalidateSpy).toHaveBeenCalledWith("/admin/maintenance/archive");
   });
 });

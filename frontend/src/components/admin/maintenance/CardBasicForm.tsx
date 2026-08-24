@@ -16,6 +16,7 @@ import {
 import type { MxCardType } from "@/lib/admin/maintenance-normalize";
 import { machineDisplayName } from "@/lib/admin/machine-identity";
 import { MinguoDateInput } from "./MinguoDateInput";
+import { INPUT_CLASS, PlainInput, SpecTextarea } from "./fields";
 
 export interface CardBasicValues {
   customer_code?: string;
@@ -72,56 +73,6 @@ const SPEC_FIELDS: {
     hint: "上為排水器、下為馬達 + 葉片，例：外置式排水器CKD*3只+桶下AD480",
   },
 ];
-
-const INPUT_CLASS =
-  "border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none";
-const AREA_CLASS =
-  "border-border focus:border-primary rounded-lg border px-3 py-2 text-[15px] outline-none";
-
-// 以下兩個輸入元件刻意「受控」（useState 種入初值）而非 defaultValue：
-// React 19 的 <form action={fn}> 會在 action 結束後自動 reset 表單
-// （react-dom 的 startHostTransition → requestFormReset），非受控欄位會被清回初值。
-// 建卡失敗（例如撞機號）時表單留在原地讓人修正，這幾欄卻會整排被清空，員工改完
-// 機號再送出就建出一張少了使用地點 / 機型 / 馬力 / 電壓的卡。受控欄位不受 reset 影響。
-// 同 app/admin/(protected)/home/sections/primitives.tsx 的作法。
-
-/** 一般單行文字欄（受控）。 */
-function PlainInput({
-  name,
-  type,
-  initial,
-}: {
-  name: string;
-  type?: string;
-  initial: string;
-}) {
-  const [value, setValue] = useState(initial);
-  return (
-    <input
-      id={name}
-      name={name}
-      type={type ?? "text"}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      className={INPUT_CLASS}
-    />
-  );
-}
-
-/** 多行規格欄（受控）。 */
-function SpecTextarea({ name, initial }: { name: string; initial: string }) {
-  const [value, setValue] = useState(initial);
-  return (
-    <textarea
-      id={name}
-      name={name}
-      rows={3}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      className={AREA_CLASS}
-    />
-  );
-}
 
 /**
  * 具建議下拉的受控輸入。value/onChange 由父層控制；輸入時 debounce 查詢 fetcher，
