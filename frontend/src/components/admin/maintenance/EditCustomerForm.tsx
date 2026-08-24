@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { updateCustomerAction } from "@/app/admin/(protected)/maintenance/actions";
+import { PlainInput, SpecTextarea } from "./fields";
 
 export interface CustomerFormValues {
   code?: string;
@@ -14,9 +15,6 @@ export interface CustomerFormValues {
   address?: string;
   note?: string;
 }
-
-const INPUT_CLASS =
-  "border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none";
 
 const FIELDS: {
   name: keyof CustomerFormValues;
@@ -85,13 +83,11 @@ export function EditCustomerForm({
               {f.label}
               {f.required && <span className="text-red-500"> *</span>}
             </label>
-            <input
-              id={f.name}
+            <PlainInput
               name={f.name}
-              type={f.type ?? "text"}
+              type={f.type}
               required={f.required}
-              defaultValue={values[f.name] ?? ""}
-              className={INPUT_CLASS}
+              initial={values[f.name] ?? ""}
             />
           </div>
         ))}
@@ -99,25 +95,13 @@ export function EditCustomerForm({
           <label htmlFor="address" className="text-ink text-[14px] font-medium">
             地址
           </label>
-          <input
-            id="address"
-            name="address"
-            type="text"
-            defaultValue={values.address ?? ""}
-            className={INPUT_CLASS}
-          />
+          <PlainInput name="address" initial={values.address ?? ""} />
         </div>
         <div className="flex flex-col gap-1.5 sm:col-span-2">
           <label htmlFor="note" className="text-ink text-[14px] font-medium">
             備註
           </label>
-          <textarea
-            id="note"
-            name="note"
-            rows={4}
-            defaultValue={values.note ?? ""}
-            className="border-border focus:border-primary rounded-lg border px-3 py-2 text-[15px] outline-none"
-          />
+          <SpecTextarea name="note" rows={4} initial={values.note ?? ""} />
         </div>
       </div>
 

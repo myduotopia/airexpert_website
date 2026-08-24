@@ -8,7 +8,8 @@ import type { ReactNode } from "react";
 import { columnFieldName } from "@/lib/admin/maintenance-normalize";
 import type { ServiceType } from "@/lib/admin/maintenance-service-type";
 import { MinguoDateInput } from "./MinguoDateInput";
-import { SERVICE_TYPE_SELECT_CLASS, ServiceTypeOptions } from "./RecordForm";
+import { ServiceTypeSelect } from "./RecordForm";
+import { PlainInput } from "./fields";
 
 export interface FilterColumn {
   id: string;
@@ -24,9 +25,6 @@ export interface FilterRecordValues {
   /** { "<column_id>": "值" }，來自 mx_records.values。 */
   values?: Record<string, string>;
 }
-
-const INPUT_CLASS =
-  "border-border focus:border-primary h-11 rounded-lg border px-3 text-[15px] outline-none";
 
 export function FilterRecordFields({
   columns,
@@ -56,14 +54,7 @@ export function FilterRecordFields({
         >
           服務類型
         </label>
-        <select
-          id="service_type"
-          name="service_type"
-          defaultValue={values?.service_type ?? ""}
-          className={SERVICE_TYPE_SELECT_CLASS}
-        >
-          <ServiceTypeOptions />
-        </select>
+        <ServiceTypeSelect initial={values?.service_type} />
       </div>
       {columns.map((c) => {
         const field = columnFieldName(c.id);
@@ -72,13 +63,7 @@ export function FilterRecordFields({
             <label htmlFor={field} className="text-ink text-[14px] font-medium">
               {c.label}
             </label>
-            <input
-              id={field}
-              name={field}
-              type="text"
-              defaultValue={values?.values?.[c.id] ?? ""}
-              className={INPUT_CLASS}
-            />
+            <PlainInput name={field} initial={values?.values?.[c.id] ?? ""} />
           </div>
         );
       })}
@@ -89,25 +74,13 @@ export function FilterRecordFields({
         >
           維護員
         </label>
-        <input
-          id="technician"
-          name="technician"
-          type="text"
-          defaultValue={values?.technician ?? ""}
-          className={INPUT_CLASS}
-        />
+        <PlainInput name="technician" initial={values?.technician ?? ""} />
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="note" className="text-ink text-[14px] font-medium">
           備註
         </label>
-        <input
-          id="note"
-          name="note"
-          type="text"
-          defaultValue={values?.note ?? ""}
-          className={INPUT_CLASS}
-        />
+        <PlainInput name="note" initial={values?.note ?? ""} />
       </div>
       {columns.length === 0 && (
         <p className="text-[14px] text-amber-700 sm:col-span-2 lg:col-span-3">
