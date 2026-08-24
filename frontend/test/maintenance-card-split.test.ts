@@ -10,6 +10,7 @@ import {
   normalizeCardHeader,
   parseBelongsTo,
   parseCardKind,
+  hasFilterRowEvidence,
   shouldImportFilterCard,
   splitRecordsByCard,
   suggestFilterColumns,
@@ -27,6 +28,7 @@ import type { RecordPayload } from "@/lib/admin/maintenance-normalize";
 // C = 658362223...42e7_0.jpg     同一台機器（機號 J751307001、KK123-1）的另一張卡，
 //                                過濾系統寫成機型行尾的「＋100HA」→ 一樣是混合卡
 // D = 合成 fixture               純空壓機卡：表頭無任何過濾標記、列中亦無乾燥機內容
+// E = 合成 fixture               表頭無任何過濾標記，但列中有乾燥機內容（#166）
 
 const EMPTY: RecordPayload = {
   service_date: null,
@@ -312,6 +314,58 @@ const CARD_D = {
   ],
 };
 
+/**
+ * E：合成的「表頭沒有過濾標記，但列中有乾燥機內容」卡（#166）。
+ * 取照片 C 的同一台機器（KK123-1 / J751307001 / 1號機），但這一次技術員連
+ * 「＋100HA」都沒補寫 —— 舊紙卡很常見。表頭給不出任何訊號，只有維護列裡的
+ * 「AD480×1」「乾燥機12"散熱馬達+葉片」「乾修:12"馬達+葉片×2組」透露有第二台機器。
+ * 依營運決定：判成兩張就產兩張，讓員工自己決定要不要留過濾卡。
+ */
+const CARD_E = {
+  basic: basic({
+    customer_name: "和成欣業(股)公司(二廠) 25",
+    customer_code: "KK123-1",
+    serial_no: "J751307001",
+    machine_no: "1號機",
+    location: "鶯歌區八德路1號(二廠)",
+    model: "JNV75/8",
+    horsepower: "100HP",
+    voltage: "380V",
+  }),
+  records: [
+    rec({
+      service_date: "2023-03-29",
+      hours: "34446",
+      oil: "3",
+      oil_filter: "1",
+      oil_separator: "1",
+      inverter: "散熱溶劑清洗",
+      technician: "傑",
+    }),
+    rec({
+      service_date: "2023-05-15",
+      hours: "35018",
+      filter_system: "AD480×1",
+      technician: "傑",
+    }),
+    rec({ service_date: "2023-06-20", inverter: '乾燥機12"散熱馬達+葉片' }),
+    rec({
+      service_date: "2024-06-04",
+      inverter: '乾修:12"馬達+葉片×2組',
+      technician: "政",
+    }),
+    // 「散熱器清潔」是空壓機自己的散熱器，不可被放寬後的規則搬走。
+    rec({
+      service_date: "2024-08-09",
+      hours: "38624",
+      oil: "4",
+      oil_filter: "1",
+      filter_system: "散熱器清潔",
+      technician: "政",
+    }),
+  ],
+};
+
 // ── 表頭判定 ──────────────────────────────────────────────────────
 
 describe("isFilterHeaderText / filterCardSerial", () => {
@@ -555,6 +609,73 @@ describe("splitRecordsByCard", () => {
   });
 });
 
+describe("hasFilterRowEvidence — 表頭無標記時「開不開過濾卡」的門檻", () => {
+  it("乾燥機專屬關鍵字算硬證據", () => {
+    expect(hasFilterRowEvidence([rec({ filter_system: "AD480×1" })])).toBe(
+      true,
+    );
+    expect(
+      hasFilterRowEvidence([rec({ inverter: '乾燥機12"散熱馬達+葉片' })]),
+    ).toBe(true);
+    expect(
+      hasFilterRowEvidence([rec({ inverter: '乾修:12"馬達+葉片×2組' })]),
+    ).toBe(true);
+    expect(
+      hasFilterRowEvidence([rec({ filter_system: "外置式排水器CKD*3只" })]),
+    ).toBe(true);
+    expect(hasFilterRowEvidence([rec({ note: "EA350-Q濾蕊*1只" })])).toBe(true);
+  });
+
+  it("AI 自己把某列標成 filter 也算數", () => {
+    expect(
+      hasFilterRowEvidence([
+        { ...rec({ filter_system: "更換" }), belongs_to: "filter" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("門檻比 classifyRecord 嚴：弱訊號不足以憑空開一張卡", () => {
+    // 「值只出現在過濾系統欄」是 classifyRecord 的第 2 條，分列可以、開卡不行。
+    expect(classifyRecord(rec({ filter_system: "更換" }))).toBe("filter");
+    expect(hasFilterRowEvidence([rec({ filter_system: "更換" })])).toBe(false);
+    // 「過濾」二字就是那一欄的欄名，同樣不算。
+    expect(classifyRecord(rec({ filter_system: "過濾網清洗" }))).toBe("filter");
+    expect(hasFilterRowEvidence([rec({ filter_system: "過濾網清洗" })])).toBe(
+      false,
+    );
+  });
+
+  it("英數 token 不可當子字串誤命中（AD480 / CKD）", () => {
+    // 命中的仍要命中，含中文緊鄰與空格變體。
+    expect(hasFilterRowEvidence([rec({ filter_system: "AD 480×1" })])).toBe(
+      true,
+    );
+    expect(hasFilterRowEvidence([rec({ note: "外置式排水器CKD*3只" })])).toBe(
+      true,
+    );
+    expect(hasFilterRowEvidence([rec({ filter_system: "CKD" })])).toBe(true);
+    // 前面接英文字母的一律不算：LOAD 20 / HEAD 12 不是 AD480，
+    // BACKDOOR / lockdown 不是 CKD（正則帶 i，不加關會全部命中）。
+    expect(hasFilterRowEvidence([rec({ note: "LOAD 20 UNLOAD 30" })])).toBe(
+      false,
+    );
+    expect(hasFilterRowEvidence([rec({ inverter: "HEAD 12" })])).toBe(false);
+    expect(hasFilterRowEvidence([rec({ note: "BACKDOOR" })])).toBe(false);
+    expect(hasFilterRowEvidence([rec({ note: "lockdown" })])).toBe(false);
+  });
+
+  it("空壓機自己的散熱器 / 一般維護不觸發", () => {
+    expect(hasFilterRowEvidence(CARD_D.records)).toBe(false);
+    expect(hasFilterRowEvidence([rec({ inverter: "散熱器組清洗" })])).toBe(
+      false,
+    );
+    expect(hasFilterRowEvidence([rec({ filter_system: "散熱器組清潔" })])).toBe(
+      false,
+    );
+    expect(hasFilterRowEvidence([])).toBe(false);
+  });
+});
+
 describe("parseCardKind / parseBelongsTo", () => {
   it("收斂非法值為 null", () => {
     expect(parseCardKind("mixed")).toBe("mixed");
@@ -584,6 +705,24 @@ describe("filterCellText / suggestFilterColumns", () => {
         rec({ filter_system: "外置式排水器CKD*3只+桶下AD480" }),
       ]),
     ).toEqual(["濾蕊", "排水器"]);
+  });
+
+  // 「排水器」那條 hint 與 DRYER_KEYWORD_RE 共用同一份 token source：
+  // 少了前面那道「不可再接英文字母」，LOAD 20 / BACKDOOR 會讓過濾卡憑空
+  // 多出一欄「排水器」讓員工自己刪。
+  it("英數 token 同樣不可當子字串誤命中（欄名建議）", () => {
+    expect(suggestFilterColumns([rec({ note: "LOAD 20 UNLOAD 30" })])).toEqual(
+      [],
+    );
+    expect(suggestFilterColumns([rec({ note: "BACKDOOR 檢查" })])).toEqual([]);
+    expect(suggestFilterColumns([rec({ inverter: "lockdown" })])).toEqual([]);
+    // 真的寫了型號的仍要建議（行首、接中文、接空格三種位置）。
+    expect(suggestFilterColumns([rec({ filter_system: "CKD" })])).toEqual([
+      "排水器",
+    ]);
+    expect(
+      suggestFilterColumns([rec({ filter_system: "桶下AD 480" })]),
+    ).toEqual(["排水器"]);
   });
 });
 
@@ -744,13 +883,200 @@ describe("buildCardDrafts — 樣態 D（純空壓機卡，不變量）", () => 
     expect(shouldImportFilterCard(out.filter)).toBe(false);
   });
 
-  it("即使某列真的寫了乾燥機，表頭沒標記就仍只出一張卡（避免無中生有）", () => {
-    const withDryerRow = buildCardDrafts({
+  // #166 放寬的是「列中有乾燥機硬證據」的情形；弱訊號一律不得開卡，
+  // 否則每張把「更換」寫進過濾系統欄的空壓機卡都會多出一張空殼過濾卡。
+  it("列的弱訊號（過濾系統欄只寫「更換」）不足以生出過濾卡", () => {
+    const weak = buildCardDrafts({
       basic: CARD_D.basic,
-      records: [...CARD_D.records, rec({ filter_system: "AD480×1" })],
+      records: [...CARD_D.records, rec({ filter_system: "更換" })],
     });
-    expect(withDryerRow.kind).toBe("compressor");
-    expect(withDryerRow.filter).toBeNull();
+    expect(weak.kind).toBe("compressor");
+    expect(weak.filter).toBeNull();
+    expect(weak.rows.every((r) => r.belongs_to === "compressor")).toBe(true);
+  });
+
+  it("「過濾」二字（那一欄的欄名）本身也不足以生出過濾卡", () => {
+    const weak = buildCardDrafts({
+      basic: CARD_D.basic,
+      records: [
+        ...CARD_D.records,
+        rec({ hours: "46000", oil: "例", filter_system: "過濾網清洗" }),
+      ],
+    });
+    expect(weak.kind).toBe("compressor");
+    expect(weak.filter).toBeNull();
+  });
+});
+
+describe("buildCardDrafts — 樣態 E（表頭無標記但列中有乾燥機內容，#166）", () => {
+  const out = buildCardDrafts(CARD_E);
+
+  it("表頭判定仍是 compressor，但實際產出兩張草稿卡", () => {
+    expect(normalizeCardHeader(CARD_E.basic).kind).toBe("compressor");
+    expect(out.kind).toBe("mixed");
+    expect(out.compressor).not.toBeNull();
+    expect(out.filter).not.toBeNull();
+  });
+
+  it("AD480 / 乾燥機 / 乾修 三列落在過濾卡，其餘留在空壓機卡", () => {
+    expect(out.rows.map((r) => r.belongs_to)).toEqual([
+      "compressor",
+      "filter",
+      "filter",
+      "filter",
+      "compressor",
+    ]);
+    expect((out.filter?.records ?? []).map((r) => filterCellText(r))).toEqual([
+      "AD480×1",
+      '乾燥機12"散熱馬達+葉片',
+      '乾修:12"馬達+葉片×2組',
+    ]);
+    expect(out.compressor?.records).toHaveLength(2);
+  });
+
+  it("「散熱溶劑清洗 / 散熱器清潔」是空壓機本體，不會被搬到過濾卡", () => {
+    const texts = (out.compressor?.records ?? []).map((r) => filterCellText(r));
+    expect(texts).toEqual(["散熱溶劑清洗", "散熱器清潔"]);
+  });
+
+  it("空壓機卡保留原本的表頭；過濾卡不帶馬力 / 電壓 / 購買時間", () => {
+    expect(out.compressor?.basic.serial_no).toBe("J751307001");
+    expect(out.compressor?.basic.voltage).toBe("380V");
+    expect(out.compressor?.basic.filter_spec).toBe("");
+    expect(out.filter?.basic.horsepower).toBe("");
+    expect(out.filter?.basic.voltage).toBe("");
+    expect(out.filter?.basic.purchased_at).toBe("");
+  });
+
+  it("紙上沒寫過濾器型號 → 過濾卡機號留空，識別靠沿用的機台代號", () => {
+    expect(out.filter?.basic.filter_spec).toBe("");
+    expect(out.filter?.basic.serial_no).toBe("");
+    expect(out.filter?.basic.machine_no).toBe("1號機");
+    expect(out.filter?.basic.customer_code).toBe("KK123-1");
+    expect(out.filter?.basic.customer_name).toBe(
+      out.compressor?.basic.customer_name,
+    );
+  });
+
+  it("有列又有識別 → 預設勾選匯入，員工可自行取消", () => {
+    expect(shouldImportFilterCard(out.filter)).toBe(true);
+  });
+
+  it("耗材欄名由乾燥機列推導", () => {
+    expect(out.filter?.columns).toEqual(["排水器", "散熱馬達", "葉片"]);
+  });
+
+  it("連機台代號都沒有時仍產卡，但預設不勾選（送出必然缺識別）", () => {
+    const noId = buildCardDrafts({
+      basic: { ...CARD_E.basic, machine_no: "" },
+      records: CARD_E.records,
+    });
+    expect(noId.filter).not.toBeNull();
+    expect(noId.filter?.records).toHaveLength(3);
+    expect(noId.filter?.basic.serial_no).toBe("");
+    expect(noId.filter?.basic.machine_no).toBe("");
+    expect(shouldImportFilterCard(noId.filter)).toBe(false);
+  });
+
+  it("AI 已把某列標成 filter 時，即使沒有關鍵字也照樣分流出兩張卡", () => {
+    const tagged = buildCardDrafts({
+      basic: CARD_D.basic,
+      records: [
+        ...CARD_D.records,
+        { ...rec({ filter_system: "更換" }), belongs_to: "filter" as const },
+      ],
+    });
+    expect(tagged.kind).toBe("mixed");
+    expect(tagged.filter?.records).toHaveLength(1);
+  });
+
+  // 迴歸：辨識 prompt 原本要求「card_kind = compressor 時所有列一律標 compressor」，
+  // 而 splitRecordsByCard 尊重 AI 的標記勝過關鍵字 → 門開了、列卻全被標回空壓機，
+  // split.filter 恆為空 → 過濾卡照樣是 null，#166 在正式環境等於沒生效。
+  // prompt 已改成逐列判斷，這裡再守一道：硬證據勝過「被規則逼出來的」compressor。
+  it("AI 把每一列都標成 compressor 時，硬證據仍要能開出過濾卡", () => {
+    const forced = buildCardDrafts({
+      basic: CARD_E.basic,
+      records: CARD_E.records.map((r) => ({
+        ...r,
+        belongs_to: "compressor" as const,
+      })),
+    });
+    expect(forced.kind).toBe("mixed");
+    expect(forced.filter).not.toBeNull();
+    expect(
+      (forced.filter?.records ?? []).map((r) => filterCellText(r)),
+    ).toEqual(["AD480×1", '乾燥機12"散熱馬達+葉片', '乾修:12"馬達+葉片×2組']);
+    // 沒有硬證據的列仍尊重 AI 的 compressor（散熱器是空壓機自己的）。
+    expect(forced.compressor?.records).toHaveLength(2);
+  });
+
+  it("覆寫只針對「有硬證據」的列，沒證據的列仍照 AI 標的走", () => {
+    const out = buildCardDrafts({
+      basic: CARD_E.basic,
+      records: [
+        // 弱訊號（值只出現在過濾系統欄）+ AI 標 compressor → 維持 compressor，
+        // 不因為別的列開了門就被 classifyRecord 的第 2 條搬走。
+        {
+          ...rec({ filter_system: "更換" }),
+          belongs_to: "compressor" as const,
+        },
+        rec({ filter_system: "AD480×1" }),
+      ],
+    });
+    expect(out.rows.map((r) => r.belongs_to)).toEqual(["compressor", "filter"]);
+  });
+
+  it("AI 只要標出過任何一列 filter，就代表它有在分辨 → 不覆寫它的 compressor", () => {
+    const out = buildCardDrafts({
+      basic: CARD_E.basic,
+      records: [
+        // 它自己標了這一列 filter，可見沒在套「一律 compressor」那條規則。
+        { ...rec({ filter_system: "AD480×1" }), belongs_to: "filter" as const },
+        // 因此這一列的 compressor 是判斷（風扇葉片本來就可能是空壓機的），要尊重。
+        {
+          ...rec({ inverter: "風扇葉片更換" }),
+          belongs_to: "compressor" as const,
+        },
+      ],
+    });
+    expect(out.rows.map((r) => r.belongs_to)).toEqual(["filter", "compressor"]);
+    expect(out.filter?.records).toHaveLength(1);
+  });
+
+  // 明文記下「AI 只是部分分辨」時的取捨：它標了一列 filter（→ 覆寫整個停用），
+  // 卻把另一列真的乾燥機列標成 compressor。此時該列會留在空壓機卡上。
+  // 這是可接受的：過濾卡照樣由它標的那一列撐起來（不會整張卡消失，那才是 F1），
+  // 落錯的只是「一列」，員工在核對畫面按「搬到另一張卡」即可。行為與表頭本來就是
+  // mixed 的路徑一致 —— 那條路徑同樣完全尊重 AI 的逐列判斷。
+  it("AI 只部分分辨時：過濾卡仍在，落錯的列由員工搬（與 mixed 路徑一致）", () => {
+    const out = buildCardDrafts({
+      basic: CARD_E.basic,
+      records: [
+        { ...rec({ filter_system: "AD480×1" }), belongs_to: "filter" as const },
+        {
+          ...rec({ inverter: '乾燥機12"散熱馬達+葉片' }),
+          belongs_to: "compressor" as const,
+        },
+      ],
+    });
+    expect(out.kind).toBe("mixed");
+    expect(out.filter?.records).toHaveLength(1);
+    expect(out.rows.map((r) => r.belongs_to)).toEqual(["filter", "compressor"]);
+  });
+
+  it("表頭本來就有過濾標記（mixed）時不覆寫：AI 的逐列判斷仍最大", () => {
+    const out = buildCardDrafts({
+      basic: basic({ serial_no: "J751307001", filter_spec: "過濾100HA" }),
+      records: [
+        // 混合卡的 prompt 要求逐列判斷，這個 compressor 是判斷不是規則 → 尊重。
+        {
+          ...rec({ inverter: '乾燥機12"散熱馬達+葉片' }),
+          belongs_to: "compressor" as const,
+        },
+      ],
+    });
+    expect(out.rows[0].belongs_to).toBe("compressor");
   });
 });
 
@@ -843,14 +1169,35 @@ describe("parseExtraction → buildCardDrafts", () => {
     expect(cards.filter?.basic.serial_no).toBe("100HA");
   });
 
-  it("D：AI 亂標 card_kind='mixed' 但表頭沒有過濾型號 → 仍只出空壓機卡", () => {
+  it("D：AI 亂標 card_kind='mixed' 但表頭沒有過濾型號、列中也沒乾燥機 → 只出空壓機卡", () => {
     const draft = parseExtraction({
       card_kind: "mixed",
       basic: { serial_no: "J751307001" },
-      records: [{ service_date: "2023-05-15", filter_system: "AD480×1" }],
+      records: [{ service_date: "2023-05-15", filter_system: "散熱器組清潔" }],
     });
     expect(draft.card_kind).toBe("compressor");
     expect(buildCardDrafts(draft).filter).toBeNull();
+  });
+
+  it("E：表頭沒有過濾型號，但列中有 AD480 → 一樣出兩張卡，過濾卡機號留空（#166）", () => {
+    const draft = parseExtraction({
+      card_kind: "compressor",
+      basic: { serial_no: "J751307001", machine_no: "1號機" },
+      records: [
+        { service_date: "2023-03-29", hours: "34446", oil: "3" },
+        { service_date: "2023-05-15", filter_system: "AD480×1" },
+      ],
+    });
+    // 表頭沒有任何過濾標記，parseExtraction 的判定不變（它只看表頭）。
+    expect(draft.card_kind).toBe("compressor");
+    expect(draft.basic.filter_spec).toBe("");
+    const cards = buildCardDrafts(draft);
+    expect(cards.kind).toBe("mixed");
+    expect(cards.compressor?.records).toHaveLength(1);
+    expect(cards.filter?.records).toHaveLength(1);
+    expect(cards.filter?.basic.serial_no).toBe("");
+    expect(cards.filter?.basic.machine_no).toBe("1號機");
+    expect(shouldImportFilterCard(cards.filter)).toBe(true);
   });
 
   it("belongs_to 不影響「該列是否全空」的丟棄判斷", () => {

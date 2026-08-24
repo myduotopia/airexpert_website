@@ -12,7 +12,10 @@
 //   B' 同樣是一張卡兩台機器，但過濾系統寫成加號註記：機型那一行結尾補一個「＋100HA」。
 //     實際照片證實 B 與 B' 是同一台機器（機號 J751307001、同為 KK123-1），
 //     因此「＋100HA / +100HA」等同「過濾100HA」，一樣要拆成兩張卡。
-//   C 純空壓機卡：表頭沒有任何過濾系統標記，不可誤生一張空的過濾卡。
+//   C 表頭沒有任何過濾系統標記。此時再看維護列（#166）：
+//     列中有乾燥機內容（AD480、乾燥機散熱馬達+葉片、乾修…）→ 照樣拆成兩張草稿卡，
+//     由員工用「匯入」勾選框決定要不要留過濾卡（營運決定：判成兩張就產兩張）；
+//     列中也沒有乾燥機內容 → 純空壓機卡，只出一張，不可誤生一張空的過濾卡。
 //
 // 這個模組是「AI 沒標 / 標錯」時的本地後備規則，也是 UI 產生兩張草稿卡的依據。
 // 只 import type，不引用 maintenance-normalize 的執行期程式碼（避免循環相依）。
@@ -202,12 +205,39 @@ export function normalizeCardHeader(
 }
 
 /**
- * 過濾系統（乾燥機）的耗材關鍵字。命中即判為過濾卡的內容。
+ * 排水器型號的英數 token（CKD / AD480）。這兩個是純 ASCII 子字串，前面一律擋一個
+ * 「不可再接英文字母」，否則 LOAD 20 / HEAD 12 會被當成 AD480、BACKDOOR / lockdown
+ * 會被當成 CKD（正則帶 i）。#166 之後誤命中的代價不再只是「某一列歸錯卡」，而是
+ * 憑空多出一整張過濾卡草稿，故一律收緊。
+ *
+ * 刻意不用 lookbehind：這個模組會被核對畫面（client component）在執行期 import，
+ * 得跑在技術員拍照用的 iOS Safari 上。`(?:^|[^A-Za-z])` 會多吃掉前面那個字元，
+ * 但這裡只用 .test()，不取 match 位置，吃掉無妨。
+ *
+ * 同一份 source 同時給 DRYER_KEYWORD_RE 與 FILTER_COLUMN_HINTS 的「排水器」用：
+ * 兩邊各留一份的話，收緊只收到一半（欄名建議仍會被 LOAD 20 誤觸發）。
+ */
+const DRAIN_TOKEN_SRC = String.raw`(?:^|[^A-Za-z])(?:CKD(?![A-Za-z])|AD\s?\d{2,})`;
+
+/**
+ * 「乾燥機專屬」耗材關鍵字：出現這些字幾乎可斷定這張紙上真的有第二台機器。
  * 注意「散熱器」（空壓機的散熱器組清洗 / 清潔）刻意不列入，只認「散熱馬達」，
  * 否則樣態 B 的「散熱器組清洗」會被誤判成乾燥機的維護。
+ *
+ * 排水器型號的兩個英數 token 另外抽成 DRAIN_TOKEN_SRC（見下），中文關鍵字不需要。
  */
-const FILTER_KEYWORD_RE =
-  /乾燥機|乾燥桶|乾修|排水器|濾蕊|濾芯|濾心|散熱馬達|葉片|過濾|CKD|AD\s?\d{2,}/i;
+const DRYER_KEYWORD_RE = new RegExp(
+  `乾燥機|乾燥桶|乾修|排水器|濾蕊|濾芯|濾心|散熱馬達|葉片|${DRAIN_TOKEN_SRC}`,
+  "i",
+);
+
+/**
+ * 過濾系統的耗材關鍵字（＝乾燥機專屬關鍵字再加上「過濾」）。命中即判為過濾卡的內容。
+ * 「過濾」二字單獨出現的證據力比其他字弱得多 —— 它就是空壓機卡上「過濾系統」欄的
+ * 欄名，寫在該欄裡的「過濾網清洗」講的可能是空壓機自己。因此它只夠拿來「分列」
+ * （已知有兩台機器，決定某一列歸誰），不足以拿來「開卡」（見 hasFilterRowEvidence）。
+ */
+const FILTER_KEYWORD_RE = new RegExp(`過濾|${DRYER_KEYWORD_RE.source}`, "i");
 
 /** 空壓機專屬欄位（這幾欄有值就幾乎確定是空壓機的維護列）。 */
 const COMPRESSOR_FIELDS = [
@@ -241,6 +271,65 @@ export function classifyRecord(r: RecordPayload): BelongsTo {
   const hasCompressorValue = COMPRESSOR_FIELDS.some((f) => str(r[f]) !== "");
   if (str(r.filter_system) !== "" && !hasCompressorValue) return "filter";
   return "compressor";
+}
+
+/**
+ * 表頭「完全沒有過濾標記」時，要不要一併產出一張過濾卡草稿的門檻（#166）。
+ *
+ * 這個門檻刻意比 classifyRecord 嚴，因為兩者要回答的問題不同：
+ * - classifyRecord 回答「已知這張紙有兩台機器，這一列歸誰」——表頭已經先證實了
+ *   乾燥機存在，是強先驗，所以連「值只出現在過濾系統欄」這種弱訊號都可以採信。
+ * - 這裡回答「這張紙上到底有沒有第二台機器」——沒有表頭背書，判錯就是無中生有
+ *   一張卡，所以只認「乾燥機專屬關鍵字」這一條硬證據：
+ *     · 不採信「值只出現在過濾系統欄」（例：該欄只寫「更換」）——空壓機自己的
+ *       過濾系統也寫在這一欄，這是欄名不是機器。
+ *     · 不採信單獨的「過濾」二字，理由同上（見 FILTER_KEYWORD_RE 的註解）。
+ * AI 已明確把某一列標成 filter 時同樣算數：那是它看著照片下的判斷，不是關鍵字巧合。
+ *
+ * 反過來說，一旦這道門開了，這張紙就等同樣態 B 的混合卡，逐列分流即回到
+ * classifyRecord 那套（含弱訊號）——先驗已經被硬證據補上了。
+ */
+export function hasFilterRowEvidence(
+  records: (RecordPayload & { belongs_to?: BelongsTo | null })[],
+): boolean {
+  return records.some(
+    (r) => parseBelongsTo(r.belongs_to) === "filter" || hasDryerEvidence(r),
+  );
+}
+
+/** 單一列是否帶「乾燥機專屬」硬證據（見 DRYER_KEYWORD_RE）。 */
+function hasDryerEvidence(r: RecordPayload): boolean {
+  return DRYER_KEYWORD_RE.test(`${filterCellText(r)} ${str(r.note)}`);
+}
+
+/**
+ * #166 的分流路徑（表頭沒有過濾標記）專用：把 AI 標的 `belongs_to = "compressor"`
+ * 從「帶硬證據的列」上拿掉，交還 classifyRecord 判。
+ *
+ * 為什麼非做不可：辨識 prompt 原本在 card_kind = "compressor" 時要求 AI
+ * 「所有列一律 belongs_to = compressor」；那條規則已隨 #166 一併改掉（見 gemini.ts
+ * 的【每一列的歸屬】），但這道網仍要留著 —— 模型不保證照做，而「這張是空壓機卡
+ * ⇒ 每列都是空壓機」正是它最容易自己補上的推論，且這條路徑的表頭恰好就是沒有過濾
+ * 標記。此時 AI 給的 compressor 分不出是判斷還是推論，一律視為沒有證據力。
+ * 不清掉的話 hasFilterRowEvidence 開了門、列卻全被 AI 標回空壓機，split.filter
+ * 永遠是空的 → hasFilterContent 為 false → 過濾卡照樣是 null，#166 在正式環境
+ * 等於完全沒生效（單元測試的 fixture 都沒帶 belongs_to，因此測不出來）。
+ *
+ * 只清「compressor」且只清「有硬證據」的列：
+ * - AI 標的 filter 一律保留（那是判斷，不是規則）。
+ * - 沒有硬證據的列保留 AI 的 compressor（例：散熱器組清潔）。
+ * - 表頭本來就有過濾標記（mixed）時不套用：那條路徑的 prompt 要求 AI 逐列判斷，
+ *   它給的 compressor 是真的判斷，不該被關鍵字推翻。
+ * - 只要 AI 在這張紙上標出過**任何一列** filter，整個覆寫就不套用（見呼叫端）：
+ *   那證明它有在逐列分辨，不是在套「一律 compressor」那條規則，此時它給的
+ *   compressor 同樣是判斷。此情形下過濾卡本來就會由那一列撐起來，不需要覆寫。
+ */
+function dropForcedCompressor(
+  r: RecordPayload & { belongs_to?: BelongsTo | null },
+): RecordPayload & { belongs_to?: BelongsTo | null } {
+  return parseBelongsTo(r.belongs_to) === "compressor" && hasDryerEvidence(r)
+    ? { ...r, belongs_to: null }
+    : r;
 }
 
 /**
@@ -288,7 +377,7 @@ export function splitRecordsByCard(
  */
 const FILTER_COLUMN_HINTS: { label: string; re: RegExp }[] = [
   { label: "濾蕊", re: /濾蕊|濾芯|濾心/ },
-  { label: "排水器", re: /排水器|CKD|AD\s?\d{2,}/i },
+  { label: "排水器", re: new RegExp(`排水器|${DRAIN_TOKEN_SRC}`, "i") },
   { label: "散熱馬達", re: /散熱馬達/ },
   { label: "葉片", re: /葉片/ },
 ];
@@ -325,6 +414,13 @@ export interface CardDraft {
 }
 
 export interface CardDrafts {
+  /**
+   * 這次「實際產出」的草稿樣態（不是表頭的判定結果）：
+   * 兩張都出 = mixed、只出過濾卡 = filter、只出空壓機卡 = compressor。
+   * #166 之後表頭沒有過濾標記、但列中有乾燥機內容時也會出兩張，這裡就是 mixed ——
+   * 核對畫面的說明文字要講的是「你眼前有幾張卡」，不是「表頭寫了什麼」。
+   * 表頭本身的判定另外由 normalizeCardHeader / ExtractedDraft.card_kind 保留。
+   */
   kind: CardKind;
   /**
    * 全部維護列，維持照片上由上到下的原始順序，每列帶已判定的歸屬。
@@ -344,10 +440,16 @@ export interface CardSplitInput {
 /**
  * 產生要並排給員工核對的兩張草稿卡。
  *
- * 卡別由表頭決定（normalizeCardHeader），列的歸屬只在 mixed 時才分流：
+ * 卡別由表頭決定（normalizeCardHeader），逐列分流則在「表頭說有兩台」或
+ * 「列中有乾燥機硬證據」時啟動：
  * - filter     → 只出一張過濾卡，所有列都進過濾卡（樣態 A：整張紙就是過濾卡）
- * - compressor → 只出一張空壓機卡，不生空的過濾卡（樣態 C）
- * - mixed      → 兩張都出，列依 splitRecordsByCard 分流（樣態 B）
+ * - mixed      → 兩張都出，列依 splitRecordsByCard 分流（樣態 B / B'）
+ * - compressor → 表頭沒有任何過濾標記。此時再看列的內容（#166）：
+ *     · 有乾燥機內容（hasFilterRowEvidence）→ 一樣分流、一樣出兩張草稿卡，
+ *       由員工用「匯入」勾選框決定要不要留下過濾卡。營運上的決定是
+ *       「判斷完覺得該是兩張卡就產生兩張」，寧可多給一張讓人取消，
+ *       也不要讓員工自己按「這張卡也有過濾系統」重建。
+ *     · 沒有乾燥機內容 → 只出一張空壓機卡（樣態 D，硬性不變量）。
  *
  * 過濾卡若既沒有過濾器型號也沒有任何列，一律不產生（守住「不誤生空的過濾卡」）。
  */
@@ -364,14 +466,26 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
     voltage: header.voltage,
   };
 
-  // 只有 mixed 才需要逐列分流：整張是過濾卡 / 整張是空壓機卡時，所有列都屬那張卡
-  // （樣態 A 的專用油、時數也是寫在過濾卡上的，不該被關鍵字拆走）。
-  const rows: RecordDraft[] =
-    header.kind === "mixed"
-      ? splitRecordsByCard(input.records).all
-      : input.records.map((r) =>
-          withBelongsTo(r, header.kind === "filter" ? "filter" : "compressor"),
-        );
+  // 整張是過濾卡（樣態 A）時不分流：那張紙上的專用油、時數也是寫給過濾卡的，
+  // 不該被關鍵字拆走。其餘情形只要「表頭說有兩台」或「列中有乾燥機硬證據」就分流。
+  const byRowEvidence =
+    header.kind === "compressor" && hasFilterRowEvidence(input.records);
+  const splitByRow = header.kind === "mixed" || byRowEvidence;
+  // 「AI 一列 filter 都沒標」＝ 它在套「空壓機卡就一律標 compressor」這種推論
+  // （prompt 已不再這樣要求，但模型仍可能自己補上），此時它的 compressor 標記
+  // 沒有證據力，硬證據要蓋過去。
+  const aiForcedAllCompressor =
+    byRowEvidence &&
+    !input.records.some((r) => parseBelongsTo(r.belongs_to) === "filter");
+  const rows: RecordDraft[] = splitByRow
+    ? splitRecordsByCard(
+        aiForcedAllCompressor
+          ? input.records.map(dropForcedCompressor)
+          : input.records,
+      ).all
+    : input.records.map((r) =>
+        withBelongsTo(r, header.kind === "filter" ? "filter" : "compressor"),
+      );
   const split = {
     compressor: rows.filter((r) => r.belongs_to === "compressor"),
     filter: rows.filter((r) => r.belongs_to === "filter"),
@@ -386,7 +500,8 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
           columns: [],
         };
 
-  const wantFilter = header.kind !== "compressor";
+  // 表頭有過濾標記，或表頭沒標記但列中有乾燥機硬證據（此時 splitByRow 為真）。
+  const wantFilter = header.kind !== "compressor" || splitByRow;
   const hasFilterContent = basic.filter_spec !== "" || split.filter.length > 0;
   const filter: CardDraft | null =
     wantFilter && hasFilterContent
@@ -394,6 +509,10 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
           basic: {
             ...basic,
             // 過濾卡的機號建議用去掉「過濾」前綴的型號；filter_spec 保留原文。
+            // 表頭沒有過濾標記時（#166）這裡是空字串：紙上根本沒寫過濾器型號，
+            // 不可硬塞值。0018 起 serial_no 可為 null，只要機台代號非空就能建卡
+            // （DB CHECK 要求兩段至少有一段），代號沿用表頭；兩段都空時
+            // shouldImportFilterCard 會預設不勾選，等員工自己補一段再送出。
             serial_no: filterCardSerial(basic.filter_spec),
             // 機台代號（A機／1號機）的唯一範圍自 0019 起是 (客戶, 卡別)，兩張草稿
             // 卡別不同，帶同一個代號不會互撞，故混合卡的過濾卡也沿用表頭的代號。
@@ -410,14 +529,23 @@ export function buildCardDrafts(input: CardSplitInput): CardDrafts {
         }
       : null;
 
-  return { kind: header.kind, rows, compressor, filter };
+  // 回報實際產出的樣態：表頭說 compressor 但列中挖出乾燥機時，員工眼前是兩張卡。
+  const kind: CardKind =
+    compressor === null ? "filter" : filter === null ? "compressor" : "mixed";
+  return { kind, rows, compressor, filter };
 }
 
 /**
- * 過濾卡預設是否勾選匯入：有維護列才預設匯入。
- * 表頭雖標了過濾型號、但整張沒有任何過濾系統的維護列時，預設不匯入，
- * 避免辨識把表頭的零星註記誤讀成過濾系統標記而生出一張空卡。
+ * 過濾卡預設是否勾選匯入：要有維護列，也要有識別（機號或機台代號至少一段）。
+ * - 表頭雖標了過濾型號、但整張沒有任何過濾系統的維護列時，預設不匯入，
+ *   避免辨識把表頭的零星註記誤讀成過濾系統標記而生出一張空卡。
+ * - 表頭沒有過濾標記、紙上也沒寫機台代號時（#166），這張草稿還缺識別，
+ *   直接送出必然撞到「機號與機台代號至少填一項」，預設不勾選比較誠實。
+ * 兩種情形員工都能自己勾回來（過濾卡分頁的表頭欄位本來就可編輯）。
  */
 export function shouldImportFilterCard(card: CardDraft | null): boolean {
-  return card !== null && card.records.length > 0;
+  if (card === null || card.records.length === 0) return false;
+  return (
+    card.basic.serial_no.trim() !== "" || card.basic.machine_no.trim() !== ""
+  );
 }
