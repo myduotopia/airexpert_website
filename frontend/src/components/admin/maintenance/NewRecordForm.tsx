@@ -4,7 +4,7 @@
 // digest，加上本專案沒有 error.tsx，員工只會看到通用錯誤頁而且剛打的整列消失。
 // 與 NewMachineForm 同一套作法（#167 / #168）。
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 import { RecordFields } from "./RecordForm";
 import { FilterRecordFields, type FilterColumn } from "./FilterRecordForm";
 import type { MxCardType } from "@/lib/admin/maintenance-normalize";
@@ -35,6 +35,10 @@ export function NewRecordForm({
     try {
       res = await addRecordAction(machineId, fd);
     } catch (e) {
+      // session 過期時 action 內的 requireRole 會 redirect，Next.js 會把這個 action
+      // promise 以 NEXT_REDIRECT 錯誤 reject（導頁另由 router reducer 執行）。框架的
+      // 控制流程錯誤要原樣丟回去，否則下面會把「NEXT_REDIRECT」當錯誤訊息秀出來。
+      unstable_rethrow(e);
       // 送不出去（斷網、server action 本身失敗）時的保底。不接的話這個 rejection
       // 會冒到最近的 error boundary，而本專案沒有 error.tsx，結果就是整頁換成通用
       // 錯誤畫面、剛打的整列一起消失 —— 正是這支元件要避免的事。

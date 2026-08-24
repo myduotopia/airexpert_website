@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { unstable_rethrow } from "next/navigation";
 import type { ActionResult } from "@/lib/admin/crud";
 
 // 列表列上的單一動作按鈕：呼叫「已 bind 好的」server action，並把失敗訊息就地顯示在
@@ -49,6 +50,11 @@ export function ActionButton({
               const res = await action();
               if (!res.ok) setError(res.error);
             } catch (e) {
+              // session 過期時 server action 內的 requireRole 會 redirect，Next.js
+              // 會把這個 action promise 以 NEXT_REDIRECT 錯誤 reject（導頁本身由
+              // router reducer 另外執行）。這種框架控制流程錯誤要原樣丟回去讓
+              // Next.js 處理，否則下面會把「NEXT_REDIRECT」當成錯誤訊息秀給員工看。
+              unstable_rethrow(e);
               // 送不出去（斷網、server action 本身失敗）時的保底。不接的話這個
               // rejection 會冒到最近的 error boundary，而本專案沒有 error.tsx，
               // 結果就是整頁換成通用錯誤畫面。
