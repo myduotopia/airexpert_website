@@ -108,7 +108,7 @@ do $$ begin
   assert (select count(*) from erp_warehouses) = 0, '未授權者不應看到 erp_warehouses';
   assert (select count(*) from admin_module_grants) = 0, '未授權者不應看到他人授權';
 end $$;
-select erp_test.expect_error($q$select erp_next_doc_no('S', '2026-09-11')$q$, 'forbidden');
+select erp_test.expect_error($q$select erp_next_doc_no('S', '2026-09-11')$q$, '42501');
 select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e001')$q$, 'forbidden');
 select erp_test.expect_error($q$select erp_void_document('00000000-0000-0000-0000-00000000e001', 'x')$q$, 'forbidden');
 select erp_test.expect_error($q$select erp_post_payment('{}'::jsonb)$q$, 'forbidden');
@@ -122,7 +122,11 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000001","r
 
 -- ============================================================
 -- 3) 取號與稅額
+--    取號、erp_avg_* 為內部函式（決策 15）：authenticated 不可直接呼叫，公式改以擁有者身分驗證
 -- ============================================================
+select erp_test.expect_error($q$select erp_next_doc_no('S', '2026-09-11')$q$, '42501');
+select erp_test.expect_error($q$select erp_avg_in(1, 1, 1, 1)$q$, '42501');
+reset role;
 do $$ begin
   assert has_module('erp'), 'office 應有 erp 模組';
   assert erp_next_doc_no('S', '2026-09-11') = 'S11509001', 'S 第一號';
@@ -150,6 +154,10 @@ begin
   assert erp_avg_in(-1, 100, 3, 50) = 50 and erp_avg_in(2, 100, 2, 200) = 150, 'erp_avg_in';
   assert erp_avg_out(1, 100, 1, 80) = 100 and erp_avg_out(3, 160000, 1, 170000) = 155000, 'erp_avg_out';
   raise notice 'ok  稅額 / 平均成本公式';
+end $$;
+set local role authenticated;
+do $$ begin
+  assert (select total_amount from erp_calc_tax(100, 'excluded', 0.05, 'TWD', 1)) = 105, 'erp_calc_tax 仍開放 authenticated';
 end $$;
 
 -- ============================================================
@@ -668,6 +676,209 @@ begin
   raise notice 'ok  付款';
 end $$;
 select erp_test.expect_error($q$select erp_post_payment('{"direction":"out","pay_date":"2026-09-15","vendor_id":"00000000-0000-0000-0000-00000000b001","method":"cash","amount":10,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e009","amount":10}]}')$q$, 'validation');
+
+-- ============================================================
+-- 9) 繞過防護（issue #172 review）：有 erp 授權、非 office 的使用者直接經 PostgREST 寫表
+-- ============================================================
+reset role;
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-000000000003', 'erp-only@airexpert.com.tw');
+insert into admin_module_grants (user_id, module) values ('00000000-0000-0000-0000-000000000003', 'erp');
+-- 保養卡既有資料（office 領域，erp-only 使用者看不到 mx_records）
+insert into mx_customers (id, name) values ('00000000-0000-0000-0000-00000000d009', '既有保養客戶');
+insert into mx_machines (id, customer_id, card_type, serial_no) values
+  ('00000000-0000-0000-0000-00000000aa09', '00000000-0000-0000-0000-00000000d009', 'compressor', 'OLD-1');
+insert into mx_records (machine_id, service_date, note) values
+  ('00000000-0000-0000-0000-00000000aa09', '2026-01-01', '保養歷史');
+
+-- 決策 17 的前提：security definer 內 current_user = 函式擁有者（≠ authenticated）
+create function erp_test.whoami_definer() returns text language sql security definer as $$ select current_user::text $$;
+grant execute on function erp_test.whoami_definer() to authenticated;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['erp_post_document(uuid)','erp_void_document(uuid,text)','erp_post_payment(jsonb)',
+                           'erp_allocate_payment(uuid,jsonb)','erp_void_payment(uuid,text)'] loop
+    assert (select prosecdef and array_to_string(proconfig, ',') like '%search_path=public, pg_temp%'
+              from pg_proc where oid = f::regprocedure), format('%s 應為 security definer + search_path', f);
+    assert has_function_privilege('authenticated', f, 'execute'), format('%s 應開放 authenticated', f);
+  end loop;
+  foreach f in array array['erp_stock_apply(uuid,uuid,numeric,numeric,uuid,uuid,date,boolean)','erp_next_doc_no(text,date)',
+                           'erp_avg_in(numeric,numeric,numeric,numeric)','erp_avg_out(numeric,numeric,numeric,numeric)',
+                           'erp_raise(text,text)','erp_machine_has_records(uuid)'] loop
+    assert not has_function_privilege('authenticated', f, 'execute'), format('%s 不應開放 authenticated', f);
+    assert not has_function_privilege('anon', f, 'execute'), format('%s 不應開放 anon', f);
+  end loop;
+  raise notice 'ok  RPC security definer / 內部函式權限';
+end $$;
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000003","role":"authenticated"}';
+
+do $$ begin
+  assert has_module('erp') and not is_office(), 'erp-only 使用者：有 erp、非 office';
+  assert current_user = 'authenticated', '用戶端 current_user = authenticated';
+  assert erp_test.whoami_definer() = (select pg_get_userbyid(proowner)::text from pg_proc
+                                        where oid = 'erp_post_document(uuid)'::regprocedure),
+    format('definer 內 current_user 應為擁有者，得到 %s', erp_test.whoami_definer());
+  assert erp_test.whoami_definer() not in ('authenticated', 'anon'), 'definer 內不是 API 角色';
+  raise notice 'ok  RPC 內 current_user = %', erp_test.whoami_definer();
+end $$;
+
+-- 9.1 已過帳／已作廢單據：翻回草稿、改金額、刪除
+select erp_test.expect_error($q$update erp_documents set status = 'draft' where id = '00000000-0000-0000-0000-00000000e009'$q$, 'not_draft');
+select erp_test.expect_error($q$update erp_documents set total_twd = 1 where id = '00000000-0000-0000-0000-00000000e009'$q$, 'not_draft');
+select erp_test.expect_error($q$update erp_documents set status = 'posted' where id = '00000000-0000-0000-0000-00000000e012'$q$, 'not_draft');
+select erp_test.expect_error($q$delete from erp_documents where id = '00000000-0000-0000-0000-00000000e009'$q$, 'not_draft');
+select erp_test.expect_error($q$delete from erp_documents where id = '00000000-0000-0000-0000-00000000e012'$q$, 'not_draft');
+-- 9.2 直接新增已過帳／帶 RPC 專屬欄位的單據
+select erp_test.expect_error($q$insert into erp_documents (doc_type, doc_no, status, customer_id, total_twd) values ('S', 'FAKE1', 'posted', '00000000-0000-0000-0000-00000000d001', 999999)$q$, 'not_draft');
+select erp_test.expect_error($q$insert into erp_documents (doc_type, doc_no, customer_id) values ('S', 'FAKE2', '00000000-0000-0000-0000-00000000d001')$q$, 'not_draft');
+select erp_test.expect_error($q$insert into erp_documents (doc_type, customer_id, posted_at) values ('S', '00000000-0000-0000-0000-00000000d001', now())$q$, 'not_draft');
+-- 9.3 已過帳明細／行序號
+select erp_test.expect_error($q$update erp_document_lines set unit_price = 1, amount = 1 where id = '00000000-0000-0000-0000-0000f0090003'$q$, 'not_draft');
+select erp_test.expect_error($q$delete from erp_document_lines where id = '00000000-0000-0000-0000-0000f0090003'$q$, 'not_draft');
+select erp_test.expect_error($q$insert into erp_document_lines (document_id, line_no, line_type, description) values ('00000000-0000-0000-0000-00000000e009', 99, 'note', 'x')$q$, 'not_draft');
+select erp_test.expect_error($q$update erp_document_lines set document_id = '00000000-0000-0000-0000-00000000e009', line_no = 98 where id = '00000000-0000-0000-0000-0000f0040001'$q$, 'not_draft');
+select erp_test.expect_error($q$delete from erp_document_line_serials where line_id = '00000000-0000-0000-0000-0000f0090001'$q$, 'not_draft');
+select erp_test.expect_error($q$insert into erp_document_line_serials (line_id, serial_id) select '00000000-0000-0000-0000-0000f0090003', id from erp_serials where serial_no = '26-PM15060011'$q$, 'not_draft');
+select erp_test.expect_error($q$update erp_document_line_serials set mx_machine_created = false where line_id = '00000000-0000-0000-0000-0000f0090001'$q$, 'not_draft');
+-- 9.4 帳務表：用戶端不可寫
+select erp_test.expect_error($q$update erp_stock_levels set qty = 9999$q$, '42501');
+select erp_test.expect_error($q$insert into erp_stock_levels (item_id, warehouse_id, qty) values ('00000000-0000-0000-0000-00000000c004', '00000000-0000-0000-0000-00000000a002', 5)$q$, '42501');
+select erp_test.expect_error($q$delete from erp_stock_levels$q$, '42501');
+select erp_test.expect_error($q$update erp_stock_moves set qty = 0$q$, '42501');
+select erp_test.expect_error($q$delete from erp_stock_moves where document_id = '00000000-0000-0000-0000-00000000e002'$q$, '42501');
+select erp_test.expect_error($q$insert into erp_stock_moves (move_date, item_id, warehouse_id, qty, unit_cost, document_id) values (current_date, '00000000-0000-0000-0000-00000000c003', '00000000-0000-0000-0000-00000000a002', 100, 0, '00000000-0000-0000-0000-00000000e002')$q$, '42501');
+select erp_test.expect_error($q$update erp_serials set status = 'in_stock' where serial_no = '26-PM15060012'$q$, '42501');
+select erp_test.expect_error($q$insert into erp_serials (item_id, serial_no, status, warehouse_id) values ('00000000-0000-0000-0000-00000000c001', 'FAKE-SN', 'in_stock', '00000000-0000-0000-0000-00000000a002')$q$, '42501');
+select erp_test.expect_error($q$delete from erp_serials where serial_no = '26-PM15060012'$q$, '42501');
+select erp_test.expect_error($q$update erp_doc_sequences set last_no = 0$q$, '42501');
+select erp_test.expect_error($q$insert into erp_doc_sequences (prefix, period, last_no) values ('S', '11510', 0)$q$, '42501');
+select erp_test.expect_error($q$delete from erp_doc_sequences$q$, '42501');
+select erp_test.expect_error($q$insert into erp_payment_allocations (payment_id, document_id, amount) select id, '00000000-0000-0000-0000-00000000e009', 1 from erp_payments limit 1$q$, '42501');
+select erp_test.expect_error($q$delete from erp_payment_allocations$q$, '42501');
+select erp_test.expect_error($q$insert into erp_payments (direction, pay_date, customer_id, method, amount) values ('in', current_date, '00000000-0000-0000-0000-00000000d001', 'cash', 1)$q$, '42501');
+select erp_test.expect_error($q$update erp_payments set amount = 1$q$, '42501');
+select erp_test.expect_error($q$update erp_payments set status = 'posted'$q$, '42501');
+select erp_test.expect_error($q$delete from erp_payments$q$, '42501');
+-- 9.5 avg_cost 只能由過帳寫入
+select erp_test.expect_error($q$update erp_items set avg_cost = 1$q$, '42501');
+select erp_test.expect_error($q$insert into erp_items (code, name, kind, avg_cost) values ('HACK', 'x', 'part', 1)$q$, '42501');
+-- 9.6 內部函式不可直接呼叫
+select erp_test.expect_error($q$select erp_stock_apply('00000000-0000-0000-0000-00000000c003', '00000000-0000-0000-0000-00000000a002', 500, 0, '00000000-0000-0000-0000-00000000e002', null, current_date, false)$q$, '42501');
+select erp_test.expect_error($q$select erp_next_doc_no('S', '2026-09-15')$q$, '42501');
+select erp_test.expect_error($q$select erp_avg_out(1, 1, 1, 1)$q$, '42501');
+select erp_test.expect_error($q$select erp_raise('forbidden', 'x')$q$, '42501');
+select erp_test.expect_error($q$select erp_machine_has_records('00000000-0000-0000-0000-00000000aa09')$q$, '42501');
+
+do $$
+declare n int;
+begin
+  -- 以上皆未生效
+  assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e009') = 'posted', '9.x S 仍 posted';
+  assert (select total_twd from erp_documents where id = '00000000-0000-0000-0000-00000000e009') = 235000, '9.x S 金額不變';
+  assert erp_test.qty('00000000-0000-0000-0000-00000000c003', erp_test.main()) = 14, '9.x 存量不變';
+  assert erp_test.avg('00000000-0000-0000-0000-00000000c003') between 8799.99 and 8800.01, '9.x avg 不變';
+  assert not exists (select 1 from erp_documents where doc_no like 'FAKE%'), '9.x 無偽造單據';
+  assert (select count(*) from erp_stock_moves where document_id = '00000000-0000-0000-0000-00000000e002') = 2, '9.x 庫存帳不變';
+
+  -- 允許：支票狀態／備註、品項一般欄位（avg_cost 走預設 0）
+  update erp_payments set check_status = 'cleared', note = '已兌現' where check_no = 'AB1234567';
+  get diagnostics n = row_count;
+  assert n = 1 and (select check_status from erp_payments where check_no = 'AB1234567') = 'cleared', '可更新支票狀態';
+  insert into erp_items (id, code, name, kind) values ('00000000-0000-0000-0000-00000000c009', 'NEW-PART', '新零件', 'part');
+  update erp_items set name = '新零件（改）', sale_price = 100 where id = '00000000-0000-0000-0000-00000000c009';
+  assert (select avg_cost from erp_items where id = '00000000-0000-0000-0000-00000000c009') = 0, '新品項 avg_cost = 0';
+
+  -- 決策（#2）：erp 對 mx_* 無 delete；可讀、可新增、可修改
+  assert (select count(*) from mx_records) = 0, 'erp-only 看不到 mx_records';
+  assert exists (select 1 from mx_customers where id = '00000000-0000-0000-0000-00000000d009'), 'erp 可讀客戶';
+  delete from mx_customers where id = '00000000-0000-0000-0000-00000000d009';
+  get diagnostics n = row_count;
+  assert n = 0, 'erp 不可刪 mx_customers';
+  delete from mx_machines where id = '00000000-0000-0000-0000-00000000aa09';
+  get diagnostics n = row_count;
+  assert n = 0, 'erp 不可刪 mx_machines';
+  update mx_customers set tax_id = '99999999' where id = '00000000-0000-0000-0000-00000000d009';
+  get diagnostics n = row_count;
+  assert n = 1, 'erp 可改 mx_customers';
+  insert into mx_customers (id, name) values ('00000000-0000-0000-0000-00000000d00a', 'ERP 新客戶');
+  raise notice 'ok  繞過防護：帳務表 / 已過帳單據 / mx_* 刪除皆被擋';
+end $$;
+
+-- 9.7 草稿流程（documents.ts saveDraftDocument / deleteDraftDocument 的寫法）仍可用
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, status, party_name, sales_rep,
+                           amount_untaxed, tax_amount, total_amount, total_twd) values
+  ('00000000-0000-0000-0000-00000000e020', 'S', '2026-09-15', '00000000-0000-0000-0000-00000000d002', erp_test.main(), 'draft',
+   '測試二號工廠', null, 12000, 0, 12000, 12000);
+update erp_documents set note = '改備註', tax_type = 'exempt', total_twd = 12500, party_phone = '02-0000-0000'
+ where id = '00000000-0000-0000-0000-00000000e020' and status = 'draft';
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price, amount) values
+  ('00000000-0000-0000-0000-0000f0200001', '00000000-0000-0000-0000-00000000e020', 1, 'item', '00000000-0000-0000-0000-00000000c003', 1, 12000, 12000),
+  ('00000000-0000-0000-0000-0000f0200002', '00000000-0000-0000-0000-00000000e020', 2, 'item', '00000000-0000-0000-0000-00000000c001', 1, 200000, 200000);
+update erp_document_lines set unit_price = 12500, amount = 12500 where id = '00000000-0000-0000-0000-0000f0200001';
+insert into erp_document_line_serials (line_id, serial_id)
+  select '00000000-0000-0000-0000-0000f0200002', id from erp_serials where serial_no = 'A-NEW-01';
+delete from erp_document_line_serials where line_id = '00000000-0000-0000-0000-0000f0200002';
+insert into erp_document_line_serials (line_id, serial_id)
+  select '00000000-0000-0000-0000-0000f0200002', id from erp_serials where serial_no = 'A-NEW-01';
+-- 整批重建明細（刪舊行，行序號隨 cascade 刪除）
+delete from erp_document_lines where document_id = '00000000-0000-0000-0000-00000000e020';
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price, amount) values
+  ('00000000-0000-0000-0000-0000f0200003', '00000000-0000-0000-0000-00000000e020', 1, 'item', '00000000-0000-0000-0000-00000000c003', 1, 12500, 12500);
+
+-- 草稿：RPC 專屬欄位仍不可寫
+select erp_test.expect_error($q$update erp_documents set doc_no = 'S11509999' where id = '00000000-0000-0000-0000-00000000e020'$q$, 'not_draft');
+select erp_test.expect_error($q$update erp_documents set status = 'posted' where id = '00000000-0000-0000-0000-00000000e020'$q$, 'not_draft');
+select erp_test.expect_error($q$update erp_documents set posted_at = now(), posted_by = auth.uid() where id = '00000000-0000-0000-0000-00000000e020'$q$, 'not_draft');
+select erp_test.expect_error($q$update erp_document_lines set unit_cost = 1 where id = '00000000-0000-0000-0000-0000f0200003'$q$, 'not_draft');
+select erp_test.expect_error($q$insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_cost) values ('00000000-0000-0000-0000-00000000e020', 5, 'item', '00000000-0000-0000-0000-00000000c003', 1, 1)$q$, 'not_draft');
+select erp_test.expect_error($q$insert into erp_document_line_serials (line_id, serial_id, mx_machine_id, mx_machine_created) select '00000000-0000-0000-0000-0000f0200003', id, '00000000-0000-0000-0000-00000000aa09', true from erp_serials where serial_no = 'A-NEW-01'$q$, 'not_draft');
+
+-- 刪除草稿（明細、行序號隨 cascade 刪除）
+insert into erp_documents (id, doc_type, doc_date, warehouse_id, to_warehouse_id) values
+  ('00000000-0000-0000-0000-00000000e021', 'T', '2026-09-15', erp_test.main(), '00000000-0000-0000-0000-00000000a002');
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty) values
+  ('00000000-0000-0000-0000-0000f0210001', '00000000-0000-0000-0000-00000000e021', 1, 'item', '00000000-0000-0000-0000-00000000c001', 1);
+insert into erp_document_line_serials (line_id, serial_id)
+  select '00000000-0000-0000-0000-0000f0210001', id from erp_serials where serial_no = 'A-NEW-01';
+delete from erp_documents where id = '00000000-0000-0000-0000-00000000e021' and status = 'draft';
+
+do $$
+declare v jsonb; pid uuid;
+begin
+  assert not exists (select 1 from erp_documents where id = '00000000-0000-0000-0000-00000000e021'), '草稿已刪除';
+  assert not exists (select 1 from erp_document_lines where document_id = '00000000-0000-0000-0000-00000000e021'), '草稿明細隨之刪除';
+  assert (select total_twd from erp_documents where id = '00000000-0000-0000-0000-00000000e020') = 12500, '草稿合計可寫';
+
+  -- erp-only 使用者過帳 → 作廢（definer RPC 穿過守門觸發器）
+  v := erp_post_document('00000000-0000-0000-0000-00000000e020');
+  assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e020') = 'posted', 'erp-only 過帳';
+  assert (select total_twd from erp_documents where id = '00000000-0000-0000-0000-00000000e020') = 12500, '過帳重算合計';
+  assert erp_test.qty('00000000-0000-0000-0000-00000000c003', erp_test.main()) = 13, 'erp-only 過帳扣庫存';
+  perform erp_void_document('00000000-0000-0000-0000-00000000e020', '測試作廢');
+  assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e020') = 'voided', 'erp-only 作廢';
+  assert erp_test.qty('00000000-0000-0000-0000-00000000c003', erp_test.main()) = 14, 'erp-only 作廢回庫存';
+
+  -- 收付款仍可用
+  v := erp_post_payment('{"direction":"out","pay_date":"2026-09-15","vendor_id":"00000000-0000-0000-0000-00000000b001","method":"cash","amount":1000}');
+  pid := (v->>'id')::uuid;
+  perform erp_allocate_payment(pid, '[{"document_id":"00000000-0000-0000-0000-00000000e002","amount":1000}]');
+  assert (select outstanding from erp_document_balances where document_id = '00000000-0000-0000-0000-00000000e002') = 90100, 'erp-only 沖銷';
+  perform erp_void_payment(pid, '測試');
+  assert (select outstanding from erp_document_balances where document_id = '00000000-0000-0000-0000-00000000e002') = 91100, 'erp-only 作廢付款';
+  raise notice 'ok  草稿存取 / 刪除 / 過帳 / 作廢 / 收付款（erp-only 使用者）';
+end $$;
+
+reset role;
+do $$ begin
+  assert exists (select 1 from mx_customers where id = '00000000-0000-0000-0000-00000000d009'), 'mx_customers 未被刪';
+  assert exists (select 1 from mx_machines where id = '00000000-0000-0000-0000-00000000aa09'), 'mx_machines 未被刪';
+  assert (select count(*) from mx_records where machine_id = '00000000-0000-0000-0000-00000000aa09') = 1, 'mx_records 未被 cascade 刪除';
+  -- 受信任身分（postgres / service_role）不受草稿觸發器限制
+  update erp_documents set note = '維運備註' where id = '00000000-0000-0000-0000-00000000e009';
+end $$;
 
 do $$ begin raise notice '==== erp_posting_test：全部斷言通過 ===='; end $$;
 

@@ -1,6 +1,6 @@
 // ERP 過帳 / 作廢 / 收付款 RPC 的型別包裝 — SERVER ONLY。
-// 會動庫存或金額的操作一律走 RPC（單一交易，spec §2）；RPC 為 security invoker，
-// 以登入者 session 呼叫（RLS 仍生效）。錯誤經 erpErrorMessage 轉中文，不 throw。
+// 會動庫存或金額的操作一律走 RPC（單一交易，spec §2）；RPC 為 security definer（開頭檢查
+// has_module('erp')），以登入者 session 呼叫；帳務表用戶端不可直接寫。錯誤經 erpErrorMessage 轉中文，不 throw。
 // 每個 wrapper 開頭都先檢查 erp 授權（DB 端 has_module 仍會再擋一次）。
 // revalidatePath 由呼叫端的 server action 負責（依頁面而異）。
 import "server-only";

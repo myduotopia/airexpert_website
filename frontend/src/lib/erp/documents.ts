@@ -4,6 +4,8 @@
 //
 // 注意：存草稿為多次 PostgREST 呼叫（表頭 → 刪舊明細 → 新增明細 → 機號），非單一交易；
 // 草稿不影響庫存與金額，中途失敗時使用者重存即可覆蓋。過帳 / 作廢才走 RPC（原子性）。
+// DB 觸發器限定表頭 / 明細 / 機號只能寫入 status='draft' 的單據（否則 not_draft），且 doc_no、status、
+// posted_*、voided_*、明細 unit_cost 只能由 RPC 寫入——此處只寫草稿欄位，勿加入上述欄位。
 import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";

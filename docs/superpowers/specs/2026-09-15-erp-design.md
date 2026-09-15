@@ -42,7 +42,8 @@
   - `erp_void_document(p_doc_id uuid, p_reason text)` 作廢
   - `erp_post_payment(p_payment jsonb)` / `erp_void_payment(p_payment_id uuid, p_reason text)`
   - `erp_next_doc_no(p_prefix text, p_date date)` 取號（過帳或存草稿時取）
-- RPC 皆 `security invoker`（RLS 仍生效），函式開頭 `if not has_module('erp') then raise exception 'forbidden'`。
+- 過帳類 RPC（過帳／作廢／收付款／沖銷／作廢收付款）為 `security definer`（`set search_path = public, pg_temp`），函式第一步 `if not has_module('erp') then raise exception 'forbidden'`；取號與庫存異動等內部函式不開放用戶端執行（`erp_next_doc_no` 僅由 RPC 內部呼叫）。
+- 帳務表（`erp_stock_levels`、`erp_stock_moves`、`erp_serials`、`erp_doc_sequences`、`erp_payments`、`erp_payment_allocations`）用戶端只能讀，不可經 PostgREST 寫入（`erp_payments` 例外開放 `check_status`、`note`）；`erp_items.avg_cost` 只能由過帳寫入。單據／明細／行序號由觸發器限定只能寫入草稿，單號、狀態、過帳／作廢欄位只能由 RPC 變更（詳見 migration 0020 決策 15–20）。
 - 金額與稅額的「前端即時試算」用 TS 純函式 `frontend/src/lib/erp/calc.ts`；**DB 過帳時以 SQL 重新計算為準**，兩者邏輯一致並各自有測試。
 - 日期：DB 存西元 `date`；顯示／輸入沿用 `frontend/src/lib/admin/minguo.ts`（民國制）。
 
@@ -120,7 +121,7 @@ on conflict do nothing;
 ```
 
 - 所有 `erp_*` 表：`enable row level security` + `"erp all <t>" for all to authenticated using (has_module('erp')) with check (has_module('erp'))`。
-- `mx_customers`：既有 `"office all mx_customers"` 保留，新增 `"erp all mx_customers"`（`has_module('erp')`）。`mx_machines` 同理新增 erp policy（銷貨過帳要寫入機台、ERP 客戶頁要讀機台）。
+- `mx_customers`：既有 `"office all mx_customers"` 保留，新增 erp 的 select／insert／update policy（`has_module('erp')`），**不給 delete**（避免 cascade 刪到 ERP 使用者看不到的保養紀錄）。`mx_machines` 同理（銷貨過帳建立／作廢刪除機台在 security definer RPC 內進行）。
 
 ### 3.2 前端
 

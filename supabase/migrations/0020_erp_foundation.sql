@@ -3,8 +3,10 @@
 --   * 模組授權：admin_module_grants + has_module(text)；seed 僅授權 office@airexpert.com.tw
 --   * 全部 erp_* 表：倉庫 / 廠商 / 品項 / 單據 / 單據行 / 行序號 / 取號 / 機號 / 存量 / 庫存帳 / 收付款 / 沖銷
 --   * mx_customers 擴充 ERP 欄位（統編、發票抬頭、送貨地址、付款條件、業務）+ 客戶編號 partial unique
---   * RLS：所有 erp_* → has_module('erp')；mx_customers、mx_machines 另加 erp policy
---   * RPC（security invoker，開頭檢查 has_module）：取號、過帳、作廢、收付款、沖銷、作廢收付款
+--   * RLS：所有 erp_* → has_module('erp')；mx_customers、mx_machines 另加 erp policy（select/insert/update，無 delete）
+--   * 帳務表（存量／庫存帳／機號／取號／收付款／沖銷）用戶端不可寫；單據／明細／行序號以觸發器限定只能改草稿
+--   * 過帳類 RPC（security definer，開頭檢查 has_module）：過帳、作廢、收付款、沖銷、作廢收付款；
+--     內部輔助（取號、erp_stock_apply、erp_avg_*、erp_raise、erp_machine_has_records）不開放用戶端執行
 --   * Views（security_invoker）：單據餘額、客戶／廠商餘額、採購到貨進度
 -- 依賴 0001（set_updated_at()、products）、0002（admin_profiles）、0011（mx_* 三層）、
 --      0013（mx_customers.code）、0015（mx_machines.card_type）、0016（mx_customers 聯絡欄位）、
@@ -47,9 +49,28 @@
 --  13. erp_payments 另加 voided_by；erp_post_payment 付款方式為支票且未給 check_status 時預設 'pending'。
 --  14. 沖銷規則：每筆沖銷後單據 outstanding 需落在 [0, total]（S/I）或 [total, 0]（SR/PR），
 --      且該收付款的沖銷合計需介於 0 與 amount 之間，違反皆 over_allocation。
---  15. 內部輔助函式（erp_raise、erp_stock_apply、erp_calc_tax、erp_avg_*）因 security invoker 的 RPC
---      需要由呼叫者執行，故同樣 grant 給 authenticated；會寫資料的 erp_stock_apply 開頭也檢查 has_module。
---      （erp 使用者本就能經 RLS 直接寫 erp_stock_levels，並未擴權。）
+--  15. 過帳類 RPC（erp_post_document／erp_void_document／erp_post_payment／erp_allocate_payment／
+--      erp_void_payment）為 security definer、set search_path = public, pg_temp，第一步仍檢查 has_module('erp')
+--      （definer 以擁有者身分執行、不受 RLS，故授權檢查是唯一閘門）。內部輔助函式（erp_raise、erp_stock_apply、
+--      erp_next_doc_no、erp_avg_in／out、erp_machine_has_records）撤銷 public／anon／authenticated 執行權，
+--      只能經由 RPC 呼叫；純計算的 erp_calc_tax 保留給 authenticated。
+--  16. 表權限（§7b）：erp_stock_levels、erp_stock_moves、erp_serials、erp_doc_sequences、erp_payment_allocations、
+--      erp_payments 撤銷 authenticated 的 insert/update/delete（select 仍經 RLS）；erp_payments 另開欄位級
+--      update (check_status, note)。erp_items 以欄位級 insert/update 授權排除 avg_cost（只能由過帳寫入）。
+--      全部 erp_* 表撤銷 truncate／references／trigger。
+--  17. 「是否在 RPC 內」判斷：erp_guard_* 觸發器函式為 security invoker，以 current_user 判斷——
+--      PostgREST 用戶端的 current_user 為 authenticated（或 anon）；security definer RPC 執行期間
+--      current_user 切換為函式擁有者（Supabase 為 postgres），FK cascade 亦以表擁有者身分執行。
+--      故 current_user ∈ ('authenticated','anon') 時才套用草稿限制；service_role／SQL Editor 視為受信任維運身分。
+--      此判斷無法由用戶端偽造（不同於 GUC 旗標），測試 §9 以實際過帳驗證。
+--  18. 草稿限制（erp_guard_document／_line／_line_serial，違反皆 not_draft）：
+--      單據只能新增 status='draft' 且 doc_no／posted_*／voided_*／void_reason 為空；只能修改／刪除草稿，且不得
+--      變更上述 RPC 專屬欄位（合計欄位草稿可寫，過帳時重算）。明細與行序號只能寫入草稿單據（新舊父單皆檢查，
+--      父單以 for share 鎖定，避免與過帳交錯），明細不得寫 unit_cost，行序號不得寫 mx_machine_id／mx_machine_created。
+--  19. 併發：過帳先以 for share 鎖來源單據、for update 鎖來源行（依 id 排序），與作廢的 for update 互斥，
+--      並序列化超收／超退檢查；過帳與作廢在動庫存前一次鎖定全部品項（依 item_id 排序），避免死結；
+--      作廢銷貨刪除機台前先 for update 鎖 mx_machines，與新增保養紀錄的 FK 鎖互斥。
+--  20. 新機號併發撞號（unique_violation）轉為 serial_unavailable。
 
 -- ============================================================
 -- 1) 模組授權
@@ -396,15 +417,70 @@ begin
     execute format('revoke all on table %I from anon;', t);
   end loop;
 
+  -- mx_customers / mx_machines：erp 只給 select / insert / update，不給 delete
+  -- （刪除會 cascade 到 erp 使用者看不到的 mx_records；S 作廢刪除自建機台在 definer RPC 內進行）
   foreach t in array array['mx_customers','mx_machines']
   loop
     execute format('drop policy if exists "erp all %1$s" on %1$I;', t);
+    execute format('drop policy if exists "erp select %1$s" on %1$I;', t);
+    execute format('drop policy if exists "erp insert %1$s" on %1$I;', t);
+    execute format('drop policy if exists "erp update %1$s" on %1$I;', t);
     execute format(
-      'create policy "erp all %1$s" on %1$I for all to authenticated using ((select has_module(''erp''))) with check ((select has_module(''erp'')));',
+      'create policy "erp select %1$s" on %1$I for select to authenticated using ((select has_module(''erp'')));',
+      t
+    );
+    execute format(
+      'create policy "erp insert %1$s" on %1$I for insert to authenticated with check ((select has_module(''erp'')));',
+      t
+    );
+    execute format(
+      'create policy "erp update %1$s" on %1$I for update to authenticated using ((select has_module(''erp''))) with check ((select has_module(''erp'')));',
       t
     );
   end loop;
 end $$;
+
+-- ============================================================
+-- 7b) 表權限（決策 16）：帳務表用戶端唯讀；avg_cost 只能由過帳寫入
+--     RLS 之外再以 GRANT 收斂（Supabase 預設把 public 表 grant all 給 API 角色）。
+-- ============================================================
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'erp_warehouses','erp_vendors','erp_items','erp_documents','erp_document_lines',
+    'erp_doc_sequences','erp_serials','erp_document_line_serials','erp_stock_levels',
+    'erp_stock_moves','erp_payments','erp_payment_allocations'
+  ]
+  loop
+    execute format('revoke truncate, references, trigger on table %I from public, authenticated;', t);
+  end loop;
+
+  foreach t in array array[
+    'erp_stock_levels','erp_stock_moves','erp_serials','erp_doc_sequences',
+    'erp_payment_allocations','erp_payments'
+  ]
+  loop
+    execute format('revoke insert, update, delete on table %I from public, authenticated;', t);
+    execute format('grant select on table %I to authenticated;', t);
+  end loop;
+end $$;
+
+-- 收付款：用戶端只能改支票狀態與備註（其餘經 erp_post_payment／erp_void_payment）
+grant update (check_status, note) on erp_payments to authenticated;
+
+-- 品項：insert／update 以欄位級授權排除 avg_cost（insert 時 avg_cost 只能是預設 0）
+revoke insert, update on table erp_items from public, authenticated;
+revoke insert (avg_cost), update (avg_cost) on erp_items from public, authenticated;
+grant select, delete on table erp_items to authenticated;
+grant insert (id, code, name, kind, unit, track_serial, track_stock, mx_card_type, brand, model,
+              sale_price, purchase_price, safety_stock, default_vendor_id, product_id, active, note,
+              created_by, created_at, updated_at)
+   on erp_items to authenticated;
+grant update (code, name, kind, unit, track_serial, track_stock, mx_card_type, brand, model,
+              sale_price, purchase_price, safety_stock, default_vendor_id, product_id, active, note,
+              updated_at)
+   on erp_items to authenticated;
 
 -- ============================================================
 -- 8) seed：總倉
@@ -540,6 +616,163 @@ as $$
 $$;
 
 -- ============================================================
+-- 9b) 草稿守門觸發器（決策 17、18）
+--     security invoker：current_user 反映實際呼叫者。API 角色（authenticated／anon）才套用限制；
+--     security definer RPC 內 current_user = 函式擁有者、FK cascade 以表擁有者執行，皆不受限。
+-- ============================================================
+create or replace function erp_guard_document()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user::text not in ('authenticated', 'anon') then
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    if new.status is distinct from 'draft' or new.doc_no is not null
+       or new.posted_at is not null or new.posted_by is not null
+       or new.voided_at is not null or new.voided_by is not null or new.void_reason is not null then
+      raise exception using errcode = 'P0001', message = 'not_draft',
+        detail = '只能新增草稿單據；單號、狀態、過帳與作廢欄位由過帳／作廢流程寫入';
+    end if;
+    return new;
+  end if;
+
+  if old.status <> 'draft' then
+    raise exception using errcode = 'P0001', message = 'not_draft',
+      detail = format('單據 %s 狀態為 %s，不可修改或刪除（已過帳請使用作廢）', coalesce(old.doc_no, ''), old.status);
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  if new.status is distinct from 'draft'
+     or new.doc_no is distinct from old.doc_no
+     or new.posted_at is distinct from old.posted_at or new.posted_by is distinct from old.posted_by
+     or new.voided_at is distinct from old.voided_at or new.voided_by is distinct from old.voided_by
+     or new.void_reason is distinct from old.void_reason then
+    raise exception using errcode = 'P0001', message = 'not_draft',
+      detail = '單號、狀態、過帳與作廢欄位只能由過帳／作廢流程變更';
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function erp_guard_document_line()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+begin
+  if current_user::text not in ('authenticated', 'anon') then
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
+  end if;
+
+  -- 舊父單（update／delete）
+  if tg_op in ('UPDATE', 'DELETE') then
+    select d.status into v_status from erp_documents d where d.id = old.document_id for share;
+    if found and v_status <> 'draft' then
+      raise exception using errcode = 'P0001', message = 'not_draft',
+        detail = format('單據狀態為 %s，明細不可修改或刪除', v_status);
+    end if;
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+  end if;
+
+  -- 新父單（insert，或 update 改了 document_id）
+  if tg_op = 'INSERT' or new.document_id is distinct from old.document_id then
+    select d.status into v_status from erp_documents d where d.id = new.document_id for share;
+    if found and v_status <> 'draft' then
+      raise exception using errcode = 'P0001', message = 'not_draft',
+        detail = format('單據狀態為 %s，不可新增明細', v_status);
+    end if;
+  end if;
+
+  -- unit_cost 由過帳寫入
+  if tg_op = 'INSERT' then
+    if new.unit_cost is not null then
+      raise exception using errcode = 'P0001', message = 'not_draft', detail = '明細成本由過帳流程寫入，草稿不可指定';
+    end if;
+  elsif new.unit_cost is distinct from old.unit_cost then
+    raise exception using errcode = 'P0001', message = 'not_draft', detail = '明細成本由過帳流程寫入，草稿不可修改';
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function erp_guard_document_line_serial()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+begin
+  if current_user::text not in ('authenticated', 'anon') then
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
+  end if;
+
+  if tg_op in ('UPDATE', 'DELETE') then
+    select d.status into v_status
+      from erp_document_lines l join erp_documents d on d.id = l.document_id
+     where l.id = old.line_id
+       for share of d;
+    if found and v_status <> 'draft' then
+      raise exception using errcode = 'P0001', message = 'not_draft',
+        detail = format('單據狀態為 %s，機號不可修改或移除', v_status);
+    end if;
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+  end if;
+
+  if tg_op = 'INSERT' or new.line_id is distinct from old.line_id then
+    select d.status into v_status
+      from erp_document_lines l join erp_documents d on d.id = l.document_id
+     where l.id = new.line_id
+       for share of d;
+    if found and v_status <> 'draft' then
+      raise exception using errcode = 'P0001', message = 'not_draft',
+        detail = format('單據狀態為 %s，不可新增機號', v_status);
+    end if;
+  end if;
+
+  -- 保養卡機台連結由銷貨過帳寫入（作廢據以刪除自建機台）
+  if tg_op = 'INSERT' then
+    if new.mx_machine_id is not null or new.mx_machine_created then
+      raise exception using errcode = 'P0001', message = 'not_draft', detail = '保養卡機台連結由過帳流程寫入';
+    end if;
+  elsif new.mx_machine_id is distinct from old.mx_machine_id
+        or new.mx_machine_created is distinct from old.mx_machine_created then
+    raise exception using errcode = 'P0001', message = 'not_draft', detail = '保養卡機台連結由過帳流程寫入';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists erp_documents_guard on erp_documents;
+create trigger erp_documents_guard before insert or update or delete on erp_documents
+  for each row execute function erp_guard_document();
+drop trigger if exists erp_document_lines_guard on erp_document_lines;
+create trigger erp_document_lines_guard before insert or update or delete on erp_document_lines
+  for each row execute function erp_guard_document_line();
+drop trigger if exists erp_document_line_serials_guard on erp_document_line_serials;
+create trigger erp_document_line_serials_guard before insert or update or delete on erp_document_line_serials
+  for each row execute function erp_guard_document_line_serial();
+
+-- ============================================================
 -- 10) 取號：prefix + 民國年(3) + 月(2) + 流水號(3，超過 999 自然變 4 位)
 -- ============================================================
 create or replace function erp_next_doc_no(p_prefix text, p_date date)
@@ -581,8 +814,8 @@ $$;
 create or replace function erp_post_document(p_doc_id uuid)
 returns jsonb
 language plpgsql
-security invoker
-set search_path = public
+security definer
+set search_path = public, pg_temp
 as $$
 declare
   v_doc        erp_documents%rowtype;
@@ -632,8 +865,24 @@ begin
     perform erp_raise('validation', '稅率不可為負、匯率需大於 0');
   end if;
 
+  -- 併發（決策 19）：來源單據 for share（與作廢的 for update 互斥）、來源行 for update（序列化超收／超退檢查），
+  -- 皆依 id 排序一次鎖定；鎖到後才讀狀態與累計量（read committed 下新語句看得到對方已提交的結果）。
+  perform 1 from erp_documents sd
+   where sd.id = v_doc.source_doc_id
+      or sd.id in (select sl.document_id
+                     from erp_document_lines l
+                     join erp_document_lines sl on sl.id = l.source_line_id
+                    where l.document_id = p_doc_id)
+   order by sd.id
+     for share;
+  perform 1 from erp_document_lines sl
+   where sl.id in (select l.source_line_id from erp_document_lines l
+                    where l.document_id = p_doc_id and l.source_line_id is not null)
+   order by sl.id
+     for update;
+
   if v_doc.source_doc_id is not null then
-    select * into v_src from erp_documents where id = v_doc.source_doc_id;
+    select * into v_src from erp_documents where id = v_doc.source_doc_id for share;
     v_expect := case v_doc.doc_type when 'S' then 'Q' when 'I' then 'P'
                                     when 'SR' then 'S' when 'PR' then 'I' end;
     if not found or v_expect is null or v_src.doc_type <> v_expect then
@@ -705,7 +954,9 @@ begin
                d.customer_id as src_customer_id, d.vendor_id as src_vendor_id
           into v_srcl
           from erp_document_lines l join erp_documents d on d.id = l.document_id
-         where l.id = v_line.source_line_id;
+         where l.id = v_line.source_line_id
+           for update of l
+           for share of d;
         v_expect := case v_doc.doc_type when 'S' then 'Q' when 'I' then 'P'
                                         when 'SR' then 'S' when 'PR' then 'I' end;
         if v_srcl.id is null or v_expect is null or v_srcl.src_doc_type <> v_expect
@@ -794,6 +1045,13 @@ begin
 
   -- 6. 庫存／成本／序號（§5.2）
   if v_doc.doc_type in ('I','PR','S','SR','T','A') then
+    -- 決策 19：先依 item_id 一次鎖定本單全部品項（之後的存量列、機號都在品項鎖之下異動），避免死結
+    perform 1 from erp_items
+     where id in (select l.item_id from erp_document_lines l
+                   where l.document_id = p_doc_id and l.line_type = 'item' and l.item_id is not null)
+     order by id
+       for update;
+
     for v_line in
       select l.*
       from erp_document_lines l
@@ -865,9 +1123,14 @@ begin
                      where item_id = v_item.id and lower(btrim(serial_no)) = lower(v_sn)) then
             perform erp_raise('serial_unavailable', format('品項 %s 機號 %s 已存在', v_item.code, v_sn));
           end if;
-          insert into erp_serials (item_id, serial_no, status, warehouse_id, unit_cost, in_doc_id)
-          values (v_item.id, v_sn, 'in_stock', v_doc.warehouse_id, v_cost, p_doc_id)
-          returning id into v_serial_id;
+          begin
+            insert into erp_serials (item_id, serial_no, status, warehouse_id, unit_cost, in_doc_id)
+            values (v_item.id, v_sn, 'in_stock', v_doc.warehouse_id, v_cost, p_doc_id)
+            returning id into v_serial_id;
+          exception when unique_violation then
+            -- 決策 20：併發交易同時建立相同機號
+            perform erp_raise('serial_unavailable', format('品項 %s 機號 %s 已存在', v_item.code, v_sn));
+          end;
           insert into erp_document_line_serials (line_id, serial_id) values (v_line.id, v_serial_id);
         end loop;
       else
@@ -961,8 +1224,8 @@ $$;
 create or replace function erp_void_document(p_doc_id uuid, p_reason text)
 returns jsonb
 language plpgsql
-security invoker
-set search_path = public
+security definer
+set search_path = public, pg_temp
 as $$
 declare
   v_doc      erp_documents%rowtype;
@@ -989,7 +1252,16 @@ begin
     perform erp_raise('not_posted', format('單據狀態為 %s，只能作廢已過帳單據', v_doc.status));
   end if;
 
-  -- 相依檢查
+  -- 決策 19：與過帳相同順序，先依 item_id 鎖定本單全部品項，再動機號／存量
+  perform 1 from erp_items
+   where id in (select l.item_id from erp_document_lines l
+                 where l.document_id = p_doc_id and l.item_id is not null
+                union
+                select m.item_id from erp_stock_moves m where m.document_id = p_doc_id)
+   order by id
+     for update;
+
+  -- 相依檢查（本單已 for update；依賴本單的過帳會以 for share 鎖本單，故此處讀到的是對方已提交結果）
   if v_doc.doc_type = 'P' and exists (
        select 1 from erp_documents d
         where d.status = 'posted' and d.doc_type = 'I'
@@ -1023,7 +1295,7 @@ begin
   -- 序號回復
   if v_doc.doc_type in ('I','A') then
     -- 由本單建立的機號：必須仍 in_stock、在原倉、且未被其他單據引用 → 刪除
-    for v_ser in select * from erp_serials where in_doc_id = p_doc_id for update loop
+    for v_ser in select * from erp_serials where in_doc_id = p_doc_id order by id for update loop
       if v_ser.status <> 'in_stock'
          or v_ser.warehouse_id is distinct from v_doc.warehouse_id
          or exists (select 1 from erp_document_line_serials ls
@@ -1079,6 +1351,8 @@ begin
          where id = v_ser.id;
 
         if v_ls.mx_machine_id is not null and v_ls.mx_machine_created then
+          -- 決策 19：鎖住機台，與保養紀錄 insert 的 FK key share 鎖互斥，再判斷是否有紀錄
+          perform 1 from mx_machines where id = v_ls.mx_machine_id for update;
           if erp_machine_has_records(v_ls.mx_machine_id) then
             v_warnings := v_warnings
               || format('機號 %s 的保養卡機台已有保養紀錄，保留機台僅解除連結', v_ser.serial_no);
@@ -1146,8 +1420,8 @@ $$;
 create or replace function erp_allocate_payment(p_payment_id uuid, p_allocations jsonb)
 returns void
 language plpgsql
-security invoker
-set search_path = public
+security definer
+set search_path = public, pg_temp
 as $$
 declare
   v_pay   erp_payments%rowtype;
@@ -1223,8 +1497,8 @@ $$;
 create or replace function erp_post_payment(p_payment jsonb)
 returns jsonb
 language plpgsql
-security invoker
-set search_path = public
+security definer
+set search_path = public, pg_temp
 as $$
 declare
   v_dir      text;
@@ -1309,8 +1583,8 @@ $$;
 create or replace function erp_void_payment(p_payment_id uuid, p_reason text)
 returns void
 language plpgsql
-security invoker
-set search_path = public
+security definer
+set search_path = public, pg_temp
 as $$
 declare
   v_pay erp_payments%rowtype;
@@ -1338,28 +1612,28 @@ end;
 $$;
 
 -- ============================================================
--- 14) 函式權限：僅 authenticated 可執行
+-- 14) 函式權限（決策 15）：過帳類 RPC 僅 authenticated；內部輔助僅供 RPC（擁有者）呼叫
 -- ============================================================
-revoke execute on function erp_raise(text, text) from public, anon;
 revoke execute on function erp_calc_tax(numeric, text, numeric, text, numeric) from public, anon;
-revoke execute on function erp_avg_in(numeric, numeric, numeric, numeric) from public, anon;
-revoke execute on function erp_avg_out(numeric, numeric, numeric, numeric) from public, anon;
-revoke execute on function erp_stock_apply(uuid, uuid, numeric, numeric, uuid, uuid, date, boolean) from public, anon;
-revoke execute on function erp_machine_has_records(uuid) from public, anon;
-revoke execute on function erp_next_doc_no(text, date) from public, anon;
 revoke execute on function erp_post_document(uuid) from public, anon;
 revoke execute on function erp_void_document(uuid, text) from public, anon;
 revoke execute on function erp_allocate_payment(uuid, jsonb) from public, anon;
 revoke execute on function erp_post_payment(jsonb) from public, anon;
 revoke execute on function erp_void_payment(uuid, text) from public, anon;
 
-grant execute on function erp_raise(text, text) to authenticated;
+-- 內部輔助：public / anon / authenticated 全部撤銷
+revoke execute on function erp_raise(text, text) from public, anon, authenticated;
+revoke execute on function erp_avg_in(numeric, numeric, numeric, numeric) from public, anon, authenticated;
+revoke execute on function erp_avg_out(numeric, numeric, numeric, numeric) from public, anon, authenticated;
+revoke execute on function erp_stock_apply(uuid, uuid, numeric, numeric, uuid, uuid, date, boolean) from public, anon, authenticated;
+revoke execute on function erp_machine_has_records(uuid) from public, anon, authenticated;
+revoke execute on function erp_next_doc_no(text, date) from public, anon, authenticated;
+-- 觸發器函式不需 execute 權限即可觸發；撤銷避免被當 RPC 呼叫
+revoke execute on function erp_guard_document() from public, anon, authenticated;
+revoke execute on function erp_guard_document_line() from public, anon, authenticated;
+revoke execute on function erp_guard_document_line_serial() from public, anon, authenticated;
+
 grant execute on function erp_calc_tax(numeric, text, numeric, text, numeric) to authenticated;
-grant execute on function erp_avg_in(numeric, numeric, numeric, numeric) to authenticated;
-grant execute on function erp_avg_out(numeric, numeric, numeric, numeric) to authenticated;
-grant execute on function erp_stock_apply(uuid, uuid, numeric, numeric, uuid, uuid, date, boolean) to authenticated;
-grant execute on function erp_machine_has_records(uuid) to authenticated;
-grant execute on function erp_next_doc_no(text, date) to authenticated;
 grant execute on function erp_post_document(uuid) to authenticated;
 grant execute on function erp_void_document(uuid, text) to authenticated;
 grant execute on function erp_allocate_payment(uuid, jsonb) to authenticated;
