@@ -121,7 +121,7 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
     expect(ADMIN_NAV.find((i) => i.key === "erp")?.enabled).toBe(true);
     expect(
       ADMIN_NAV.filter((i) => i.modules && i.enabled).map((i) => i.key),
-    ).toEqual(["erp"]);
+    ).toEqual(["erp", "erp-items"]);
   });
 
   it("navForRole 不回傳任何 ERP 項目（任何角色）", () => {
