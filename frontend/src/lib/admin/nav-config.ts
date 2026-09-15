@@ -124,7 +124,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     key: "erp-inventory",
     label: "庫存",
     href: "/admin/erp/inventory",
-    enabled: false,
+    enabled: true,
     modules: ["erp"],
     group: "ERP",
   },

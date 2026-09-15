@@ -19,7 +19,8 @@ import { NumberInput } from "./NumberInput";
 import { SerialPicker } from "./SerialPicker";
 import { ERP_AREA, ERP_BUTTON_SECONDARY, ERP_INPUT } from "./styles";
 
-export type SerialMode = "none" | "existing" | "new";
+/** signed：依數量正負逐行決定（盤點調整單 A：盤盈輸入新機號、盤虧選既有機號）。 */
+export type SerialMode = "none" | "existing" | "new" | "signed";
 
 export interface DocumentLinesEditorProps {
   value: DraftLine[];
@@ -41,6 +42,8 @@ export interface DocumentLinesEditorProps {
   /** 可新增的行類型（預設三種皆可）。 */
   allowedLineTypes?: LineType[];
   disabled?: boolean;
+  /** 品項行文字欄的標題（預設「品名規格」；盤點調整單用「調整原因」）。 */
+  descriptionLabel?: string;
   /** 傳入時輸出 <input type="hidden" name={name} value={JSON.stringify(lines)}>。 */
   name?: string;
 }
@@ -66,6 +69,7 @@ export function DocumentLinesEditor({
   allowNegativeQty = false,
   allowedLineTypes = ["item", "discount", "note"],
   disabled,
+  descriptionLabel = "品名規格",
   name,
 }: DocumentLinesEditorProps) {
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -124,7 +128,9 @@ export function DocumentLinesEditor({
             <tr>
               <th className="w-10 px-2 py-2 text-center font-medium">#</th>
               <th className="min-w-[220px] px-2 py-2 font-medium">品項</th>
-              <th className="min-w-[200px] px-2 py-2 font-medium">品名規格</th>
+              <th className="min-w-[200px] px-2 py-2 font-medium">
+                {descriptionLabel}
+              </th>
               <th className="w-24 px-2 py-2 text-right font-medium">數量</th>
               {showPrices && (
                 <>
@@ -156,8 +162,14 @@ export function DocumentLinesEditor({
                 line.line_type === "item" &&
                 serialMode !== "none" &&
                 !!item?.track_serial;
+              const lineSerialMode =
+                serialMode === "signed"
+                  ? line.qty < 0
+                    ? "existing"
+                    : "new"
+                  : serialMode;
               const serialCount =
-                serialMode === "new"
+                lineSerialMode === "new"
                   ? line.serial_nos.length
                   : line.serial_ids.length;
               const serialMismatch =
@@ -209,7 +221,7 @@ export function DocumentLinesEditor({
                         <td className="px-2 py-2">
                           <input
                             type="text"
-                            aria-label="品名規格"
+                            aria-label={descriptionLabel}
                             value={line.description}
                             disabled={disabled}
                             onChange={(e) =>
@@ -337,7 +349,7 @@ export function DocumentLinesEditor({
                               </span>
                             )}
                           </span>
-                          {serialMode === "existing" ? (
+                          {lineSerialMode === "existing" ? (
                             <SerialPicker
                               options={serialsByItem.get(item.id) ?? []}
                               value={line.serial_ids}
