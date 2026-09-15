@@ -148,7 +148,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     key: "erp-reports",
     label: "報表",
     href: "/admin/erp/reports",
-    enabled: false,
+    enabled: true,
     modules: ["erp"],
     group: "ERP",
   },
