@@ -3,19 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { activeNavHref, navForRole } from "@/lib/admin/nav-config";
-import type { AdminRole } from "@/lib/admin/auth";
+import { activeNavHref, navForUser } from "@/lib/admin/nav-config";
+import type { AdminModule, AdminRole } from "@/lib/admin/auth";
 import { logoutAction } from "@/app/admin/actions";
 
 export function AdminSidebar({
   email,
   role,
+  modules = [],
 }: {
   email: string;
   role: AdminRole;
+  /** 目前登入者的模組授權（getCurrentModules）；未傳 = 無任何模組。 */
+  modules?: AdminModule[];
 }) {
   const pathname = usePathname();
-  const nav = navForRole(role);
+  const nav = navForUser(role, modules);
   const activeHref = activeNavHref(
     pathname,
     nav.filter((i) => i.enabled).map((i) => i.href),
@@ -98,11 +101,22 @@ export function AdminSidebar({
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
           <ul className="flex flex-col gap-0.5">
-            {nav.map((item) => {
+            {nav.map((item, idx) => {
               const active = item.href === activeHref;
+              // 分組標題：此項 group 與上一項不同時，在其上方插入標題（例：「ERP」）。
+              const heading =
+                item.group && item.group !== nav[idx - 1]?.group ? (
+                  <p
+                    aria-hidden="true"
+                    className="text-text-muted mt-3 mb-1 px-3 text-[12px] font-semibold tracking-wider"
+                  >
+                    {item.group}
+                  </p>
+                ) : null;
               if (!item.enabled) {
                 return (
                   <li key={item.key}>
+                    {heading}
                     <span
                       aria-disabled="true"
                       title="尚未開放"
@@ -115,6 +129,7 @@ export function AdminSidebar({
               }
               return (
                 <li key={item.key}>
+                  {heading}
                   <Link
                     href={item.href}
                     onClick={() => setOpen(false)}

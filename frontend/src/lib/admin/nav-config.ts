@@ -7,7 +7,7 @@
 // 服務 / 節能實績 / 公司活動），看不到「網站設定」與「人員管理」。以每項的 roles 標示
 // 可見角色，再用 navForRole() 過濾。
 
-import type { AdminRole } from "./auth";
+import type { AdminModule, AdminRole } from "./auth";
 
 export interface AdminNavItem {
   key: string;
@@ -21,6 +21,11 @@ export interface AdminNavItem {
    *  office（行政）是獨立 persona，只看得到明確標 roles: ['office'] 的項目
    *  （保養記錄卡），不會因「未指定」而看到 CMS 內容區。 */
   roles?: AdminRole[];
+  /** 需要哪些模組授權（admin_module_grants）。有指定時「擁有其中任一模組即可見」，
+   *  且**忽略 roles**；navForRole() 一律不回傳這類項目（見 navForUser）。 */
+  modules?: AdminModule[];
+  /** 側欄分組標題（例：「ERP」）。相鄰同 group 的項目歸在同一標題下。 */
+  group?: string;
 }
 
 export const ADMIN_NAV: AdminNavItem[] = [
@@ -89,16 +94,99 @@ export const ADMIN_NAV: AdminNavItem[] = [
     enabled: true,
     roles: ["office"],
   },
+  // ── ERP（spec §3.2 / §6）：以模組授權 gating，與角色無關。
+  // W0（#172）一次列齊；各 W1 issue 上線時只把自己那行的 enabled 改 true。
+  {
+    key: "erp",
+    label: "總覽",
+    href: "/admin/erp",
+    enabled: true,
+    modules: ["erp"],
+    group: "ERP",
+  },
+  {
+    key: "erp-sales",
+    label: "銷售",
+    href: "/admin/erp/sales",
+    enabled: false,
+    modules: ["erp"],
+    group: "ERP",
+  },
+  {
+    key: "erp-purchases",
+    label: "採購",
+    href: "/admin/erp/purchases",
+    enabled: false,
+    modules: ["erp"],
+    group: "ERP",
+  },
+  {
+    key: "erp-inventory",
+    label: "庫存",
+    href: "/admin/erp/inventory",
+    enabled: false,
+    modules: ["erp"],
+    group: "ERP",
+  },
+  {
+    key: "erp-collections",
+    label: "收付款",
+    href: "/admin/erp/collections",
+    enabled: false,
+    modules: ["erp"],
+    group: "ERP",
+  },
+  {
+    key: "erp-statements",
+    label: "對帳單",
+    href: "/admin/erp/statements",
+    enabled: false,
+    modules: ["erp"],
+    group: "ERP",
+  },
+  {
+    key: "erp-reports",
+    label: "報表",
+    href: "/admin/erp/reports",
+    enabled: false,
+    modules: ["erp"],
+    group: "ERP",
+  },
+  {
+    key: "erp-items",
+    label: "基本資料",
+    href: "/admin/erp/items",
+    enabled: false,
+    modules: ["erp"],
+    group: "ERP",
+  },
 ];
 
 // 未指定 roles 的項目預設可見角色 = 內容團隊（admin + seo_manager）。
 // office 為獨立 persona，不含在預設內，故只會看到明確標 roles:['office'] 的項目。
 const DEFAULT_ROLES: AdminRole[] = ["admin", "seo_manager"];
 
-/** 依角色過濾側欄項目（未指定 roles → 內容團隊 admin + seo_manager 可見，office 除外）。 */
+/** 依角色過濾側欄項目（未指定 roles → 內容團隊 admin + seo_manager 可見，office 除外）。
+ *  需模組授權的項目（modules）一律不在此結果中（向下相容；請改用 navForUser）。 */
 export function navForRole(role: AdminRole): AdminNavItem[] {
+  return ADMIN_NAV.filter(
+    (item) => !item.modules && (item.roles ?? DEFAULT_ROLES).includes(role),
+  );
+}
+
+/**
+ * 依角色 + 模組授權過濾側欄項目。
+ * 有 modules 的項目 → 使用者擁有其中任一模組即可見（忽略 roles）；
+ * 其餘項目 → 沿用 navForRole 規則。保持 ADMIN_NAV 原順序。
+ */
+export function navForUser(
+  role: AdminRole,
+  modules: readonly AdminModule[],
+): AdminNavItem[] {
   return ADMIN_NAV.filter((item) =>
-    (item.roles ?? DEFAULT_ROLES).includes(role),
+    item.modules
+      ? item.modules.some((m) => modules.includes(m))
+      : (item.roles ?? DEFAULT_ROLES).includes(role),
   );
 }
 

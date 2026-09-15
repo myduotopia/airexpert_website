@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { ADMIN_NAV, activeNavHref, navForRole } from "@/lib/admin/nav-config";
+import {
+  ADMIN_NAV,
+  activeNavHref,
+  navForRole,
+  navForUser,
+} from "@/lib/admin/nav-config";
 
 describe("navForRole（後台側欄角色 gating）", () => {
   it("admin 看得到所有非 office 專屬項目（含網站設定 / 人員管理 / 聯絡來信）", () => {
@@ -9,7 +14,7 @@ describe("navForRole（後台側欄角色 gating）", () => {
     expect(keys).toContain("contact");
     // admin 看到所有項目，但看不到 office 專屬的「保養記錄卡」（資料隔離）。
     const adminVisible = ADMIN_NAV.filter(
-      (i) => !i.roles || i.roles.includes("admin"),
+      (i) => !i.modules && (!i.roles || i.roles.includes("admin")),
     );
     expect(navForRole("admin")).toHaveLength(adminVisible.length);
     expect(keys).not.toContain("maintenance");
@@ -90,6 +95,62 @@ describe("navForRole（後台側欄角色 gating）", () => {
     expect(navForRole("seo_manager").some((i) => i.key === "products")).toBe(
       true,
     );
+  });
+});
+
+describe("navForUser（模組授權 gating，spec §3.2）", () => {
+  const erpKeys = ADMIN_NAV.filter((i) => i.modules?.includes("erp")).map(
+    (i) => i.key,
+  );
+
+  it("ERP 項目一次列齊：8 項、group ERP、只有總覽為 enabled", () => {
+    expect(erpKeys).toEqual([
+      "erp",
+      "erp-sales",
+      "erp-purchases",
+      "erp-inventory",
+      "erp-collections",
+      "erp-statements",
+      "erp-reports",
+      "erp-items",
+    ]);
+    for (const i of ADMIN_NAV.filter((x) => x.modules)) {
+      expect(i.group).toBe("ERP");
+      expect(i.href.startsWith("/admin/erp")).toBe(true);
+    }
+    expect(ADMIN_NAV.find((i) => i.key === "erp")?.enabled).toBe(true);
+    expect(
+      ADMIN_NAV.filter((i) => i.modules && i.enabled).map((i) => i.key),
+    ).toEqual(["erp"]);
+  });
+
+  it("navForRole 不回傳任何 ERP 項目（任何角色）", () => {
+    for (const role of ["admin", "seo_manager", "office"] as const) {
+      expect(navForRole(role).some((i) => i.modules)).toBe(false);
+    }
+  });
+
+  it("office 無 erp 授權：看不到 ERP，結果同 navForRole", () => {
+    expect(navForUser("office", [])).toEqual(navForRole("office"));
+  });
+
+  it("office 有 erp 授權：保養卡兩項 + 全部 ERP 項目", () => {
+    expect(navForUser("office", ["erp"]).map((i) => i.key)).toEqual([
+      "maintenance",
+      "maintenance-customers",
+      ...erpKeys,
+    ]);
+  });
+
+  it("admin / seo_manager 無授權：看不到 ERP", () => {
+    expect(navForUser("admin", [])).toEqual(navForRole("admin"));
+    expect(navForUser("seo_manager", [])).toEqual(navForRole("seo_manager"));
+  });
+
+  it("有授權時忽略 roles：admin 有 erp 也看得到 ERP", () => {
+    const keys = navForUser("admin", ["erp"]).map((i) => i.key);
+    for (const k of erpKeys) expect(keys).toContain(k);
+    expect(keys).toContain("settings");
   });
 });
 

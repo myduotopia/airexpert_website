@@ -1,10 +1,15 @@
 import type { ReactNode } from "react";
-import { requireRole, getSessionUser } from "@/lib/admin/auth";
+import {
+  requireRole,
+  getSessionUser,
+  getCurrentModules,
+} from "@/lib/admin/auth";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 
 // 後台保護殼層：admin 與 seo_manager 皆可進；其餘由 requireRole() 導向 /admin/login。
 // 注意：admin-only 的頁面（網站設定 / 人員管理 / 聯絡來信）各自再以 requireAdmin() 守門，
-// 此層只負責「是否為後台人員」與依角色渲染側欄；側欄亦以 navForRole() 隱藏無權項目。
+// 此層只負責「是否為後台人員」與依角色 + 模組授權渲染側欄；側欄以 navForUser() 隱藏無權項目。
+// 模組頁（如 /admin/erp）由各自的 layout 以 requireModule() 守門。
 // SiteChrome 已讓 /admin/* 不套公開站 Header/Footer，此處提供後台自己的 sidebar 殼層。
 export default async function AdminProtectedLayout({
   children,
@@ -15,10 +20,11 @@ export default async function AdminProtectedLayout({
   // requireRole 已確保是後台人員；取 session user 的 email 顯示於側欄。
   const user = await getSessionUser();
   const email = user?.email ?? "";
+  const modules = await getCurrentModules();
 
   return (
     <div className="flex min-h-dvh">
-      <AdminSidebar email={email} role={role} />
+      <AdminSidebar email={email} role={role} modules={modules} />
       {/* 行動版：上方留白避開固定漢堡鈕、左右縮排較小；lg 以上恢復原本間距。 */}
       <main className="flex-1 overflow-x-hidden px-4 pt-16 pb-8 lg:px-8 lg:py-7">
         {children}

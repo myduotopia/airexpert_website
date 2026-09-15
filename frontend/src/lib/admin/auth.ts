@@ -64,6 +64,46 @@ export const getCurrentUserRole = cache(async (): Promise<AdminRole | null> => {
     : null;
 });
 
+/** 後台模組授權（與角色正交；見 admin_module_grants / has_module()，spec §3）。 */
+export type AdminModule = "erp";
+
+const KNOWN_MODULES: readonly AdminModule[] = ["erp"];
+
+/**
+ * 取得目前登入者被授權的模組清單（未登入 / 查詢失敗回空陣列）。
+ * 讀 admin_module_grants（以登入者 session 讀；RLS「read own grants」只回自己的列）。
+ * 以 React cache 在單次 render 內去重（layout、erp/layout、page 都呼叫時只查一次）。
+ */
+export const getCurrentModules = cache(async (): Promise<AdminModule[]> => {
+  const user = await getSessionUser();
+  if (!user) return [];
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("admin_module_grants")
+    .select("module")
+    .eq("user_id", user.id);
+  if (error || !data) return [];
+  return (data as { module: string }[])
+    .map((r) => r.module)
+    .filter((m): m is AdminModule =>
+      (KNOWN_MODULES as readonly string[]).includes(m),
+    );
+});
+
+/** 目前登入者是否擁有指定模組（server action 用：回 false 時自行回 { ok:false }，不 redirect）。 */
+export async function hasModule(module: AdminModule): Promise<boolean> {
+  const modules = await getCurrentModules();
+  return modules.includes(module);
+}
+
+/**
+ * 保護 server component / layout：無該模組授權一律導向 /admin
+ * （已登入後台者回總覽，不是登入頁；office 在總覽會再被導向保養卡）。
+ */
+export async function requireModule(module: AdminModule): Promise<void> {
+  if (!(await hasModule(module))) redirect("/admin");
+}
+
 /** 保護 server component / layout：非 admin 一律導向登入頁。 */
 export async function requireAdmin(): Promise<User> {
   const admin = await getCurrentAdmin();

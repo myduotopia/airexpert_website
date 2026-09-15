@@ -46,6 +46,25 @@
 - 金額與稅額的「前端即時試算」用 TS 純函式 `frontend/src/lib/erp/calc.ts`；**DB 過帳時以 SQL 重新計算為準**，兩者邏輯一致並各自有測試。
 - 日期：DB 存西元 `date`；顯示／輸入沿用 `frontend/src/lib/admin/minguo.ts`（民國制）。
 
+### 2.0 RPC／View 介面契約（前後端共同依據）
+
+| 函式 | 回傳 |
+|---|---|
+| `erp_next_doc_no(p_prefix text, p_date date)` | `text` |
+| `erp_post_document(p_doc_id uuid)` | `jsonb {doc_no, warnings: text[], mx_machine_ids: uuid[]}` |
+| `erp_void_document(p_doc_id uuid, p_reason text)` | `jsonb {warnings: text[]}` |
+| `erp_post_payment(p_payment jsonb)` | `jsonb {id, doc_no}`；payload `{direction, pay_date, customer_id?, vendor_id?, method, amount, check_no?, check_due_date?, bank?, check_status?, note?, allocations: [{document_id, amount}]}` |
+| `erp_allocate_payment(p_payment_id uuid, p_allocations jsonb)` | `void` |
+| `erp_void_payment(p_payment_id uuid, p_reason text)` | `void` |
+
+錯誤：`raise exception '<code>' using errcode = 'P0001', detail = '<中文訊息>'` → supabase-js `error.message = code`、`error.details = 中文訊息`。
+
+Views（`security_invoker = true`）：
+- `erp_document_balances(document_id, doc_type, doc_no, doc_date, customer_id, vendor_id, total_twd, allocated, outstanding)`：已過帳 S/SR/I/PR；SR/PR 的 total_twd 為負值。
+- `erp_party_balances(party_type 'customer'|'vendor', party_id, balance, unallocated)`
+- `erp_purchase_line_progress(line_id, document_id, item_id, qty, received_qty, remaining_qty)`
+- `erp_purchase_progress(document_id, status 'open'|'partial'|'closed')`
+
 ### 2.1 目錄配置
 
 ```
@@ -219,8 +238,18 @@ create table erp_document_lines (
   amount numeric(14,2) not null default 0, -- item: qty*unit_price；discount: 負數；note: 0
   unit_cost numeric(14,4),                 -- 過帳時寫入：S/SR/PR/T/A 取當下成本；I 取進價*匯率
   source_line_id uuid references erp_document_lines(id),  -- I 行 → P 行（分批到貨）；SR 行 → S 行
+  serial_nos text[],                       -- 入庫「新機號」（I、A 盤盈）：草稿時序號尚未存在，過帳時建立 erp_serials 並寫入 line_serials
   unique (document_id, line_no)
 );
+-- 既有機號（S、SR、PR、T、A 盤虧）草稿時即寫 erp_document_line_serials
+-- erp_document_line_serials 另有 mx_machine_id、mx_machine_created（S 過帳時記錄建立或連結的保養卡機台，
+-- 作廢只刪除「本單建立」且無保養紀錄的機台）
+
+-- 實作補充（migration 0020 header 有完整列表）：
+-- · 入庫新機號與既有機號（任何狀態）重複 → serial_unavailable，不重用舊列
+-- · SR/PR 超過來源行數量 → validation；I 超過 P 行未到貨量 → over_receipt
+-- · 作廢的反向異動日期 = 作廢當日；S/I/SR/PR 有沖銷皆擋作廢
+-- · 沖銷後 outstanding 必須介於 0 與單據總額之間；Σ沖銷介於 0 與收付款金額之間
 
 create table erp_document_line_serials (
   line_id uuid not null references erp_document_lines(id) on delete cascade,
