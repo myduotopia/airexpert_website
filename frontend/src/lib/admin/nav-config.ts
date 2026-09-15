@@ -156,7 +156,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     key: "erp-items",
     label: "基本資料",
     href: "/admin/erp/items",
-    enabled: false,
+    enabled: true,
     modules: ["erp"],
     group: "ERP",
   },
