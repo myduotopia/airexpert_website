@@ -208,4 +208,34 @@ describe("activeNavHref（側欄 active 取最長匹配）", () => {
   it("都不匹配時回 null", () => {
     expect(activeNavHref("/admin/unknown", hrefs)).toBeNull();
   });
+
+  it("ERP 子頁（頁內 tab）亮所屬主項，不退回亮 ERP 總覽", () => {
+    const erpHrefs = ADMIN_NAV.filter((i) => i.modules).map((i) => i.href);
+    const cases: [string, string][] = [
+      ["/admin/erp", "/admin/erp"],
+      ["/admin/erp/quotes/abc/edit", "/admin/erp/sales"],
+      ["/admin/erp/sales-returns/new", "/admin/erp/sales"],
+      ["/admin/erp/receipts/abc", "/admin/erp/purchases"],
+      ["/admin/erp/purchase-returns", "/admin/erp/purchases"],
+      ["/admin/erp/transfers/new", "/admin/erp/inventory"],
+      ["/admin/erp/adjustments/abc", "/admin/erp/inventory"],
+      ["/admin/erp/inventory/serials", "/admin/erp/inventory"],
+      ["/admin/erp/disbursements/abc", "/admin/erp/collections"],
+      ["/admin/erp/vendors/abc/edit", "/admin/erp/items"],
+      ["/admin/erp/customers", "/admin/erp/items"],
+      ["/admin/erp/statements", "/admin/erp/statements"],
+    ];
+    for (const [path, expected] of cases) {
+      expect(activeNavHref(path, erpHrefs)).toBe(expected);
+    }
+  });
+
+  it("子頁的主項不在清單中（未啟用）時，不會誤亮其他項", () => {
+    expect(
+      activeNavHref("/admin/erp/quotes", ["/admin/erp", "/admin/erp/items"]),
+    ).toBe("/admin/erp");
+    expect(
+      activeNavHref("/admin/erp/salesX", ["/admin/erp", "/admin/erp/sales"]),
+    ).toBe("/admin/erp");
+  });
 });

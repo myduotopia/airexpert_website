@@ -197,22 +197,47 @@ function matchesPath(pathname: string, href: string): boolean {
 }
 
 /**
+ * 側欄項目的「子頁路徑」：這些路徑不在該項 href 底下，但屬於同一區段
+ * （例：ERP「銷售」/admin/erp/sales 的頁內 tab 還有報價單、銷退單）。
+ * 停在子頁時，側欄亮所屬主項，而不是退回亮「總覽」/admin/erp。
+ * 獨立成表而不寫進 ADMIN_NAV 項目，避免各區段分支改 enabled 時互相衝突。
+ */
+export const NAV_ACTIVE_ALIASES: Record<string, string[]> = {
+  "/admin/erp/sales": ["/admin/erp/quotes", "/admin/erp/sales-returns"],
+  "/admin/erp/purchases": [
+    "/admin/erp/receipts",
+    "/admin/erp/purchase-returns",
+  ],
+  "/admin/erp/inventory": ["/admin/erp/transfers", "/admin/erp/adjustments"],
+  "/admin/erp/collections": ["/admin/erp/disbursements"],
+  "/admin/erp/items": [
+    "/admin/erp/warehouses",
+    "/admin/erp/vendors",
+    "/admin/erp/customers",
+  ],
+};
+
+/**
  * 目前所在的側欄項目 href（純函式，供 AdminSidebar 標示 active）。
  * 側欄項目彼此可能互為前綴（例：「保養記錄卡」/admin/maintenance 與
  * 「客戶」/admin/maintenance/customers）；若逐項各自判斷，停在客戶頁時兩項
  * 會同時 active，也會出現兩個 aria-current="page"。故取「最長匹配」的那一項，
- * 確保任一時刻只有一項為目前頁。都不匹配回 null。
+ * 確保任一時刻只有一項為目前頁。項目的子頁路徑（NAV_ACTIVE_ALIASES）也參與比對，
+ * 匹配長度以實際命中的路徑計。都不匹配回 null。
  */
 export function activeNavHref(
   pathname: string,
   hrefs: string[],
 ): string | null {
-  return hrefs.reduce<string | null>(
-    (best, href) =>
-      matchesPath(pathname, href) &&
-      (best === null || href.length > best.length)
-        ? href
-        : best,
-    null,
-  );
+  let best: string | null = null;
+  let bestLength = -1;
+  for (const href of hrefs) {
+    for (const candidate of [href, ...(NAV_ACTIVE_ALIASES[href] ?? [])]) {
+      if (matchesPath(pathname, candidate) && candidate.length > bestLength) {
+        best = href;
+        bestLength = candidate.length;
+      }
+    }
+  }
+  return best;
 }
