@@ -119,9 +119,7 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
       expect(i.href.startsWith("/admin/erp")).toBe(true);
     }
     expect(ADMIN_NAV.find((i) => i.key === "erp")?.enabled).toBe(true);
-    expect(
-      ADMIN_NAV.filter((i) => i.modules && i.enabled).map((i) => i.key),
-    ).toEqual(["erp", "erp-items"]);
+    // 各 W1 區段上線時會把自己那行改 enabled，故此處不鎖定其餘項目的狀態。
   });
 
   it("navForRole 不回傳任何 ERP 項目（任何角色）", () => {
