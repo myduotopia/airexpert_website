@@ -1,11 +1,15 @@
 "use client";
 // 支票狀態更新：未兌現 / 已兌現 / 退票。退票不會自動沖回，提示使用者作廢此收付款。
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 import { ERP_BUTTON_SECONDARY } from "@/components/erp/styles";
 import type { CheckStatus, PaymentDirection } from "@/lib/erp/types";
 import { updateCheckStatusAction } from "./actions";
-import { CHECK_STATUS_LABEL, DIRECTION_META } from "./allocation";
+import {
+  CHECK_STATUS_LABEL,
+  DIRECTION_META,
+  NETWORK_ERROR,
+} from "./allocation";
 
 const ORDER: CheckStatus[] = ["pending", "cleared", "bounced"];
 
@@ -33,7 +37,14 @@ export function CheckStatusControl({
       return;
     }
     startTransition(async () => {
-      const res = await updateCheckStatusAction(paymentId, direction, next);
+      let res: Awaited<ReturnType<typeof updateCheckStatusAction>>;
+      try {
+        res = await updateCheckStatusAction(paymentId, direction, next);
+      } catch (err) {
+        unstable_rethrow(err);
+        setError(NETWORK_ERROR);
+        return;
+      }
       if (!res.ok) {
         setError(res.error);
         return;

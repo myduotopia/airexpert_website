@@ -42,6 +42,9 @@ export const CHECK_STATUS_LABEL: Record<CheckStatus, string> = {
   bounced: "退票",
 };
 
+/** server action 送不出去（斷網、server 失敗）時顯示的提示；表單輸入保留不動。 */
+export const NETWORK_ERROR = "連線失敗，請稍後再試";
+
 export const DIRECTION_META: Record<
   PaymentDirection,
   {

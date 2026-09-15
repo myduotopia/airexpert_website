@@ -1,7 +1,7 @@
 "use client";
 // 新增收款 / 付款表單（受控；錯誤時保留輸入）。選完對象後載入其未沖銷單據供勾選沖銷。
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 import { CustomerPicker } from "@/components/erp/CustomerPicker";
 import { MoneyText } from "@/components/erp/MoneyText";
 import { NumberInput } from "@/components/erp/NumberInput";
@@ -24,6 +24,7 @@ import { createPaymentAction, loadOutstandingAction } from "./actions";
 import { AllocationTable } from "./AllocationTable";
 import {
   DIRECTION_META,
+  NETWORK_ERROR,
   PAYMENT_METHODS,
   toAllocationInputs,
   validateAllocations,
@@ -67,7 +68,14 @@ export function PaymentForm({
     setError(null);
     if (!id) return;
     startLoading(async () => {
-      const res = await loadOutstandingAction(direction, id);
+      let res: Awaited<ReturnType<typeof loadOutstandingAction>>;
+      try {
+        res = await loadOutstandingAction(direction, id);
+      } catch (err) {
+        unstable_rethrow(err);
+        setError(NETWORK_ERROR);
+        return;
+      }
       if (!res.ok) {
         setError(res.error);
         return;
@@ -106,7 +114,16 @@ export function PaymentForm({
       return;
     }
     startTransition(async () => {
-      const res = await createPaymentAction(input);
+      let res: Awaited<ReturnType<typeof createPaymentAction>>;
+      try {
+        res = await createPaymentAction(input);
+      } catch (err) {
+        // redirect / notFound 等框架控制流程要原樣丟回；其餘（斷網、server 失敗）
+        // 不接的話會冒到 error boundary，整張填到一半的表單就沒了。
+        unstable_rethrow(err);
+        setError(NETWORK_ERROR);
+        return;
+      }
       if (!res.ok) {
         setError(res.error);
         return;

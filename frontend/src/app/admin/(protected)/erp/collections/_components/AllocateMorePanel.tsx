@@ -1,11 +1,12 @@
 "use client";
 // 詳情頁「補沖銷」：把未沖銷餘額（預收 / 預付）沖到該對象的未沖銷單據。
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 import type { PaymentDirection } from "@/lib/erp/types";
 import { allocatePaymentAction } from "./actions";
 import { AllocationTable } from "./AllocationTable";
 import {
+  NETWORK_ERROR,
   toAllocationInputs,
   validateAllocations,
   type AllocationRow,
@@ -65,11 +66,15 @@ export function AllocateMorePanel({
       return;
     }
     startTransition(async () => {
-      const res = await allocatePaymentAction(
-        paymentId,
-        direction,
-        allocations,
-      );
+      let res: Awaited<ReturnType<typeof allocatePaymentAction>>;
+      try {
+        res = await allocatePaymentAction(paymentId, direction, allocations);
+      } catch (err) {
+        // redirect 等框架控制流程原樣丟回；網路錯誤留在原地顯示，保留勾選與金額。
+        unstable_rethrow(err);
+        setError(NETWORK_ERROR);
+        return;
+      }
       if (!res.ok) {
         setError(res.error);
         return;

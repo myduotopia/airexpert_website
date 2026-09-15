@@ -1,11 +1,11 @@
 "use client";
 // 作廢收付款：原因必填 + 二次確認。
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 import { ERP_AREA } from "@/components/erp/styles";
 import type { PaymentDirection } from "@/lib/erp/types";
 import { voidPaymentAction } from "./actions";
-import { DIRECTION_META } from "./allocation";
+import { DIRECTION_META, NETWORK_ERROR } from "./allocation";
 
 export function VoidPaymentForm({
   paymentId,
@@ -49,7 +49,15 @@ export function VoidPaymentForm({
       return;
     }
     startTransition(async () => {
-      const res = await voidPaymentAction(paymentId, direction, reason);
+      let res: Awaited<ReturnType<typeof voidPaymentAction>>;
+      try {
+        res = await voidPaymentAction(paymentId, direction, reason);
+      } catch (err) {
+        // 框架控制流程原樣丟回；網路錯誤保留作廢原因並顯示提示。
+        unstable_rethrow(err);
+        setError(NETWORK_ERROR);
+        return;
+      }
       if (!res.ok) {
         setError(res.error);
         return;
