@@ -3,12 +3,12 @@ import { requireModule } from "@/lib/admin/auth";
 import { getDocumentWithLines } from "@/lib/erp/documents";
 import { draftDocumentFromRow } from "@/lib/erp/draft";
 import {
-  listAvailableSerials,
   listItemOptions,
   listVendorOptions,
   listWarehouseOptions,
 } from "@/lib/erp/queries/pickers";
 import { getDocumentBrief } from "@/lib/erp/queries/purchasing";
+import { listReceiptInStockSerials } from "../../../purchases/_lib/doc-actions";
 import { DocumentForm } from "../../../purchases/_components/DocumentForm";
 import { PurchasingTabs } from "../../../purchases/_components/PurchasingTabs";
 import {
@@ -39,7 +39,7 @@ export default async function EditPurchaseReturnPage({
     doc.source_doc_id ? getDocumentBrief(doc.source_doc_id) : null,
   ]);
 
-  // 在庫機號：本單所有追蹤機號品項（表單再依出庫倉過濾）。
+  // 可退機號：限來源進貨單入庫、仍在庫的機號（表單再依出庫倉過濾）。
   const serialItemIds = [
     ...new Set(
       doc.lines
@@ -50,9 +50,10 @@ export default async function EditPurchaseReturnPage({
         ),
     ),
   ];
-  const serials = serialItemIds.length
-    ? await listAvailableSerials({ itemId: serialItemIds, status: "in_stock" })
-    : [];
+  const serials = await listReceiptInStockSerials(
+    doc.source_doc_id,
+    serialItemIds,
+  );
   const src = source?.ok ? source.data : null;
 
   return (

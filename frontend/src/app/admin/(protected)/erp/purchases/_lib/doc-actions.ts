@@ -9,9 +9,11 @@ import {
   getDocumentWithLines,
   saveDraftDocument,
 } from "@/lib/erp/documents";
+import { erpErrorMessage } from "@/lib/erp/errors";
 import { ensureErp } from "@/lib/erp/guard";
 import { postDocument, voidDocument } from "@/lib/erp/rpc";
-import type { DraftDocument } from "@/lib/erp/types";
+import type { DraftDocument, SerialOption } from "@/lib/erp/types";
+import { getServerSupabase } from "@/lib/supabase-server";
 
 export type SaveResult =
   | { ok: true; id: string }
@@ -35,7 +37,60 @@ function revalidateDoc(docType: PurchasingDocType, id?: string | null) {
   if (id) revalidatePath(`${DOC_BASE_PATH[docType]}/${id}`);
 }
 
-/** 存草稿：強制單別；進貨 / 進退單需選倉庫。 */
+type CheckedDoc = {
+  id: string;
+  doc_type: string;
+  source_doc_id: string | null;
+};
+
+/** 確認單據存在且為本區單別（避免以某區 action 操作其他單別的單據）。 */
+async function checkDocType(
+  docType: PurchasingDocType,
+  id: string,
+): Promise<{ ok: true; doc: CheckedDoc } | { ok: false; error: string }> {
+  if (!id || typeof id !== "string") {
+    return { ok: false, error: "找不到單據。" };
+  }
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("erp_documents")
+    .select("id, doc_type, source_doc_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) return { ok: false, error: erpErrorMessage(error) };
+  if (!data) return { ok: false, error: "找不到單據。" };
+  const doc = data as CheckedDoc;
+  if (doc.doc_type !== docType) {
+    return { ok: false, error: "單據類型不符。" };
+  }
+  return { ok: true, doc };
+}
+
+/** 進退單所選機號必須由來源進貨單入庫（erp_serials.in_doc_id = 來源進貨單）。 */
+async function checkReturnSerials(
+  sourceDocId: string | null,
+  lines: DraftDocument["lines"],
+): Promise<{ ok: false; error: string } | null> {
+  const ids = [...new Set(lines.flatMap((l) => l.serial_ids ?? []))];
+  if (ids.length === 0) return null;
+  if (!sourceDocId) return { ok: false, error: "機號不屬於來源進貨單。" };
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("erp_serials")
+    .select("id, in_doc_id")
+    .in("id", ids);
+  if (error) return { ok: false, error: erpErrorMessage(error) };
+  const rows = (data ?? []) as { id: string; in_doc_id: string | null }[];
+  const valid = new Set(
+    rows.filter((r) => r.in_doc_id === sourceDocId).map((r) => r.id),
+  );
+  if (ids.some((id) => !valid.has(id))) {
+    return { ok: false, error: "機號不屬於來源進貨單。" };
+  }
+  return null;
+}
+
+/** 存草稿：強制單別；進貨 / 進退單需選倉庫；更新既有草稿需確認單別。 */
 export async function saveDraftFor(
   docType: PurchasingDocType,
   input: DraftDocument,
@@ -51,9 +106,22 @@ export async function saveDraftFor(
       error: docType === "I" ? "請選擇入庫倉。" : "請選擇出庫倉。",
     };
   }
+  let sourceDocId = input.source_doc_id ?? null;
+  if (input.id) {
+    const checked = await checkDocType(docType, input.id);
+    if (!checked.ok) return checked;
+    // 既有草稿的來源單以 DB 為準，不採用 client 傳入值。
+    sourceDocId = checked.doc.source_doc_id;
+  }
+  if (docType === "PR") {
+    const bad = await checkReturnSerials(sourceDocId, input.lines ?? []);
+    if (bad) return bad;
+  }
   const doc: DraftDocument = {
     ...input,
+    // 單別一律為本區單別（忽略 client 傳入的 doc_type）。
     doc_type: docType,
+    source_doc_id: sourceDocId,
     customer_id: null,
     to_warehouse_id: null,
     lines: (input.lines ?? []).map((l) =>
@@ -77,6 +145,8 @@ export async function postFor(
 ): Promise<DocActionResult> {
   const denied = await ensureErp();
   if (denied) return denied;
+  const checked = await checkDocType(docType, id);
+  if (!checked.ok) return checked;
   const res = await postDocument(id);
   if (!res.ok) return res;
   revalidateDoc(docType, id);
@@ -94,6 +164,9 @@ export async function voidFor(
 ): Promise<DocActionResult> {
   const denied = await ensureErp();
   if (denied) return denied;
+  if (!reason?.trim()) return { ok: false, error: "請填寫作廢原因。" };
+  const checked = await checkDocType(docType, id);
+  if (!checked.ok) return checked;
   const res = await voidDocument(id, reason);
   if (!res.ok) return res;
   revalidateDoc(docType, id);
@@ -110,10 +183,30 @@ export async function deleteDraftFor(
 ): Promise<DocActionResult> {
   const denied = await ensureErp();
   if (denied) return denied;
+  const checked = await checkDocType(docType, id);
+  if (!checked.ok) return checked;
   const res = await deleteDraftDocument(id);
   if (!res.ok) return res;
   revalidateDoc(docType, null);
   return { ok: true };
+}
+
+/** 進退單可選機號：限來源進貨單入庫（in_doc_id）且仍在庫的機號。 */
+export async function listReceiptInStockSerials(
+  receiptId: string | null,
+  itemIds: string[],
+): Promise<SerialOption[]> {
+  if (!receiptId || itemIds.length === 0) return [];
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("erp_serials")
+    .select("id, item_id, serial_no, status, warehouse_id, customer_id")
+    .eq("in_doc_id", receiptId)
+    .in("item_id", itemIds)
+    .eq("status", "in_stock")
+    .order("serial_no");
+  if (error) throw new Error(`讀取機號失敗：${error.message}`);
+  return (data ?? []) as SerialOption[];
 }
 
 /** 讀已過帳的來源單並確認單別（轉單用）。 */

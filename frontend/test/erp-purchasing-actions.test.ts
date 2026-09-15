@@ -132,7 +132,12 @@ import {
   saveReceiptDraftAction,
   voidReceiptAction,
 } from "@/app/admin/(protected)/erp/receipts/actions";
-import { postPurchaseReturnAction } from "@/app/admin/(protected)/erp/purchase-returns/actions";
+import {
+  deletePurchaseReturnDraftAction,
+  postPurchaseReturnAction,
+  savePurchaseReturnDraftAction,
+  voidPurchaseReturnAction,
+} from "@/app/admin/(protected)/erp/purchase-returns/actions";
 import { newDraftDocument, newDraftLine } from "@/lib/erp/draft";
 import { ERP_ERROR_MESSAGES } from "@/lib/erp/errors";
 
@@ -144,6 +149,16 @@ beforeEach(() => {
   moduleGranted = true;
   revalidateSpy.mockClear();
 });
+
+/** checkDocType 讀 erp_documents 時回傳的既有單據。 */
+function mockDoc(docType: string | null, extra: Record<string, unknown> = {}) {
+  responses["erp_documents:select"] = () => ({
+    data: docType
+      ? { id: "doc-1", doc_type: docType, source_doc_id: null, ...extra }
+      : null,
+    error: null,
+  });
+}
 
 function receiptDraft(patch = {}) {
   return newDraftDocument("I", "2026-09-15", {
@@ -229,6 +244,7 @@ describe("RPC 錯誤碼 → 中文", () => {
     ["serial_unavailable", ERP_ERROR_MESSAGES.serial_unavailable],
     ["has_dependents", ERP_ERROR_MESSAGES.has_dependents],
   ])("%s（無 details）→ 對應中文", async (code, msg) => {
+    mockDoc("I");
     rpcResponse = { data: null, error: { message: code } };
     expect(await postReceiptAction("doc-1")).toEqual({
       ok: false,
@@ -237,6 +253,7 @@ describe("RPC 錯誤碼 → 中文", () => {
   });
 
   it("有 details → 顯示 RPC 帶的中文訊息", async () => {
+    mockDoc("I");
     rpcResponse = {
       data: null,
       error: {
@@ -254,6 +271,7 @@ describe("RPC 錯誤碼 → 中文", () => {
   it("作廢 has_dependents → 中文；原因必填不呼叫 RPC", async () => {
     expect((await voidPurchaseAction("doc-1", " ")).ok).toBe(false);
     expect(rpcCalls).toHaveLength(0);
+    mockDoc("I");
     rpcResponse = {
       data: null,
       error: {
@@ -268,6 +286,7 @@ describe("RPC 錯誤碼 → 中文", () => {
   });
 
   it("過帳成功 → 回傳單號訊息並 revalidate", async () => {
+    mockDoc("P");
     rpcResponse = { data: { doc_no: "P11509008", warnings: [] }, error: null };
     expect(await postPurchaseAction("doc-1")).toEqual({
       ok: true,
@@ -278,6 +297,133 @@ describe("RPC 錯誤碼 → 中文", () => {
       args: { p_doc_id: "doc-1" },
     });
     expect(revalidateSpy).toHaveBeenCalledWith("/admin/erp/purchases/doc-1");
+  });
+});
+
+describe("單別檢查：不可用本區 action 操作其他單別", () => {
+  const writes = () =>
+    recorded.filter((r) => r.kind !== "select" || r.table !== "erp_documents");
+
+  it.each([
+    ["postPurchaseAction", () => postPurchaseAction("doc-1")],
+    ["voidPurchaseAction", () => voidPurchaseAction("doc-1", "取消")],
+    ["deletePurchaseDraftAction", () => deletePurchaseDraftAction("doc-1")],
+    [
+      "savePurchaseDraftAction",
+      () =>
+        savePurchaseDraftAction({
+          ...newDraftDocument("P", "2026-09-15", { vendor_id: "vendor-1" }),
+          id: "doc-1",
+        }),
+    ],
+    ["postReceiptAction", () => postReceiptAction("doc-1")],
+    ["postPurchaseReturnAction", () => postPurchaseReturnAction("doc-1")],
+    [
+      "voidPurchaseReturnAction",
+      () => voidPurchaseReturnAction("doc-1", "錯單"),
+    ],
+    [
+      "deletePurchaseReturnDraftAction",
+      () => deletePurchaseReturnDraftAction("doc-1"),
+    ],
+  ])("%s：既有單據為 A → 單據類型不符", async (_name, call) => {
+    mockDoc("A");
+    expect(await call()).toEqual({ ok: false, error: "單據類型不符。" });
+    expect(rpcCalls).toHaveLength(0);
+    expect(writes()).toHaveLength(0);
+    expect(revalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it("找不到單據 → 錯誤，不呼叫 RPC", async () => {
+    mockDoc(null);
+    expect(await postPurchaseAction("nope")).toEqual({
+      ok: false,
+      error: "找不到單據。",
+    });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("單別相符 → 刪除草稿", async () => {
+    mockDoc("P");
+    responses["erp_documents:delete"] = () => ({
+      data: [{ id: "doc-1" }],
+      error: null,
+    });
+    expect(await deletePurchaseDraftAction("doc-1")).toEqual({ ok: true });
+  });
+});
+
+describe("進退單機號限來源進貨單", () => {
+  function returnDraft(serialIds: string[], patch = {}) {
+    return {
+      ...newDraftDocument("PR", "2026-09-15", {
+        vendor_id: "vendor-1",
+        warehouse_id: "wh-1",
+        lines: [
+          newDraftLine("item", {
+            item_id: "am3",
+            qty: serialIds.length || 1,
+            unit_price: 220000,
+            serial_ids: serialIds,
+          }),
+        ],
+        ...patch,
+      }),
+      id: "doc-1",
+    };
+  }
+
+  beforeEach(() => {
+    mockDoc("PR", { source_doc_id: "i-1" });
+    responses["erp_vendors:select"] = () => ({
+      data: { name: "漢鐘" },
+      error: null,
+    });
+    responses["erp_serials:select"] = (q) => {
+      const ids = (q.filters.find((f) => f.fn === "in")?.args[1] ??
+        []) as string[];
+      const inDoc: Record<string, string> = { "s-1": "i-1", "s-2": "i-2" };
+      return {
+        data: ids
+          .filter((id) => inDoc[id])
+          .map((id) => ({ id, in_doc_id: inDoc[id] })),
+        error: null,
+      };
+    };
+  });
+
+  it("機號屬於其他進貨單 → 拒絕，不寫入", async () => {
+    // client 竄改 source_doc_id 為 i-2 也無效：以 DB 的來源單為準。
+    const res = await savePurchaseReturnDraftAction(
+      returnDraft(["s-1", "s-2"], { source_doc_id: "i-2" }),
+    );
+    expect(res).toEqual({ ok: false, error: "機號不屬於來源進貨單。" });
+    expect(recorded.some((r) => r.kind !== "select")).toBe(false);
+  });
+
+  it("不存在的機號 → 拒絕", async () => {
+    expect(await savePurchaseReturnDraftAction(returnDraft(["s-x"]))).toEqual({
+      ok: false,
+      error: "機號不屬於來源進貨單。",
+    });
+  });
+
+  it("機號皆屬來源進貨單 → 儲存並寫入機號關聯", async () => {
+    responses["erp_documents:update"] = () => ({
+      data: [{ id: "doc-1" }],
+      error: null,
+    });
+    const res = await savePurchaseReturnDraftAction(
+      returnDraft(["s-1"], { source_doc_id: "i-2" }),
+    );
+    expect(res).toEqual({ ok: true, id: "doc-1" });
+    const header = recorded.find(
+      (r) => r.table === "erp_documents" && r.kind === "update",
+    )!.payload as Record<string, unknown>;
+    expect(header).toMatchObject({ doc_type: "PR", source_doc_id: "i-1" });
+    expect(
+      recorded.find((r) => r.table === "erp_document_line_serials")?.payload,
+    ).toEqual([{ line_id: "erp_document_lines-1", serial_id: "s-1" }]);
   });
 });
 
