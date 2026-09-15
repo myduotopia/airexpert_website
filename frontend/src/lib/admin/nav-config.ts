@@ -108,7 +108,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     key: "erp-sales",
     label: "銷售",
     href: "/admin/erp/sales",
-    enabled: false,
+    enabled: true,
     modules: ["erp"],
     group: "ERP",
   },
