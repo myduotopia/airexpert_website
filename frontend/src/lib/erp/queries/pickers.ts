@@ -82,26 +82,60 @@ export async function listWarehouseOptions(
  * 例：銷貨出庫 → { itemId, warehouseId, status: 'in_stock' }；
  *     銷退 → { itemId, status: 'sold', customerId }。
  * itemId 可傳陣列（一次載入整張單所有序號品項的機號）。
+ * PostgREST 預設單次最多回 1,000 列、且 `.in()` 會把 id 放進 URL：
+ * item id 每 SERIAL_ITEM_CHUNK 個一批，每批以 `.range()` 分頁讀到短頁為止；
+ * 結果依 serial_no、id 排序。
  */
+export const SERIAL_ITEM_CHUNK = 100;
+export const SERIAL_PAGE_SIZE = 1000;
+
 export async function listAvailableSerials(params: {
   itemId: string | string[];
   warehouseId?: string | null;
   customerId?: string | null;
   status: SerialStatus;
 }): Promise<SerialOption[]> {
-  const itemIds = Array.isArray(params.itemId)
-    ? params.itemId
-    : [params.itemId];
+  const itemIds = [
+    ...new Set(Array.isArray(params.itemId) ? params.itemId : [params.itemId]),
+  ];
   if (itemIds.length === 0) return [];
   const supabase = await getServerSupabase();
-  let query = supabase
-    .from("erp_serials")
-    .select("id, item_id, serial_no, status, warehouse_id, customer_id")
-    .in("item_id", itemIds)
-    .eq("status", params.status);
-  if (params.warehouseId) query = query.eq("warehouse_id", params.warehouseId);
-  if (params.customerId) query = query.eq("customer_id", params.customerId);
-  const { data, error } = await query.order("serial_no");
-  if (error) throw new Error(`讀取機號失敗：${error.message}`);
-  return (data ?? []) as SerialOption[];
+  const out: SerialOption[] = [];
+  for (let c = 0; c < itemIds.length; c += SERIAL_ITEM_CHUNK) {
+    const chunk = itemIds.slice(c, c + SERIAL_ITEM_CHUNK);
+    for (let from = 0; ; from += SERIAL_PAGE_SIZE) {
+      let query = supabase
+        .from("erp_serials")
+        .select("id, item_id, serial_no, status, warehouse_id, customer_id")
+        .in("item_id", chunk)
+        .eq("status", params.status);
+      if (params.warehouseId) {
+        query = query.eq("warehouse_id", params.warehouseId);
+      }
+      if (params.customerId) query = query.eq("customer_id", params.customerId);
+      const { data, error } = await query
+        .order("serial_no")
+        .order("id")
+        .range(from, from + SERIAL_PAGE_SIZE - 1);
+      if (error) throw new Error(`讀取機號失敗：${error.message}`);
+      const rows = (data ?? []) as SerialOption[];
+      out.push(...rows);
+      if (rows.length < SERIAL_PAGE_SIZE) break;
+    }
+  }
+  if (itemIds.length > SERIAL_ITEM_CHUNK) {
+    // 多批時合併後重新排序（單批已由 DB 排好）。
+    out.sort((a, b) =>
+      a.serial_no === b.serial_no
+        ? a.id < b.id
+          ? -1
+          : a.id > b.id
+            ? 1
+            : 0
+        : a.serial_no < b.serial_no
+          ? -1
+          : 1,
+    );
+  }
+  return out;
 }

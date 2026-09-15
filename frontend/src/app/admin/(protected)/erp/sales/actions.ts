@@ -91,6 +91,19 @@ export async function saveSalesDraftAction(
     if (sale.data.doc_type !== "S" || sale.data.status !== "posted") {
       return { ok: false, error: "來源銷貨單不存在、尚未過帳或已作廢。" };
     }
+    // 銷退品項行必須對應原銷貨單的品項行（不可退原單以外的品項）。
+    const saleItemLineIds = new Set(
+      sale.data.lines.filter((l) => l.line_type === "item").map((l) => l.id),
+    );
+    if (
+      draft.lines.some(
+        (l) =>
+          l.line_type === "item" &&
+          (!l.source_line_id || !saleItemLineIds.has(l.source_line_id)),
+      )
+    ) {
+      return { ok: false, error: "銷退品項須來自原銷貨單" };
+    }
     const returned = await getReturnedQtyBySourceLine(
       sale.data.lines.map((l) => l.id),
       draft.id,

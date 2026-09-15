@@ -361,6 +361,32 @@ describe("calcSaleMargins", () => {
     expect(m.lines.a).toEqual({ cost: 60000, margin: 40000 });
     expect(m.grossMargin).toBe(40000);
   });
+
+  it("外幣（USD）：銷售額以匯率換算台幣（取整數）後再減台幣成本", () => {
+    const sale = doc(
+      "S",
+      [
+        line("a", 1, "item", { qty: 1, amount: 1000.5, unit_cost: 20000 }),
+        line("b", 2, "item", { qty: 2, amount: 300, unit_cost: 4000 }),
+      ],
+      {
+        tax_type: "exempt",
+        currency: "USD",
+        exchange_rate: 32.1,
+        amount_untaxed: 1300.5,
+      },
+    );
+    const m = calcSaleMargins(sale);
+    // 1000.5 × 32.1 = 32116.05 → 32116；300 × 32.1 = 9630
+    expect(m.lines).toEqual({
+      a: { cost: 20000, margin: 12116 },
+      b: { cost: 8000, margin: 1630 },
+    });
+    expect(m.totalCost).toBe(28000);
+    // 1300.5 × 32.1 = 41746.05 → 41746
+    expect(m.grossMargin).toBe(13746);
+    expect(m.marginRate).toBeCloseTo(13746 / 41746);
+  });
 });
 
 describe("todayTaipei", () => {

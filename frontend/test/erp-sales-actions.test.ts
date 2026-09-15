@@ -464,6 +464,40 @@ describe("銷退單", () => {
     expect(recorded.some((r) => r.kind !== "select")).toBe(false);
   });
 
+  it.each([
+    ["無 source_line_id", null],
+    ["source_line_id 不屬於原銷貨單", "other-line"],
+  ])(
+    "saveSalesDraftAction：品項行%s → 銷退品項須來自原銷貨單，不寫入",
+    async (_name, sourceLineId) => {
+      documentsSelect(docRow({ id: "s-1", lines: saleLines }), "SR");
+      responses["erp_document_lines:select"] = () => ({
+        data: [],
+        error: null,
+      });
+      const res = await saveSalesDraftAction({
+        ...newDraftDocument("SR", "2026-09-20"),
+        id: "sr-1",
+        customer_id: "cust-1",
+        source_doc_id: "s-1",
+        lines: [
+          newDraftLine("item", {
+            item_id: "item-tok",
+            qty: 1,
+            source_line_id: "sl-1",
+          }),
+          newDraftLine("item", {
+            item_id: "item-other",
+            qty: 1,
+            source_line_id: sourceLineId,
+          }),
+        ],
+      });
+      expect(res).toEqual({ ok: false, error: "銷退品項須來自原銷貨單" });
+      expect(recorded.some((r) => r.kind !== "select")).toBe(false);
+    },
+  );
+
   it("saveSalesDraftAction：無來源銷貨單 → 錯誤", async () => {
     const res = await saveSalesDraftAction({
       ...newDraftDocument("SR", "2026-09-20"),

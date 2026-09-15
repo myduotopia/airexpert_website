@@ -182,8 +182,12 @@ export async function SalesDocDetail({
                 <th className="px-2 py-2 text-right font-medium">金額</th>
                 {showCost && (
                   <>
-                    <th className="px-2 py-2 text-right font-medium">成本</th>
-                    <th className="px-2 py-2 text-right font-medium">毛利</th>
+                    <th className="px-2 py-2 text-right font-medium">
+                      成本（台幣）
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium">
+                      毛利（台幣）
+                    </th>
                   </>
                 )}
               </tr>
@@ -299,11 +303,11 @@ export async function SalesDocDetail({
         <div className="mt-3 flex flex-wrap justify-end gap-8">
           {margins && (
             <dl className="grid w-full max-w-[280px] grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-[14px]">
-              <dt className="text-text-muted">總成本</dt>
+              <dt className="text-text-muted">總成本（台幣）</dt>
               <dd className="text-right">
                 <MoneyText value={margins.totalCost} />
               </dd>
-              <dt className="text-text-muted">毛利（未稅）</dt>
+              <dt className="text-text-muted">毛利（未稅，台幣）</dt>
               <dd className="text-right">
                 <MoneyText value={margins.grossMargin} negativeRed />
               </dd>

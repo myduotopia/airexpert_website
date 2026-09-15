@@ -5,7 +5,7 @@
 import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
-import { currencyDecimals, roundHalfAwayFromZero } from "../calc";
+import { roundHalfAwayFromZero } from "../calc";
 import { newDraftDocument, newDraftLine } from "../draft";
 import { erpErrorMessage } from "../errors";
 import type {
@@ -183,28 +183,32 @@ export function validateReturnQty(
 // ── 純函式：成本與毛利（僅畫面，不列印） ─────────────────────────
 
 export interface LineMargin {
-  /** qty × unit_cost（過帳時寫入的單位成本）；未過帳 / 不追蹤庫存為 null。 */
+  /** qty × unit_cost（過帳時寫入的台幣單位成本）；未過帳 / 不追蹤庫存為 null。 */
   cost: number | null;
-  /** 行銷售額（未稅）− 成本。 */
+  /** 行銷售額（未稅，換算台幣）− 成本。 */
   margin: number | null;
 }
 
 export interface SaleMargins {
+  /** 金額一律為台幣（整數）。 */
   lines: Record<string, LineMargin>;
   totalCost: number;
-  /** 未稅合計（含折扣）− 總成本。 */
+  /** 未稅合計（含折扣，換算台幣）− 總成本。 */
   grossMargin: number;
   /** 毛利率（0–1）；未稅合計為 0 時 null。 */
   marginRate: number | null;
 }
 
 /**
- * 銷貨單成本毛利：行銷售額以未稅計（內含稅 = 行金額 ÷ (1 + 稅率)），
- * 單據毛利 = amount_untaxed − Σ 行成本（折扣行會降低毛利）。
+ * 銷貨單成本毛利（台幣）：成本（unit_cost）為台幣，銷售額以單據幣別計，
+ * 故先以 exchange_rate 換算台幣（取整數，四捨五入遠離零，同 total_twd）再相減。
+ * 行銷售額以未稅計（內含稅 = 行金額 ÷ (1 + 稅率)），
+ * 單據毛利 = round(amount_untaxed × 匯率) − Σ 行成本（折扣行會降低毛利）。
  */
 export function calcSaleMargins(doc: ErpDocumentWithLines): SaleMargins {
-  const dp = currencyDecimals(doc.currency);
   const rate = Number(doc.tax_rate) || 0;
+  const fx = Number(doc.exchange_rate) || 1;
+  const toTwd = (x: number) => roundHalfAwayFromZero(x * fx, 0);
   const lines: Record<string, LineMargin> = {};
   let totalCost = 0;
   for (const l of doc.lines) {
@@ -215,25 +219,20 @@ export function calcSaleMargins(doc: ErpDocumentWithLines): SaleMargins {
     }
     const cost = roundHalfAwayFromZero(
       (Number(l.qty) || 0) * Number(l.unit_cost),
-      dp,
+      0,
     );
     const amount = Number(l.amount) || 0;
-    const revenue =
-      doc.tax_type === "included" ? amount / (1 + rate) : Number(amount);
-    lines[l.id] = {
-      cost,
-      margin: roundHalfAwayFromZero(revenue - cost, dp),
-    };
+    const revenue = doc.tax_type === "included" ? amount / (1 + rate) : amount;
+    lines[l.id] = { cost, margin: toTwd(revenue) - cost };
     totalCost += cost;
   }
-  totalCost = roundHalfAwayFromZero(totalCost, dp);
-  const untaxed = Number(doc.amount_untaxed) || 0;
-  const grossMargin = roundHalfAwayFromZero(untaxed - totalCost, dp);
+  const untaxedTwd = toTwd(Number(doc.amount_untaxed) || 0);
+  const grossMargin = untaxedTwd - totalCost;
   return {
     lines,
     totalCost,
     grossMargin,
-    marginRate: untaxed === 0 ? null : grossMargin / untaxed,
+    marginRate: untaxedTwd === 0 ? null : grossMargin / untaxedTwd,
   };
 }
 
