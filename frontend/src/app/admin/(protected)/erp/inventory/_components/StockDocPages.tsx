@@ -318,15 +318,24 @@ export async function StockDocDetailPage({
             <DocStatusBadge status={doc.status} />
           </h2>
         </div>
-        <StockDocActions
-          id={doc.id}
-          status={doc.status}
-          editHref={`${cfg.basePath}/${doc.id}/edit`}
-          listHref={cfg.basePath}
-          postAction={cfg.actions.post}
-          deleteAction={cfg.actions.delete}
-          voidAction={cfg.actions.void}
-        />
+        <div className="flex flex-wrap items-start gap-2">
+          <Link
+            href={`/admin/erp/print/${doc.id}`}
+            target="_blank"
+            className={SECONDARY_LINK}
+          >
+            列印
+          </Link>
+          <StockDocActions
+            id={doc.id}
+            status={doc.status}
+            editHref={`${cfg.basePath}/${doc.id}/edit`}
+            listHref={cfg.basePath}
+            postAction={cfg.actions.post}
+            deleteAction={cfg.actions.delete}
+            voidAction={cfg.actions.void}
+          />
+        </div>
       </div>
 
       <dl className="border-border mb-5 grid grid-cols-1 gap-x-6 gap-y-3 rounded-xl border bg-white p-4 text-[14px] sm:grid-cols-2 lg:grid-cols-3">
