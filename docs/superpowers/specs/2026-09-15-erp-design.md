@@ -434,6 +434,8 @@ View（`security_invoker = true`）：
 
 ## 11. 實作拆分（GitHub issues）
 
+Epic #180；#1→#172、#2→#173、#3→#174、#4→#175、#5→#176、#6→#177、#7→#178、#8→#179。
+
 ```
 Epic
  └ W0  #1 地基：權限 + migration 0020（全部表/RPC/view/seed）+ SQL 測試 + auth/nav + ERP layout
