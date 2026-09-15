@@ -116,7 +116,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     key: "erp-purchases",
     label: "採購",
     href: "/admin/erp/purchases",
-    enabled: false,
+    enabled: true,
     modules: ["erp"],
     group: "ERP",
   },

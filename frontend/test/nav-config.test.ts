@@ -103,7 +103,7 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
     (i) => i.key,
   );
 
-  it("ERP 項目一次列齊：8 項、group ERP、只有總覽為 enabled", () => {
+  it("ERP 項目一次列齊：8 項、group ERP、總覽為 enabled", () => {
     expect(erpKeys).toEqual([
       "erp",
       "erp-sales",
