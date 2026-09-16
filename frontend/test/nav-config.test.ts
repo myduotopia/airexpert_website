@@ -123,8 +123,23 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
   });
 
   it("navForRole 不回傳任何 ERP 項目（任何角色）", () => {
-    for (const role of ["admin", "seo_manager", "office"] as const) {
+    for (const role of ["admin", "seo_manager", "office", "erp"] as const) {
       expect(navForRole(role).some((i) => i.modules)).toBe(false);
+    }
+  });
+
+  it("erp 角色 + erp 授權：側欄剛好只有 ERP 那幾項（無 CMS / 設定 / 保養卡）", () => {
+    expect(navForUser("erp", ["erp"]).map((i) => i.key)).toEqual(erpKeys);
+  });
+
+  it("erp 角色無授權：側欄為空（不會因預設角色而露出任何項目）", () => {
+    expect(navForUser("erp", [])).toEqual([]);
+    expect(navForRole("erp")).toEqual([]);
+  });
+
+  it("erp 不在任何項目的 roles 內，也不在預設可見角色內", () => {
+    for (const item of ADMIN_NAV) {
+      expect(item.roles ?? []).not.toContain("erp");
     }
   });
 

@@ -19,7 +19,8 @@ export interface AdminNavItem {
   /** 哪些角色看得到此項。預設（未指定）= admin + seo_manager 皆可見（內容團隊）。
    *  admin-only 的項目（網站設定 / 人員管理）標 roles: ['admin']。
    *  office（行政）是獨立 persona，只看得到明確標 roles: ['office'] 的項目
-   *  （保養記錄卡），不會因「未指定」而看到 CMS 內容區。 */
+   *  （保養記錄卡），不會因「未指定」而看到 CMS 內容區。
+   *  erp（ERP 行政）同理：不在任何項目的 roles 內，故只會透過 modules 看到 ERP 區。 */
   roles?: AdminRole[];
   /** 需要哪些模組授權（admin_module_grants）。有指定時「擁有其中任一模組即可見」，
    *  且**忽略 roles**；navForRole() 一律不回傳這類項目（見 navForUser）。 */
@@ -163,7 +164,8 @@ export const ADMIN_NAV: AdminNavItem[] = [
 ];
 
 // 未指定 roles 的項目預設可見角色 = 內容團隊（admin + seo_manager）。
-// office 為獨立 persona，不含在預設內，故只會看到明確標 roles:['office'] 的項目。
+// office / erp 為獨立 persona，不含在預設內：office 只看到明確標 roles:['office'] 的項目，
+// erp 不在任何 roles 內，只透過模組授權看到 ERP 區（無授權 → 側欄為空）。
 const DEFAULT_ROLES: AdminRole[] = ["admin", "seo_manager"];
 
 /** 依角色過濾側欄項目（未指定 roles → 內容團隊 admin + seo_manager 可見，office 除外）。
