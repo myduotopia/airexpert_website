@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { requireRole } from "@/lib/admin/auth";
+import { ADMIN_ROLES, requireRole } from "@/lib/admin/auth";
 import { PrintStyles } from "@/components/erp/print/PrintStyles";
 
 // 後台列印殼層（無側欄）。
@@ -13,7 +13,7 @@ export default async function AdminPrintLayout({
 }: {
   children: ReactNode;
 }) {
-  await requireRole(["admin", "seo_manager", "office"]);
+  await requireRole([...ADMIN_ROLES]);
   return (
     <>
       <PrintStyles />

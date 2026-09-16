@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import {
+  ADMIN_ROLES,
   requireRole,
   getSessionUser,
   getCurrentModules,
 } from "@/lib/admin/auth";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 
-// 後台保護殼層：admin 與 seo_manager 皆可進；其餘由 requireRole() 導向 /admin/login。
+// 後台保護殼層：所有後台角色皆可進；非後台人員由 requireRole() 導向 /admin/login。
 // 注意：admin-only 的頁面（網站設定 / 人員管理 / 聯絡來信）各自再以 requireAdmin() 守門，
 // 此層只負責「是否為後台人員」與依角色 + 模組授權渲染側欄；側欄以 navForUser() 隱藏無權項目。
 // 模組頁（如 /admin/erp）由各自的 layout 以 requireModule() 守門。
@@ -16,7 +17,7 @@ export default async function AdminProtectedLayout({
 }: {
   children: ReactNode;
 }) {
-  const role = await requireRole(["admin", "seo_manager", "office"]);
+  const role = await requireRole([...ADMIN_ROLES]);
   // requireRole 已確保是後台人員；取 session user 的 email 顯示於側欄。
   const user = await getSessionUser();
   const email = user?.email ?? "";
