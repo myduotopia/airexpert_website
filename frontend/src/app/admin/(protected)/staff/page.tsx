@@ -59,7 +59,9 @@ function roleLabel(role: string): string {
 }
 
 function moduleLabel(module: string): string {
-  return module === "erp" ? "ERP" : module;
+  if (module === "erp") return "ERP";
+  if (module === "service_report") return "機台維護報告單";
+  return module;
 }
 
 export default async function AdminStaffPage() {

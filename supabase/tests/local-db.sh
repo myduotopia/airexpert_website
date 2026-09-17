@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
-# supabase/migrations/*.sql，再執行 supabase/tests/erp_posting_test.sql。
+# supabase/migrations/*.sql，再執行 supabase/tests/erp_posting_test.sql 與 service_report_test.sql。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
 # 用法：bash supabase/tests/local-db.sh
@@ -73,15 +73,21 @@ done
 echo "==> 重跑 0020（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0020_erp_foundation.sql"
 
+echo "==> 重跑 0021（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0021_service_report.sql"
+
 echo "==> 執行 erp_posting_test.sql"
 psql_run < "$ROOT/tests/erp_posting_test.sql"
 
+echo "==> 執行 service_report_test.sql"
+psql_run < "$ROOT/tests/service_report_test.sql"
+
 echo "==> 確認 rollback 未留資料"
 LEFT=$(docker exec "$NAME" psql -U postgres -tAc \
-  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users)")
+  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_sequences)")
 if [ "$LEFT" != "0" ]; then
   echo "FAIL：測試後仍殘留 $LEFT 列" >&2
   exit 1
 fi
 
-echo "==> ALL ERP TESTS PASSED"
+echo "==> ALL ERP + SERVICE REPORT TESTS PASSED"

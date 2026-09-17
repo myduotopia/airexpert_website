@@ -84,6 +84,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     href: "/admin/maintenance",
     enabled: true,
     roles: ["office"],
+    group: "維護",
   },
   // 客戶主檔：保養卡的客戶層資料（完整聯絡資訊 + 名下所有機台）。
   // 路徑是 /admin/maintenance 的子路由；側欄以「最長匹配」決定 active，
@@ -94,6 +95,17 @@ export const ADMIN_NAV: AdminNavItem[] = [
     href: "/admin/maintenance/customers",
     enabled: true,
     roles: ["office"],
+    group: "維護",
+  },
+  // 機台維護報告單（service report spec §3.2）：以模組授權 gating（service_report），與角色無關。
+  // 緊接保養卡兩項之後、ERP 分組之前；group「維護」讓側欄在其上方插入分組標題。
+  {
+    key: "service-reports",
+    label: "機台維護報告單",
+    href: "/admin/service-reports",
+    enabled: true,
+    modules: ["service_report"],
+    group: "維護",
   },
   // ── ERP（spec §3.2 / §6）：以模組授權 gating，與角色無關。
   // W0（#172）一次列齊；各 W1 issue 上線時只把自己那行的 enabled 改 true。
