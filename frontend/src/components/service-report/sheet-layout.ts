@@ -4,19 +4,21 @@
 //   列印：--u = 1mm（容器寬度 = 210mm）
 // → 預覽與列印幾何完全一致。見 spec §5。
 
-import { clampCalibration } from "@/lib/service-report/layout";
+import {
+  PAPER_HEIGHT_MM,
+  PAPER_WIDTH_MM,
+  SAFE_MARGINS_MM,
+  clampCalibration,
+} from "@/lib/service-report/layout";
 import type { ServiceReportPart } from "@/lib/service-report/types";
 
-export const SHEET_WIDTH_MM = 210;
-export const SHEET_HEIGHT_MM = 297;
+// 紙張尺寸與安全邊界的單一事實來源在 lib/service-report/layout.ts；
+// 這裡只以別名再匯出，避免兩處數值漂移（checkPrintableArea 與實際畫格線用同一組數字）。
+export const SHEET_WIDTH_MM = PAPER_WIDTH_MM;
+export const SHEET_HEIGHT_MM = PAPER_HEIGHT_MM;
 
 /** 安全範圍（scale 1 時內容必須落在此範圍內）。 */
-export const SAFE_MARGIN_MM = {
-  top: 10,
-  bottom: 8,
-  left: 8,
-  right: 8,
-} as const;
+export const SAFE_MARGIN_MM = SAFE_MARGINS_MM;
 
 export const CONTENT_WIDTH_MM =
   SHEET_WIDTH_MM - SAFE_MARGIN_MM.left - SAFE_MARGIN_MM.right; // 194

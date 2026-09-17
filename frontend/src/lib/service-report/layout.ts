@@ -1,13 +1,10 @@
 // 報告單列印版面（spec §5.1）— 純函式（client / server 皆可用）。
 //
 // 座標系：一律以紙張左上角為原點，單位 mm。
-// DOM 疊法（ReportSheet / 列印頁共用）：
-//   .sheet（固定 210×297mm、overflow:hidden、不變形）
-//     └ .sheet-inner（210×297mm，transform: calibrationTransform(c)，
-//                      transform-origin: CALIBRATION_TRANSFORM_ORIGIN = 中心）
-//         └ 表單內容（畫在 FORM_BOX_MM 內，即預設安全範圍）
-// translate 與 scale 寫在同一個元素上：CSS 由右往左套用 → 先以中心縮放、再平移，
-// 故平移量**不會**被縮放乘進去（與 DO-system 的父子兩層疊法不同）。
+// 紙張尺寸、安全邊界、校正值正規化與可列印範圍檢查的單一事實來源。
+// 實際套用到 DOM 的校正 transform 只有一份實作：
+//   components/service-report/sheet-layout.ts 的 sheetTransform()
+//   （以 sheet unit 平移，預覽縮放時與列印等比例一致；縮放原點為紙張中心）。
 
 /* ---------------------------------------------------------------- 紙張 */
 
@@ -86,9 +83,6 @@ export const DEFAULT_CALIBRATION: Readonly<Calibration> = {
   scale: 1,
 };
 
-/** 縮放以紙張中心為原點（搭配 calibrationTransform 使用）。 */
-export const CALIBRATION_TRANSFORM_ORIGIN = "50% 50%";
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -135,17 +129,6 @@ export function clampCalibration(input: unknown): Calibration {
       clamp(toNumber(r.scale, DEFAULT_CALIBRATION.scale), MIN_SCALE, MAX_SCALE),
     ),
   };
-}
-
-/** 內層 CSS transform；未校正（預設值）回 "none"。 */
-export function calibrationTransform(c: Calibration): string {
-  const { offsetXmm, offsetYmm, scale } = clampCalibration(c);
-  const parts: string[] = [];
-  if (offsetXmm !== 0 || offsetYmm !== 0) {
-    parts.push(`translate(${offsetXmm}mm, ${offsetYmm}mm)`);
-  }
-  if (scale !== 1) parts.push(`scale(${scale})`);
-  return parts.length ? parts.join(" ") : "none";
 }
 
 /**

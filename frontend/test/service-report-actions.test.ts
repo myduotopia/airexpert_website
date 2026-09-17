@@ -268,6 +268,24 @@ describe("saveReportAction", () => {
     expect(rpcCalls).toHaveLength(2);
   });
 
+  it("自動取號 3 次皆撞號 → 自動編號失敗（非「派工單號已存在」）", async () => {
+    rpcResponses = [
+      { data: "X11509011", error: null },
+      { data: "X11509012", error: null },
+      { data: "X11509013", error: null },
+    ];
+    responses["sr_reports:insert"] = () => ({
+      data: null,
+      error: { code: "23505", message: "dup" },
+    });
+    const r = await saveReportAction(input());
+    expect(r).toEqual({
+      ok: false,
+      error: "自動編號失敗，請稍後再試或手動輸入派工單號",
+    });
+    expect(rpcCalls).toHaveLength(3);
+  });
+
   it("編輯：限可編輯狀態、不動狀態與列印欄位", async () => {
     responses["sr_reports:update"] = () => ({
       data: [{ id: ID, report_no: "X11509009" }],
@@ -297,6 +315,49 @@ describe("saveReportAction", () => {
       expect(u.payload).not.toHaveProperty(k);
     }
     expect(rpcCalls).toEqual([]);
+  });
+
+  it("編輯：已列印過的報告單改派工單號 → 拒絕且不送更新", async () => {
+    responses["sr_reports:select"] = () => ({
+      data: { report_no: "X11509009", print_count: 2 },
+      error: null,
+    });
+    responses["sr_reports:update"] = () => ({
+      data: [{ id: ID, report_no: "X11509010" }],
+      error: null,
+    });
+    const r = await saveReportAction(input({ id: ID, report_no: "x11509010" }));
+    expect(r).toEqual({ ok: false, error: "已列印的報告單不可改派工單號" });
+    expect(updates()).toHaveLength(0);
+  });
+
+  it("編輯：已列印但單號不變（正規化後相同）→ 照常更新", async () => {
+    responses["sr_reports:select"] = () => ({
+      data: { report_no: "X11509009", print_count: 1 },
+      error: null,
+    });
+    responses["sr_reports:update"] = () => ({
+      data: [{ id: ID, report_no: "X11509009" }],
+      error: null,
+    });
+    const r = await saveReportAction(
+      input({ id: ID, report_no: " x11509009 ", summary: "ok" }),
+    );
+    expect(r).toEqual({ ok: true, data: { id: ID, report_no: "X11509009" } });
+    expect(updates()).toHaveLength(1);
+  });
+
+  it("編輯：未列印的報告單可改派工單號", async () => {
+    responses["sr_reports:select"] = () => ({
+      data: { report_no: "X11509009", print_count: 0 },
+      error: null,
+    });
+    responses["sr_reports:update"] = () => ({
+      data: [{ id: ID, report_no: "X11509010" }],
+      error: null,
+    });
+    const r = await saveReportAction(input({ id: ID, report_no: "X11509010" }));
+    expect(r).toEqual({ ok: true, data: { id: ID, report_no: "X11509010" } });
   });
 
   it("編輯：0 列（已作廢 / 不存在）→ 狀態已變更；23505 → 單號已存在", async () => {

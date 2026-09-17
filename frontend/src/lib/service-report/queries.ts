@@ -60,35 +60,77 @@ export function sanitizeSearch(q: string): string {
   return q.replace(/[,()"\\%*]/g, " ").trim();
 }
 
-/** 報告單列表（可篩狀態 / 關鍵字 / 維護日期區間，每頁 50 筆，新→舊）。 */
+/** PostgREST：range 起點超出結果筆數（HTTP 416）。 */
+function isRangeNotSatisfiable(
+  error: { code?: string; status?: number } | null | undefined,
+): boolean {
+  return error?.code === "PGRST103" || error?.status === 416;
+}
+
+/**
+ * 報告單列表（可篩狀態 / 關鍵字 / 維護日期區間，每頁 50 筆，新→舊）。
+ * 頁碼超出最後一頁（例：過期的 ?page= 連結、資料被刪）時 PostgREST 回 416 / PGRST103；
+ * 此時重查筆數並改回最後一頁（無資料 → 第 1 頁空列表），不當成錯誤。
+ */
 export async function listReports(
   params: ListReportsParams = {},
 ): Promise<SrResult<ListReportsData>> {
-  const page = Math.max(1, Math.floor(Number(params.page) || 1));
+  const requested = Math.max(1, Math.floor(Number(params.page) || 1));
   const supabase = await getServerSupabase();
-  let query = supabase
-    .from("sr_reports")
-    .select(LIST_COLUMNS, { count: "exact" });
-  if (params.status && Object.hasOwn(STATUS_LABELS, params.status)) {
-    query = query.eq("status", params.status);
-  }
-  if (isValidIsoDate(params.from))
-    query = query.gte("report_date", params.from);
-  if (isValidIsoDate(params.to)) query = query.lte("report_date", params.to);
   const q = sanitizeSearch(params.q ?? "");
-  if (q) {
-    query = query.or(
-      ["report_no", "customer_name", "equipment", "serial_no"]
-        .map((col) => `${col}.ilike.%${q}%`)
-        .join(","),
-    );
-  }
 
-  const start = (page - 1) * REPORT_PAGE_SIZE;
-  const { data, error, count } = await query
-    .order("report_date", { ascending: false })
-    .order("report_no", { ascending: false })
-    .range(start, start + REPORT_PAGE_SIZE - 1);
+  const buildQuery = (head: boolean) => {
+    let query = supabase
+      .from("sr_reports")
+      .select(LIST_COLUMNS, { count: "exact", head });
+    if (params.status && Object.hasOwn(STATUS_LABELS, params.status)) {
+      query = query.eq("status", params.status);
+    }
+    if (isValidIsoDate(params.from))
+      query = query.gte("report_date", params.from);
+    if (isValidIsoDate(params.to)) query = query.lte("report_date", params.to);
+    if (q) {
+      query = query.or(
+        ["report_no", "customer_name", "equipment", "serial_no"]
+          .map((col) => `${col}.ilike.%${q}%`)
+          .join(","),
+      );
+    }
+    return query;
+  };
+
+  const fetchPage = (page: number) => {
+    const start = (page - 1) * REPORT_PAGE_SIZE;
+    return buildQuery(false)
+      .order("report_date", { ascending: false })
+      .order("report_no", { ascending: false })
+      .range(start, start + REPORT_PAGE_SIZE - 1);
+  };
+
+  let page = requested;
+  let { data, error, count } = await fetchPage(page);
+  if (isRangeNotSatisfiable(error)) {
+    const counted = await buildQuery(true);
+    if (counted.error) {
+      return { ok: false, error: srErrorMessage(counted.error) };
+    }
+    const total = counted.count ?? 0;
+    const lastPage = Math.max(1, Math.ceil(total / REPORT_PAGE_SIZE));
+    if (total === 0 || lastPage >= requested) {
+      // 無資料（或筆數在兩次查詢間變動）→ 回空列表，不再重試避免循環。
+      return {
+        ok: true,
+        data: {
+          rows: [],
+          total,
+          page: total === 0 ? 1 : requested,
+          pageSize: REPORT_PAGE_SIZE,
+        },
+      };
+    }
+    page = lastPage;
+    ({ data, error, count } = await fetchPage(page));
+  }
   if (error) return { ok: false, error: srErrorMessage(error) };
   return {
     ok: true,

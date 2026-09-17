@@ -102,7 +102,10 @@ function Grid({
     <div
       className={styles.grid}
       style={{
-        gridTemplateColumns: gridTracks(cols),
+        // 最後一欄用 1fr 吸收外框線寬（.form 的 border-left 佔去寬度），避免最右框線被裁掉。
+        gridTemplateColumns: [gridTracks(cols.slice(0, -1)), "minmax(0, 1fr)"]
+          .filter(Boolean)
+          .join(" "),
         gridTemplateRows: gridTracks(rows),
       }}
     >

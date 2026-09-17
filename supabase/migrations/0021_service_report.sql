@@ -7,7 +7,8 @@
 --          sr_sequences → 用戶端完全不可存取，只由 security definer 的 sr_next_report_no 寫入
 --   * mx_customers、mx_machines：另加 has_module('service_report') 的 select policy（只讀，供選取帶入）
 --   * sr_next_report_no(date)：security definer、併發安全，格式 X + 民國年(3) + 月(2) + 流水號(≥3 位)
---   * 觸發器：已作廢的報告單不可再修改；created_by／created_at 不可變更
+--   * 觸發器：已作廢的報告單不可再修改（FK set null 除外）；created_by／created_at 不可變更；
+--          API 角色另受列印／狀態稽核軌跡限制，新增時強制草稿與 created_by = auth.uid()
 -- 依賴 0001（set_updated_at()）、0011（mx_customers／mx_machines）、0020（admin_module_grants、has_module）。
 --
 -- ⚠️ 套用正式 DB 前需使用者確認並先備份（以 pooler 連線或 SQL Editor 貼上執行）。
@@ -23,7 +24,8 @@
 --      為避免名稱不同而殘留舊約束，改以 pg_constraint 找出 admin_module_grants 上所有「引用 module 欄位的
 --      check 約束」一併刪除，再建立具名的 admin_module_grants_module_check。
 --   2. 狀態轉換（列印／結案／重新開啟／作廢）由 server action 以條件更新完成（spec §4.4）；
---      DB 僅做最小防線：作廢單唯讀（任何身分皆擋，含 service_role）、作廢需原因、不得改 created_by／created_at。
+--      DB 防線：作廢單唯讀（任何身分皆擋，含 service_role；FK set null 除外）、作廢需原因、不得改 created_by／created_at；
+--      API 角色（authenticated／anon）另擋直接寫入竄改列印次數／狀態（見 §3）。
 --   3. sr_sequences 啟用 RLS 且無任何 policy，並撤銷 anon／authenticated 全部權限；
 --      sr_next_report_no 為 security definer（擁有者不受 RLS），第一行檢查 has_module 為唯一閘門。
 --   4. 流水號 > 999 時自然變 4 位以上（lpad 會截斷過長字串，故 ≥ 1000 不經 lpad）。
@@ -134,7 +136,21 @@ create trigger sr_reports_updated_at before update on sr_reports
   for each row execute function set_updated_at();
 
 -- ============================================================
--- 3) 守門觸發器：作廢單唯讀；created_by／created_at 不可變更
+-- 3) 守門觸發器
+--   sr_guard_report（BEFORE UPDATE）：
+--     * 作廢單唯讀（任何身分皆擋，含 service_role）——唯一例外：只有 customer_id／machine_id
+--       變成 NULL（及 updated_at）的更新，即 mx_customers／mx_machines 刪除時 FK「on delete set null」
+--       觸發的內部更新（保養卡永久刪除機台、ERP 銷貨作廢刪除自動建立的機台、刪除客戶）。
+--     * created_by／created_at 不可變更（任何身分）。
+--     * API 角色（current_user ∈ authenticated／anon）另加稽核軌跡防線（呼叫者判斷見下方）：
+--       列印次數不可減少、首次列印時間不可改、已列印不可改回草稿／不可改派工單號、狀態轉換白名單。
+--   sr_guard_report_insert（BEFORE INSERT）：API 角色新增時狀態須為草稿、列印／結案／作廢欄位須為空，
+--     created_by 強制為 auth.uid()。
+--   觸發順序：同一時機的觸發器依名稱字母序執行，sr_reports_guard 先於 sr_reports_updated_at，
+--     故 guard 看到的 new.updated_at 尚未被 set_updated_at 改寫；比較時仍排除 updated_at 以防呼叫端自行指定。
+--   呼叫者判斷（沿用 0020 決策 17）：觸發器函式為 security invoker，以 current_user 判斷——
+--     PostgREST 用戶端為 authenticated（或 anon）；security definer RPC 內為函式擁有者、FK 動作以表擁有者執行，
+--     service_role／SQL Editor 視為受信任維運身分，皆不套用稽核限制。
 -- ============================================================
 create or replace function sr_guard_report()
 returns trigger
@@ -144,6 +160,15 @@ set search_path = public, pg_temp
 as $$
 begin
   if old.status = 'voided' then
+    -- 例外：FK on delete set null（只把 customer_id／machine_id 設為 NULL，其餘不變）
+    if (to_jsonb(new) - 'customer_id' - 'machine_id' - 'updated_at')
+         = (to_jsonb(old) - 'customer_id' - 'machine_id' - 'updated_at')
+       and (new.customer_id is null or new.customer_id is not distinct from old.customer_id)
+       and (new.machine_id  is null or new.machine_id  is not distinct from old.machine_id)
+       and (new.customer_id is distinct from old.customer_id
+            or new.machine_id is distinct from old.machine_id) then
+      return new;
+    end if;
     raise exception using errcode = 'P0001', message = 'voided',
       detail = '報告單已作廢，不可修改';
   end if;
@@ -151,6 +176,40 @@ begin
      or new.created_at is distinct from old.created_at then
     raise exception using errcode = 'P0001', message = 'validation',
       detail = '不可變更建立者或建立時間';
+  end if;
+
+  -- 受信任身分（service_role／SQL Editor／definer RPC／FK 動作）不套用以下稽核限制
+  if current_user::text not in ('authenticated', 'anon') then
+    return new;
+  end if;
+
+  if new.print_count < old.print_count then
+    raise exception using errcode = 'P0001', message = 'validation',
+      detail = '列印次數不可減少';
+  end if;
+  if old.first_printed_at is not null
+     and new.first_printed_at is distinct from old.first_printed_at then
+    raise exception using errcode = 'P0001', message = 'validation',
+      detail = '首次列印時間不可變更';
+  end if;
+  if old.print_count > 0 and new.status = 'draft' then
+    raise exception using errcode = 'P0001', message = 'validation',
+      detail = '已列印的報告單不可改回草稿';
+  end if;
+  if old.print_count > 0 and new.report_no is distinct from old.report_no then
+    raise exception using errcode = 'P0001', message = 'validation',
+      detail = '已列印的報告單不可改派工單號';
+  end if;
+  -- 狀態轉換白名單：同狀態、draft→printed、printed→completed、completed→printed、非作廢→voided
+  if new.status is distinct from old.status
+     and not (
+       (old.status = 'draft'     and new.status = 'printed')
+       or (old.status = 'printed'   and new.status = 'completed')
+       or (old.status = 'completed' and new.status = 'printed')
+       or new.status = 'voided'
+     ) then
+    raise exception using errcode = 'P0001', message = 'validation',
+      detail = format('報告單狀態不可由 %s 改為 %s', old.status, new.status);
   end if;
   return new;
 end;
@@ -160,6 +219,39 @@ revoke execute on function sr_guard_report() from public, anon, authenticated;
 drop trigger if exists sr_reports_guard on sr_reports;
 create trigger sr_reports_guard before update on sr_reports
   for each row execute function sr_guard_report();
+
+create or replace function sr_guard_report_insert()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user::text not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if new.status is distinct from 'draft' then
+    raise exception using errcode = 'P0001', message = 'validation',
+      detail = '新增的報告單必須為草稿';
+  end if;
+  if new.print_count <> 0
+     or new.first_printed_at is not null or new.last_printed_at is not null then
+    raise exception using errcode = 'P0001', message = 'validation',
+      detail = '新增的報告單不可帶列印紀錄';
+  end if;
+  if new.completed_at is not null or new.voided_at is not null or new.void_reason is not null then
+    raise exception using errcode = 'P0001', message = 'validation',
+      detail = '新增的報告單不可帶結案或作廢紀錄';
+  end if;
+  new.created_by := auth.uid();
+  return new;
+end;
+$$;
+revoke execute on function sr_guard_report_insert() from public, anon, authenticated;
+
+drop trigger if exists sr_reports_guard_insert on sr_reports;
+create trigger sr_reports_guard_insert before insert on sr_reports
+  for each row execute function sr_guard_report_insert();
 
 -- ============================================================
 -- 4) RLS 與表權限

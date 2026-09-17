@@ -6,7 +6,6 @@ import {
   PAPER_HEIGHT_MM,
   PAPER_WIDTH_MM,
   SAFE_MARGINS_MM,
-  calibrationTransform,
   checkPrintableArea,
   clampCalibration,
   contentBoxMm,
@@ -68,28 +67,6 @@ describe("clampCalibration", () => {
       offsetYmm: 0,
       scale: 0.95,
     });
-  });
-});
-
-describe("calibrationTransform", () => {
-  it("預設 → none", () => {
-    expect(calibrationTransform(DEFAULT_CALIBRATION)).toBe("none");
-  });
-  it("平移與縮放", () => {
-    expect(
-      calibrationTransform({ offsetXmm: 1.5, offsetYmm: -2, scale: 0.95 }),
-    ).toBe("translate(1.5mm, -2mm) scale(0.95)");
-    expect(calibrationTransform({ offsetXmm: 0, offsetYmm: 3, scale: 1 })).toBe(
-      "translate(0mm, 3mm)",
-    );
-    expect(
-      calibrationTransform({ offsetXmm: 0, offsetYmm: 0, scale: 1.05 }),
-    ).toBe("scale(1.05)");
-  });
-  it("超出範圍的值先夾住", () => {
-    expect(
-      calibrationTransform({ offsetXmm: 40, offsetYmm: 0, scale: 5 }),
-    ).toBe("translate(15mm, 0mm) scale(1.1)");
   });
 });
 

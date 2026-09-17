@@ -7,7 +7,9 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  SR_AUTO_NO_FAILED_MESSAGE,
   SR_NOT_FOUND_MESSAGE,
+  SR_PRINTED_NO_LOCKED_MESSAGE,
   SR_STALE_MESSAGE,
   srErrorMessage,
 } from "@/lib/service-report/errors";
@@ -93,6 +95,29 @@ export async function saveReportAction(
   const supabase = await getServerSupabase();
 
   if (input.id) {
+    // 已列印過的報告單不可改派工單號（紙本已帶出該號碼；DB 觸發器亦會擋）。
+    // 先讀現況在 action 端擋下，給明確訊息且不送出更新；讀不到則交給下方條件更新判斷。
+    // payload.report_no 已正規化；與 DB 觸發器相同以原值比較（is distinct from）。
+    const current = await supabase
+      .from("sr_reports")
+      .select("report_no, print_count")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (current.error) {
+      return { ok: false, error: srErrorMessage(current.error) };
+    }
+    const stored = current.data as {
+      report_no: string;
+      print_count: number;
+    } | null;
+    if (
+      stored &&
+      stored.print_count > 0 &&
+      payload.report_no !== stored.report_no
+    ) {
+      return { ok: false, error: SR_PRINTED_NO_LOCKED_MESSAGE };
+    }
+
     const { data, error } = await supabase
       .from("sr_reports")
       .update(payload)
@@ -128,6 +153,10 @@ export async function saveReportAction(
     lastError = error;
     // 只有自動取號撞到手動輸入的號碼才重取；其他錯誤直接回報。
     if (!(autoNo && error.code === "23505")) break;
+  }
+  // 自動取號連續撞號用盡重試：不是使用者輸入的單號重複，給可行動的提示。
+  if (autoNo && lastError?.code === "23505") {
+    return { ok: false, error: SR_AUTO_NO_FAILED_MESSAGE };
   }
   return { ok: false, error: srErrorMessage(lastError) };
 }

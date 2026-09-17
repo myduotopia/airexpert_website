@@ -9,6 +9,7 @@ import {
   SAFE_MARGIN_MM,
   SECTION_HEIGHTS_MM,
   SHEET_HEIGHT_MM,
+  SHEET_WIDTH_MM,
   checkGlyph,
   gridTracks,
   rocShortDate,
@@ -16,6 +17,12 @@ import {
   splitParts,
   totalContentHeightMm,
 } from "@/components/service-report/sheet-layout";
+import {
+  FORM_BOX_MM,
+  PAPER_HEIGHT_MM,
+  PAPER_WIDTH_MM,
+  SAFE_MARGINS_MM,
+} from "@/lib/service-report/layout";
 import {
   defaultParts,
   emptySheetData,
@@ -31,6 +38,20 @@ describe("sheet-layout 幾何預算", () => {
     expect(SAFE_MARGIN_MM.top + CONTENT_HEIGHT_MM + SAFE_MARGIN_MM.bottom).toBe(
       SHEET_HEIGHT_MM,
     );
+  });
+
+  it("與 lib/service-report/layout.ts 同源：FORM_BOX_MM = sheet 內容框", () => {
+    expect(SHEET_WIDTH_MM).toBe(PAPER_WIDTH_MM);
+    expect(SHEET_HEIGHT_MM).toBe(PAPER_HEIGHT_MM);
+    expect(SAFE_MARGIN_MM).toEqual(SAFE_MARGINS_MM);
+    expect(FORM_BOX_MM).toEqual({
+      left: SAFE_MARGIN_MM.left,
+      top: SAFE_MARGIN_MM.top,
+      right: SAFE_MARGIN_MM.left + CONTENT_WIDTH_MM,
+      bottom: SAFE_MARGIN_MM.top + CONTENT_HEIGHT_MM,
+      width: CONTENT_WIDTH_MM,
+      height: CONTENT_HEIGHT_MM,
+    });
   });
 
   it("各區高度總和 ≤ 279mm", () => {
