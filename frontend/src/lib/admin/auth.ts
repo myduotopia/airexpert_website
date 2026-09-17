@@ -80,9 +80,9 @@ export const getCurrentUserRole = cache(async (): Promise<AdminRole | null> => {
 });
 
 /** 後台模組授權（與角色正交；見 admin_module_grants / has_module()，spec §3）。 */
-export type AdminModule = "erp";
+export type AdminModule = "erp" | "service_report";
 
-const KNOWN_MODULES: readonly AdminModule[] = ["erp"];
+const KNOWN_MODULES: readonly AdminModule[] = ["erp", "service_report"];
 
 /**
  * 取得目前登入者被授權的模組清單（未登入 / 查詢失敗回空陣列）。

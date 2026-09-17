@@ -1,0 +1,269 @@
+/* 機台維護報告單（A4 直式）。
+   尺寸一律以 --u（1 sheet unit = 1mm）表示；幾何（欄寬、列高）由 sheet-layout.ts 以 inline style 帶入。
+   文字實心黑色、欄位名粗體、邊框黑色實線 0.3mm（點陣印表機清晰）。 */
+
+/* 預覽：量測容器，寬度隨外層等比縮放。 */
+.preview {
+  container-type: inline-size;
+  width: 100%;
+}
+
+/* 列印：容器寬度 = 210mm，--u = 1mm。 */
+.print {
+  container-type: inline-size;
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+}
+
+.sheet {
+  --u: calc(100cqw / 210);
+  --line: max(1px, calc(var(--u) * 0.3));
+  position: relative;
+  width: calc(var(--u) * 210);
+  height: calc(var(--u) * 297);
+  overflow: hidden;
+  background: #fff;
+  color: #000;
+  font-family:
+    "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", sans-serif;
+  font-size: calc(var(--u) * 3.2);
+  line-height: 1.2;
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print .sheet {
+  --u: 1mm;
+}
+
+.sheet *,
+.sheet *::before,
+.sheet *::after {
+  box-sizing: border-box;
+}
+
+/* 校正層：整張 210×297，transform 由 inline style 帶入；外層 sheet 不變形。
+   縮放原點為紙張中心，與 lib/service-report/layout.ts 的 checkPrintableArea 算法一致。 */
+.layer {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+
+/* 安全範圍內的內容區（位置／尺寸由 inline style 帶入）。 */
+.content {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── 表頭 ─────────────────────────────────────── */
+.header {
+  display: grid;
+  flex: none;
+}
+
+.headerCode {
+  font-size: calc(var(--u) * 4);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  align-self: start;
+  padding-top: calc(var(--u) * 1);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 3);
+  min-width: 0;
+}
+
+.logo {
+  height: calc(var(--u) * 13);
+  max-width: calc(var(--u) * 30);
+  object-fit: contain;
+  display: block;
+}
+
+.logoMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--u) * 12);
+  padding: 0 calc(var(--u) * 2);
+  border: calc(var(--u) * 0.6) solid #000;
+  font-size: calc(var(--u) * 4.6);
+  font-weight: 900;
+  letter-spacing: calc(var(--u) * 0.4);
+  white-space: nowrap;
+}
+
+.company {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 0.6);
+  white-space: nowrap;
+}
+
+.companyName {
+  font-size: calc(var(--u) * 5.6);
+  font-weight: 700;
+  letter-spacing: calc(var(--u) * 0.5);
+  line-height: 1.1;
+}
+
+.companyEn,
+.companyTel {
+  font-size: calc(var(--u) * 3.2);
+  font-weight: 700;
+}
+
+.title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: calc(var(--u) * 7);
+  font-weight: 700;
+  letter-spacing: calc(var(--u) * 2);
+  line-height: 1;
+}
+
+/* ── 表格 ─────────────────────────────────────── */
+.form {
+  flex: none;
+  border-top: var(--line) solid #000;
+  border-left: var(--line) solid #000;
+}
+
+.grid {
+  display: grid;
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 calc(var(--u) * 1.2);
+  border-right: var(--line) solid #000;
+  border-bottom: var(--line) solid #000;
+}
+
+.label {
+  font-size: calc(var(--u) * 3.4);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.value {
+  flex: 1;
+  min-width: 0;
+  font-size: calc(var(--u) * 3.2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.center {
+  justify-content: center;
+  text-align: center;
+}
+
+.sectionTitle {
+  font-size: calc(var(--u) * 3.4);
+  font-weight: 700;
+  letter-spacing: calc(var(--u) * 0.6);
+}
+
+.stack {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: calc(var(--u) * 0.8);
+}
+
+.opts {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: calc(var(--u) * 2);
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: calc(var(--u) * 3.4);
+}
+
+.opt {
+  font-weight: 400;
+}
+
+.optOn {
+  font-weight: 700;
+}
+
+.dateLine {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 4);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dateValue {
+  min-width: calc(var(--u) * 18);
+  font-size: calc(var(--u) * 3.4);
+  white-space: nowrap;
+}
+
+/* 修護記要：多行換行，固定高度，超出裁切（不撐高頁面）。 */
+.summaryBody {
+  display: block;
+  width: 100%;
+  font-size: calc(var(--u) * 3.4);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+/* 簽名欄：標題置頂、簽名人置底。 */
+.signCell {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  padding-top: calc(var(--u) * 1.2);
+  padding-bottom: calc(var(--u) * 1.5);
+}
+
+.signValue {
+  font-size: calc(var(--u) * 3.6);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 聯單說明 ─────────────────────────────────── */
+.footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--u) * 3);
+  font-size: calc(var(--u) * 3.2);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.copies {
+  display: flex;
+  gap: calc(var(--u) * 2.5);
+}

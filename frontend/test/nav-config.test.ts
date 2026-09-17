@@ -114,7 +114,7 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
       "erp-reports",
       "erp-items",
     ]);
-    for (const i of ADMIN_NAV.filter((x) => x.modules)) {
+    for (const i of ADMIN_NAV.filter((x) => x.modules?.includes("erp"))) {
       expect(i.group).toBe("ERP");
       expect(i.href.startsWith("/admin/erp")).toBe(true);
     }
@@ -225,7 +225,9 @@ describe("activeNavHref（側欄 active 取最長匹配）", () => {
   });
 
   it("ERP 子頁（頁內 tab）亮所屬主項，不退回亮 ERP 總覽", () => {
-    const erpHrefs = ADMIN_NAV.filter((i) => i.modules).map((i) => i.href);
+    const erpHrefs = ADMIN_NAV.filter((i) => i.modules?.includes("erp")).map(
+      (i) => i.href,
+    );
     const cases: [string, string][] = [
       ["/admin/erp", "/admin/erp"],
       ["/admin/erp/quotes/abc/edit", "/admin/erp/sales"],
@@ -252,5 +254,76 @@ describe("activeNavHref（側欄 active 取最長匹配）", () => {
     expect(
       activeNavHref("/admin/erp/salesX", ["/admin/erp", "/admin/erp/sales"]),
     ).toBe("/admin/erp");
+  });
+});
+
+describe("機台維護報告單（service_report 模組 gating）", () => {
+  const erpKeys = ADMIN_NAV.filter((i) => i.modules?.includes("erp")).map(
+    (i) => i.key,
+  );
+
+  it("項目設定：模組 service_report、group 維護、已啟用", () => {
+    const item = ADMIN_NAV.find((i) => i.key === "service-reports");
+    expect(item).toEqual({
+      key: "service-reports",
+      label: "機台維護報告單",
+      href: "/admin/service-reports",
+      enabled: true,
+      modules: ["service_report"],
+      group: "維護",
+    });
+  });
+
+  it("位於保養卡兩項之後、ERP 分組之前", () => {
+    const keys = ADMIN_NAV.map((i) => i.key);
+    const idx = keys.indexOf("service-reports");
+    expect(keys[idx - 1]).toBe("maintenance-customers");
+    expect(keys[idx + 1]).toBe("erp");
+  });
+
+  it("office 有 service_report 授權：保養卡兩項 + 報告單", () => {
+    expect(navForUser("office", ["service_report"]).map((i) => i.key)).toEqual([
+      "maintenance",
+      "maintenance-customers",
+      "service-reports",
+    ]);
+  });
+
+  it("office 同時有 service_report 與 erp：報告單在 ERP 之前", () => {
+    expect(
+      navForUser("office", ["service_report", "erp"]).map((i) => i.key),
+    ).toEqual([
+      "maintenance",
+      "maintenance-customers",
+      "service-reports",
+      ...erpKeys,
+    ]);
+  });
+
+  it("office 無授權：看不到報告單", () => {
+    expect(
+      navForUser("office", []).some((i) => i.key === "service-reports"),
+    ).toBe(false);
+  });
+
+  it("ERP-only 使用者（erp 角色 + erp 授權）看不到報告單", () => {
+    expect(
+      navForUser("erp", ["erp"]).some((i) => i.key === "service-reports"),
+    ).toBe(false);
+  });
+
+  it("navForRole 不回傳報告單（任何角色）", () => {
+    for (const role of ["admin", "seo_manager", "office", "erp"] as const) {
+      expect(navForRole(role).some((i) => i.key === "service-reports")).toBe(
+        false,
+      );
+    }
+  });
+
+  it("停在報告單子頁時亮報告單項", () => {
+    const hrefs = navForUser("office", ["service_report"]).map((i) => i.href);
+    expect(activeNavHref("/admin/service-reports/abc/edit", hrefs)).toBe(
+      "/admin/service-reports",
+    );
   });
 });
