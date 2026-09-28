@@ -81,7 +81,10 @@ export async function nextReportNoAction(
 /**
  * 儲存報告單。
  * - 新增（無 id）：單號空白則自動取號，狀態一律 draft；
- * - 編輯（有 id）：僅限 draft / printed / completed，不動狀態與列印紀錄。
+ * - 編輯（有 id）：僅限 draft / printed / completed，不動狀態與列印紀錄；
+ * - 保養方案階段（plan_stage_id / plan_stage_hours / plan_stage_label，0022）：
+ *   輸入未帶該欄位＝不更動；plan_stage_id 傳 null＝清除（快照一併清空）。
+ *   正規化規則見 lib/service-report/validate.ts normalizeReportInput。
  */
 export async function saveReportAction(
   input: ServiceReportInput,

@@ -56,6 +56,10 @@ export const TEXT_LABELS: Record<keyof typeof TEXT_LIMITS, string> = {
 };
 
 export const PART_NAME_MAX = 50;
+/** 保養階段快照名稱長度上限（0022 的 plan_stage_label）。 */
+export const PLAN_STAGE_LABEL_MAX = 50;
+/** 保養階段時數上限（與 0022 的 check 相同）。 */
+export const PLAN_STAGE_HOURS_MAX = 1_000_000;
 export const PART_QTY_MAX = 20;
 export const RESULT_TEXT_MAX = 50;
 export const VOID_REASON_MAX = 500;
@@ -230,7 +234,28 @@ export function validateReportInput(input: unknown): string | null {
     }
   }
 
+  if (
+    r.plan_stage_id !== null &&
+    r.plan_stage_id !== undefined &&
+    r.plan_stage_id !== "" &&
+    !isUuid(r.plan_stage_id)
+  ) {
+    return "保養階段選擇不正確";
+  }
+  if (r.plan_stage_hours !== null && r.plan_stage_hours !== undefined) {
+    const h = r.plan_stage_hours;
+    if (
+      typeof h !== "number" ||
+      !Number.isInteger(h) ||
+      h <= 0 ||
+      h > PLAN_STAGE_HOURS_MAX
+    ) {
+      return "保養階段時數不正確";
+    }
+  }
+
   let err =
+    checkText(r.plan_stage_label, PLAN_STAGE_LABEL_MAX, "保養階段名稱") ??
     checkEnumOrNull(r.time_slot, TIME_SLOT_LABELS, "時段") ??
     checkEnumOrNull(r.machine_state, MACHINE_STATE_LABELS, "機台狀態") ??
     checkSubset(r.service_items, SERVICE_ITEM_LABELS, "服務項目") ??
@@ -331,6 +356,32 @@ export function normalizeReportInput(
   } as ServiceReportWrite;
   for (const key of NULLABLE_TEXT_FIELDS) {
     out[key] = cleanText(input[key]);
+  }
+
+  // 保養方案階段（0022）：
+  // - undefined（含「有 key 但值是 undefined」）＝不更動 DB 既有值。用 undefined 而非
+  //   Object.hasOwn 判定：React Flight 序列化 server action 參數時會保留值為 undefined
+  //   的 key，若以 hasOwn 判定，client 傳 `plan_stage_id: stageId ?? undefined`
+  //   會在每次存檔時把階段誤清空。
+  // - plan_stage_id 傳 null / ""＝清除該單的階段，兩個快照欄位一併清空；
+  // - 寫入非 null 的 plan_stage_id 時，一定連兩個快照欄位一起寫（缺 → null），
+  //   否則該單會留著「上一個階段」的快照，顯示錯誤且在階段被刪除後永久保留。
+  const stageHours = (v: unknown): number | null =>
+    typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null;
+  if (input.plan_stage_id !== undefined) {
+    const stageId = isUuid(input.plan_stage_id) ? input.plan_stage_id : null;
+    out.plan_stage_id = stageId;
+    out.plan_stage_hours =
+      stageId === null ? null : stageHours(input.plan_stage_hours);
+    out.plan_stage_label =
+      stageId === null ? null : cleanText(input.plan_stage_label);
+  } else {
+    if (input.plan_stage_hours !== undefined) {
+      out.plan_stage_hours = stageHours(input.plan_stage_hours);
+    }
+    if (input.plan_stage_label !== undefined) {
+      out.plan_stage_label = cleanText(input.plan_stage_label);
+    }
   }
   return out;
 }

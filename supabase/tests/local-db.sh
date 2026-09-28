@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
-# supabase/migrations/*.sql，再執行 supabase/tests/erp_posting_test.sql 與 service_report_test.sql。
+# supabase/migrations/*.sql，再依序執行 supabase/tests/erp_posting_test.sql、
+# service_report_test.sql 與 service_plan_test.sql。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
 # 用法：bash supabase/tests/local-db.sh
@@ -76,18 +77,26 @@ psql_run -1 < "$ROOT/migrations/0020_erp_foundation.sql"
 echo "==> 重跑 0021（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0021_service_report.sql"
 
+# 0022 會 create or replace sr_guard_report（擴充作廢單 FK set null 例外），
+# 故重跑順序必須在 0021 之後，與正式 DB 的套用順序一致。
+echo "==> 重跑 0022（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0022_service_plan.sql"
+
 echo "==> 執行 erp_posting_test.sql"
 psql_run < "$ROOT/tests/erp_posting_test.sql"
 
 echo "==> 執行 service_report_test.sql"
 psql_run < "$ROOT/tests/service_report_test.sql"
 
+echo "==> 執行 service_plan_test.sql"
+psql_run < "$ROOT/tests/service_plan_test.sql"
+
 echo "==> 確認 rollback 未留資料"
 LEFT=$(docker exec "$NAME" psql -U postgres -tAc \
-  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_sequences)")
+  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans)")
 if [ "$LEFT" != "0" ]; then
   echo "FAIL：測試後仍殘留 $LEFT 列" >&2
   exit 1
 fi
 
-echo "==> ALL ERP + SERVICE REPORT TESTS PASSED"
+echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN TESTS PASSED"
