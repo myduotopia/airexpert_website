@@ -85,6 +85,10 @@ export interface ServiceReport {
   completed_at: string | null;
   voided_at: string | null;
   void_reason: string | null;
+  /** 本單套用的保養方案階段（0022）。階段被刪除時 id 轉 null，下面兩個快照欄位仍保留語意。 */
+  plan_stage_id: string | null;
+  plan_stage_hours: number | null;
+  plan_stage_label: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -117,12 +121,27 @@ export type ServiceReportInput = Pick<
   | "technician"
   | "customer_signer"
   | "note"
-> & { id?: string };
+> & {
+  id?: string;
+  /**
+   * 套用的保養方案階段（0022）。三個欄位皆為選填：
+   * 未帶＝不更動既有值；plan_stage_id 傳 null＝清除（快照欄位一併清空）。
+   */
+  plan_stage_id?: string | null;
+  plan_stage_hours?: number | null;
+  plan_stage_label?: string | null;
+};
 
 /** ReportSheet 需要的欄位（草稿預覽、已存單、空白表單皆可）。 */
 export type ServiceReportSheetData = Omit<
   ServiceReportInput,
-  "id" | "customer_id" | "machine_id" | "note"
+  | "id"
+  | "customer_id"
+  | "machine_id"
+  | "note"
+  | "plan_stage_id"
+  | "plan_stage_hours"
+  | "plan_stage_label"
 >;
 
 export type SrResult<T> = { ok: true; data: T } | { ok: false; error: string };

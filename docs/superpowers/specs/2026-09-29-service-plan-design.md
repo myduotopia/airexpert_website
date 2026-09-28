@@ -85,7 +85,8 @@ create index if not exists sr_reports_plan_stage_idx
 ### 4.1 RLS 與權限
 - `sr_service_plans`、`sr_service_plan_stages`、`sr_machine_plans`：`has_module('service_report')` 可 select/insert/update/delete。方案是設定資料，允許刪除；報告單已快照 `plan_stage_hours/label`，刪除階段不影響歷史單據。
 - `mx_records`：**新增** `has_module('service_report')` 的 **select** policy（提醒與時數判定需要；目前 office@ 因具 office 角色可讀，純模組授權帳號則否）。
-- `sr_reports.plan_stage_*`：沿用既有 policy。0021 的 `sr_guard_report` 稽核觸發器維持不變 — 新欄位可在草稿階段修改；已列印後修改階段不禁止（僅單號／列印欄位受限）。
+- `sr_reports.plan_stage_*`：沿用既有 policy。未作廢的報告單（含已列印）本來就可修改與清除階段欄位（`sr_guard_report` 只限制單號、狀態與列印欄位）。
+- **`sr_guard_report` 需最小擴充**：0021 的「作廢單唯讀」只對 `customer_id`／`machine_id` 的 FK set-null 開例外。若不把 `plan_stage_id` 一併納入，只要有**作廢單**引用某階段，刪除該階段或方案就會被觸發器擋下（error `voided`），與「階段可刪、報告單留快照」相牴觸。0022 以 `create or replace` 將例外清單擴充到 `plan_stage_id`，其餘邏輯不變；本機測試已覆蓋含作廢單的刪除情境。
 
 ## 5. 判定邏輯（純函式，`frontend/src/lib/service-report/plan/*`）
 
