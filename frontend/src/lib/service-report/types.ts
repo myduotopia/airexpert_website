@@ -88,6 +88,11 @@ export interface ServiceReport {
   /** 本單套用的保養方案階段（0022）。階段被刪除時 id 轉 null，下面兩個快照欄位仍保留語意。 */
   plan_stage_id: string | null;
   plan_stage_hours: number | null;
+  /**
+   * 階段名稱快照：存 stage.label 原文（如「基礎保養」），不是 stageLabel(stage)
+   * 的完整顯示文字（「4000 小時 基礎保養」）— 顯示時以 plan_stage_hours 組字即可，
+   * 存完整文字會讓長名稱撞上 50 字上限（PLAN_STAGE_LABEL_MAX）而被擋下。
+   */
   plan_stage_label: string | null;
   created_by: string | null;
   created_at: string;
@@ -125,10 +130,12 @@ export type ServiceReportInput = Pick<
   id?: string;
   /**
    * 套用的保養方案階段（0022）。三個欄位皆為選填：
-   * 未帶＝不更動既有值；plan_stage_id 傳 null＝清除（快照欄位一併清空）。
+   * undefined＝不更動既有值；plan_stage_id 傳 null / ""＝清除（快照欄位一併清空）；
+   * 帶了 plan_stage_id 就一定會連兩個快照欄位一起寫（缺 → null）。
    */
   plan_stage_id?: string | null;
   plan_stage_hours?: number | null;
+  /** 階段名稱原文（stage.label，如「基礎保養」），不是 stageLabel() 的完整顯示文字。 */
   plan_stage_label?: string | null;
 };
 

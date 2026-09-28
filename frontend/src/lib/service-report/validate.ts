@@ -358,21 +358,28 @@ export function normalizeReportInput(
     out[key] = cleanText(input[key]);
   }
 
-  // 保養方案階段（0022）：只有輸入帶了該欄位才寫入（未帶＝不更動 DB 既有值）；
-  // plan_stage_id 傳 null＝清除該單的階段，兩個快照欄位一併清空。
-  const hasStageId = Object.hasOwn(input, "plan_stage_id");
-  const stageId = isUuid(input.plan_stage_id) ? input.plan_stage_id : null;
-  if (hasStageId) out.plan_stage_id = stageId;
-  if (hasStageId && stageId === null) {
-    out.plan_stage_hours = null;
-    out.plan_stage_label = null;
+  // 保養方案階段（0022）：
+  // - undefined（含「有 key 但值是 undefined」）＝不更動 DB 既有值。用 undefined 而非
+  //   Object.hasOwn 判定：React Flight 序列化 server action 參數時會保留值為 undefined
+  //   的 key，若以 hasOwn 判定，client 傳 `plan_stage_id: stageId ?? undefined`
+  //   會在每次存檔時把階段誤清空。
+  // - plan_stage_id 傳 null / ""＝清除該單的階段，兩個快照欄位一併清空；
+  // - 寫入非 null 的 plan_stage_id 時，一定連兩個快照欄位一起寫（缺 → null），
+  //   否則該單會留著「上一個階段」的快照，顯示錯誤且在階段被刪除後永久保留。
+  const stageHours = (v: unknown): number | null =>
+    typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null;
+  if (input.plan_stage_id !== undefined) {
+    const stageId = isUuid(input.plan_stage_id) ? input.plan_stage_id : null;
+    out.plan_stage_id = stageId;
+    out.plan_stage_hours =
+      stageId === null ? null : stageHours(input.plan_stage_hours);
+    out.plan_stage_label =
+      stageId === null ? null : cleanText(input.plan_stage_label);
   } else {
-    if (Object.hasOwn(input, "plan_stage_hours")) {
-      const h = input.plan_stage_hours;
-      out.plan_stage_hours =
-        typeof h === "number" && Number.isInteger(h) && h > 0 ? h : null;
+    if (input.plan_stage_hours !== undefined) {
+      out.plan_stage_hours = stageHours(input.plan_stage_hours);
     }
-    if (Object.hasOwn(input, "plan_stage_label")) {
+    if (input.plan_stage_label !== undefined) {
       out.plan_stage_label = cleanText(input.plan_stage_label);
     }
   }

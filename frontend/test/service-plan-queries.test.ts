@@ -8,13 +8,25 @@ type DbError = { code?: string; message: string } | null;
 
 let tables: Record<string, Row[]> = {};
 let errors: Record<string, DbError> = {};
+/** table → 總列數：不實際建表，依 range 產生同樣的假列（測分頁保護上限用）。 */
+let generated: Record<string, number> = {};
+/** 每次 .from() 的查詢紀錄（表、order 方向、gte 條件）。 */
+let log: {
+  table: string;
+  orders: [string, boolean][];
+  gte: [string, unknown][];
+}[] = [];
 
 class Query implements PromiseLike<{ data: unknown; error: DbError }> {
   private conds: ((r: Row) => boolean)[] = [];
   private from = 0;
   private to = Number.MAX_SAFE_INTEGER;
   private single = false;
-  constructor(public table: string) {}
+  private entry: (typeof log)[number];
+  constructor(public table: string) {
+    this.entry = { table, orders: [], gte: [] };
+    log.push(this.entry);
+  }
   select(): this {
     return this;
   }
@@ -34,7 +46,16 @@ class Query implements PromiseLike<{ data: unknown; error: DbError }> {
     this.conds.push((r) => (r[col] ?? null) !== val);
     return this;
   }
-  order(): this {
+  gte(col: string, val: string): this {
+    this.entry.gte.push([col, val]);
+    this.conds.push((r) => {
+      const v = r[col];
+      return typeof v === "string" && v >= val;
+    });
+    return this;
+  }
+  order(col?: string, opts?: { ascending?: boolean }): this {
+    if (col) this.entry.orders.push([col, opts?.ascending !== false]);
     return this;
   }
   range(from: number, to: number): this {
@@ -49,6 +70,13 @@ class Query implements PromiseLike<{ data: unknown; error: DbError }> {
   private run(): { data: unknown; error: DbError } {
     const error = errors[this.table] ?? null;
     if (error) return { data: null, error };
+    const total = generated[this.table];
+    if (total) {
+      const end = Math.min(total, this.to + 1);
+      const data: Row[] = [];
+      for (let i = this.from; i < end; i++) data.push({ id: `g${i}` });
+      return { data, error: null };
+    }
     const rows = (tables[this.table] ?? []).filter((r) =>
       this.conds.every((c) => c(r)),
     );
@@ -70,6 +98,7 @@ vi.mock("@/lib/supabase-server", () => ({
   })),
 }));
 
+import { SP_TOO_MANY_ROWS_MESSAGE } from "@/lib/service-report/plan/errors";
 import {
   getPlanWithStages,
   listMachinePlanRows,
@@ -114,6 +143,8 @@ function machine(
 
 beforeEach(() => {
   errors = {};
+  generated = {};
+  log = [];
   tables = {
     sr_service_plans: [
       {
@@ -203,6 +234,24 @@ describe("listPlansWithStages / getPlanWithStages", () => {
     expect(r.data.map((p) => p.id)).toEqual([P1, P2]);
     expect(r.data[0].stages.map((s) => s.hours)).toEqual([2000, 4000]);
     expect(r.data[1].stages.map((s) => s.id)).toEqual([S3]);
+  });
+
+  it("方案帶使用機台數（逐台指定 + 馬力比對）", async () => {
+    const r = await listPlansWithStages();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // P1：M1 / M4 靠馬力比到，M3 逐台指定
+    expect(r.data[0]).toMatchObject({
+      id: P1,
+      machine_count: 3,
+      override_machine_count: 1,
+    });
+    // P2：只有 M2 靠馬力比到
+    expect(r.data[1]).toMatchObject({
+      id: P2,
+      machine_count: 1,
+      override_machine_count: 0,
+    });
   });
 
   it("單一方案；id 不合法 / 不存在 → null", async () => {
@@ -360,6 +409,79 @@ describe("listStagesForMachine", () => {
     expect(await listStagesForMachine(uuid(98))).toEqual({
       ok: true,
       data: null,
+    });
+  });
+});
+
+describe("抄表讀取：排序、期間窗與分頁保護", () => {
+  /** TODAY - READING_WINDOW_DAYS(540)。 */
+  const WINDOW_START = "2025-03-20";
+
+  it("抄表由新到舊讀（讀到上限時捨棄的是最舊的，不是最新的）", async () => {
+    await listMachinePlanRows();
+    const records = log.find((q) => q.table === "mx_records")!;
+    expect(records.orders[0]).toEqual(["service_date", false]);
+    const reports = log.find((q) => q.table === "sr_reports")!;
+    expect(reports.orders[0]).toEqual(["report_date", false]);
+  });
+
+  it("提醒清單只讀最近 540 天的抄表；機台對應清單不設限", async () => {
+    // M3（逐台指定 P1）只有超出期間窗的舊抄表（保養卡與報告單各一筆）
+    tables.mx_records.push({
+      id: "old",
+      machine_id: M3,
+      service_date: "2024-01-01",
+      hours: "5000",
+    });
+    tables.sr_reports.push({
+      id: "old-x",
+      machine_id: M3,
+      report_date: "2024-01-02",
+      status: "completed",
+      results: { compressor: { run_hours: "5001" } },
+      plan_stage_id: null,
+    });
+
+    const reminders = await listReminders(TODAY);
+    expect(reminders.ok).toBe(true);
+    if (!reminders.ok) return;
+    expect(log.find((q) => q.table === "mx_records")!.gte).toEqual([
+      ["service_date", WINDOW_START],
+    ]);
+    // 窗外的抄表不算：M3 不會因為 2024 年的 5000 小時被提醒
+    expect(reminders.data.some((x) => x.machine_id === M3)).toBe(false);
+
+    log = [];
+    const rows = await listMachinePlanRows();
+    expect(rows.ok).toBe(true);
+    if (!rows.ok) return;
+    expect(log.find((q) => q.table === "mx_records")!.gte).toEqual([]);
+    expect(rows.data.rows.find((x) => x.machine_id === M3)?.latest_hours).toBe(
+      5001,
+    );
+  });
+
+  it("已開過的階段不受期間窗限制（舊保養不會被重複提醒）", async () => {
+    // M4 的 2000 小時階段在期間窗之前就開過了
+    tables.sr_reports = tables.sr_reports.map((r) =>
+      r.id === "x4" ? { ...r, report_date: "2023-05-01" } : r,
+    );
+    const r = await listReminders(TODAY);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.some((x) => x.machine_id === M4)).toBe(false);
+  });
+
+  it("提醒清單只掃一次 sr_reports（抄表與已開過階段同一趟）", async () => {
+    await listReminders(TODAY);
+    expect(log.filter((q) => q.table === "sr_reports")).toHaveLength(1);
+  });
+
+  it("分頁讀滿保護上限 → 明確錯誤，不回殘缺資料", async () => {
+    generated.sr_machine_plans = 200_000;
+    expect(await listMachinePlanRows()).toEqual({
+      ok: false,
+      error: SP_TOO_MANY_ROWS_MESSAGE,
     });
   });
 });

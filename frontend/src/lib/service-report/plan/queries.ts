@@ -7,8 +7,12 @@ import { taipeiTodayYmd } from "@/lib/analytics/ranges";
 import { getServerSupabase } from "@/lib/supabase-server";
 import type { ServiceReportResults, SrResult } from "../types";
 import { isUuid } from "../validate";
-import { machineLabel, reminderFor, sortReminders } from "./due";
-import { planErrorMessage } from "./errors";
+import { addDaysIso, machineLabel, reminderFor, sortReminders } from "./due";
+import {
+  SP_TOO_MANY_ROWS_CODE,
+  SP_TOO_MANY_ROWS_MESSAGE,
+  planErrorMessage,
+} from "./errors";
 import { latestHours, readingFrom } from "./hours";
 import { matchPlan } from "./match";
 import { isStageReached, nextStage, sortStages } from "./stage";
@@ -25,15 +29,30 @@ const PAGE_SIZE = 1000;
 /** 分頁讀取的保護上限（避免意外的無窮迴圈）。 */
 const MAX_ROWS = 100_000;
 
+/**
+ * 提醒 / 使用速度推估只看最近這段期間的抄表（避免每次列表頁都整表掃 mx_records）。
+ * 需比推估取樣（最多 6 筆、首尾至少相差 7 天）寬鬆得多，取約一年半。
+ */
+export const READING_WINDOW_DAYS = 540;
+
 interface DbError {
   code?: string;
   message?: string;
   details?: string | null;
 }
 
+/** 讀滿保護上限：資料可能不完整，寧可回錯誤也不要靜靜地少算。 */
+const TOO_MANY_ROWS_ERROR: DbError = {
+  code: SP_TOO_MANY_ROWS_CODE,
+  message: SP_TOO_MANY_ROWS_MESSAGE,
+};
+
 type PagedResult = { data: unknown; error: DbError | null };
 
-/** 以 .range 分頁讀完一張表（呼叫端需自行加上穩定的 order）。 */
+/**
+ * 以 .range 分頁讀完一張表（呼叫端需自行加上穩定的 order）。
+ * 讀到保護上限仍未讀完時回 TOO_MANY_ROWS_ERROR，避免呼叫端拿殘缺資料當完整結果。
+ */
 async function fetchAll<T>(
   build: (from: number, to: number) => PromiseLike<PagedResult>,
 ): Promise<{ rows: T[]; error: DbError | null }> {
@@ -43,9 +62,9 @@ async function fetchAll<T>(
     if (error) return { rows, error };
     const chunk = (data ?? []) as T[];
     rows.push(...chunk);
-    if (chunk.length < PAGE_SIZE) break;
+    if (chunk.length < PAGE_SIZE) return { rows, error: null };
   }
-  return { rows, error: null };
+  return { rows, error: TOO_MANY_ROWS_ERROR };
 }
 
 type Supabase = Awaited<ReturnType<typeof getServerSupabase>>;
@@ -135,6 +154,22 @@ async function loadOverrides(
   };
 }
 
+/** 只取比對方案所需的欄位（計算「使用此方案的機台數」用，不帶客戶關聯）。 */
+async function loadMachineHp(supabase: Supabase): Promise<{
+  rows: { id: string; horsepower: string | null }[];
+  error: DbError | null;
+}> {
+  return fetchAll<{ id: string; horsepower: string | null }>((from, to) =>
+    supabase
+      .from("mx_machines")
+      .select("id, horsepower")
+      .is("archived_at", null)
+      .eq("card_type", "compressor")
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+}
+
 /** 未封存的空壓機（過濾卡不納入提醒與自動帶入）。 */
 async function loadMachines(
   supabase: Supabase,
@@ -154,20 +189,46 @@ async function loadMachines(
   });
 }
 
+interface HoursScope {
+  /** 只讀單一機台。 */
+  machineId?: string;
+  /**
+   * 只讀這個日期（含）之後的抄表（西元 ISO）。省略＝不限期間。
+   * 已開過的階段不受此限制（漏算會讓已保養過的階段被重複提醒）。
+   */
+  sinceDate?: string;
+}
+
+interface HoursData {
+  /** machine_id → 抄表陣列（未排序；latestHours / estimateDue 會自行處理）。 */
+  readings: Map<string, HoursReading[]>;
+  /** machine_id → 已開過（未作廢報告單記錄過）的階段 id。 */
+  issued: Map<string, Set<string>>;
+  error: DbError | null;
+}
+
 /**
- * 時數抄表：保養卡 mx_records.hours + 未作廢報告單的 results.compressor.run_hours。
- * 回 machine_id → 抄表陣列（未排序；latestHours / estimateDue 會自行處理）。
+ * 時數抄表 + 已開過的階段。抄表來源：保養卡 mx_records.hours 與未作廢報告單的
+ * results.compressor.run_hours；sr_reports 一次讀出兩種資訊（抄表 + 已開過階段），
+ * 不重複掃同一張表。
+ *
+ * 排序一律用日期「由新到舊」：分頁讀到保護上限時被捨棄的會是最舊的幾筆，
+ * 「目前時數」與使用速度推估（最近 6 筆）都還正確；若由舊到新，捨棄的反而是最新抄表，
+ * 會安靜地算出錯誤的目前時數。
  */
-async function loadReadings(
+async function loadHours(
   supabase: Supabase,
-  machineId?: string,
-): Promise<{ map: Map<string, HoursReading[]>; error: DbError | null }> {
-  const map = new Map<string, HoursReading[]>();
+  scope: HoursScope = {},
+): Promise<HoursData> {
+  const { machineId, sinceDate } = scope;
+  const readings = new Map<string, HoursReading[]>();
+  const issued = new Map<string, Set<string>>();
+  const fail = (error: DbError): HoursData => ({ readings, issued, error });
   const push = (id: string | null, reading: HoursReading | null) => {
     if (!id || !reading) return;
-    const list = map.get(id);
+    const list = readings.get(id);
     if (list) list.push(reading);
-    else map.set(id, [reading]);
+    else readings.set(id, [reading]);
   };
 
   const records = await fetchAll<{
@@ -181,12 +242,13 @@ async function loadReadings(
       .not("service_date", "is", null)
       .not("hours", "is", null);
     if (machineId) q = q.eq("machine_id", machineId);
+    if (sinceDate) q = q.gte("service_date", sinceDate);
     return q
-      .order("service_date", { ascending: true })
-      .order("id", { ascending: true })
+      .order("service_date", { ascending: false })
+      .order("id", { ascending: false })
       .range(from, to);
   });
-  if (records.error) return { map, error: records.error };
+  if (records.error) return fail(records.error);
   for (const r of records.rows) {
     push(r.machine_id, readingFrom(r.service_date, r.hours, "record"));
   }
@@ -195,69 +257,88 @@ async function loadReadings(
     machine_id: string | null;
     report_date: string;
     results: ServiceReportResults | null;
-  }>((from, to) => {
-    let q = supabase
-      .from("sr_reports")
-      .select("machine_id, report_date, results")
-      .neq("status", "voided")
-      .not("machine_id", "is", null);
-    if (machineId) q = q.eq("machine_id", machineId);
-    return q
-      .order("report_date", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, to);
-  });
-  if (reports.error) return { map, error: reports.error };
-  for (const r of reports.rows) {
-    push(
-      r.machine_id,
-      readingFrom(r.report_date, r.results?.compressor?.run_hours, "report"),
-    );
-  }
-  return { map, error: null };
-}
-
-/** 已開過的階段（未作廢報告單）：machine_id → Set<stage_id>。 */
-async function loadIssuedStages(
-  supabase: Supabase,
-  machineId?: string,
-): Promise<{ map: Map<string, Set<string>>; error: DbError | null }> {
-  const map = new Map<string, Set<string>>();
-  const { rows, error } = await fetchAll<{
-    machine_id: string | null;
     plan_stage_id: string | null;
   }>((from, to) => {
     let q = supabase
       .from("sr_reports")
-      .select("machine_id, plan_stage_id")
+      .select("machine_id, report_date, results, plan_stage_id")
       .neq("status", "voided")
-      .not("plan_stage_id", "is", null);
+      .not("machine_id", "is", null);
     if (machineId) q = q.eq("machine_id", machineId);
-    return q.order("id", { ascending: true }).range(from, to);
+    return q
+      .order("report_date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to);
   });
-  if (error) return { map, error };
-  for (const r of rows) {
-    if (!r.machine_id || !r.plan_stage_id) continue;
-    const set = map.get(r.machine_id);
-    if (set) set.add(r.plan_stage_id);
-    else map.set(r.machine_id, new Set([r.plan_stage_id]));
+  if (reports.error) return fail(reports.error);
+  for (const r of reports.rows) {
+    if (!r.machine_id) continue;
+    // 抄表與 mx_records 套用同一個期間窗（推估才不會混用新舊尺度）；
+    // 已開過的階段則不設限，否則舊保養會被當成沒做過而重複提醒。
+    if (!sinceDate || r.report_date >= sinceDate) {
+      push(
+        r.machine_id,
+        readingFrom(r.report_date, r.results?.compressor?.run_hours, "report"),
+      );
+    }
+    if (r.plan_stage_id) {
+      const set = issued.get(r.machine_id);
+      if (set) set.add(r.plan_stage_id);
+      else issued.set(r.machine_id, new Set([r.plan_stage_id]));
+    }
   }
-  return { map, error: null };
+  return { readings, issued, error: null };
 }
 
 /* -------------------------------------------------------------- 對外 API */
 
-/** 方案清單（含階段，階段依時數排序）。 */
-export async function listPlansWithStages(): Promise<
-  SrResult<ServicePlanWithStages[]>
-> {
+/** 方案清單一列：方案 + 階段 + 使用此方案的機台數（#201 刪除確認用）。 */
+export interface PlanListRow extends ServicePlanWithStages {
+  /** 逐台指定此方案的機台數。 */
+  override_machine_count: number;
+  /** 實際套用此方案的機台數＝逐台指定 + 靠馬力比到此方案（且未被指定覆寫）。 */
+  machine_count: number;
+}
+
+/**
+ * 方案清單（含階段，階段依時數排序）+ 每個方案的使用機台數。
+ * 機台只讀 id / horsepower 兩欄（比對用），不帶客戶關聯。
+ */
+export async function listPlansWithStages(): Promise<SrResult<PlanListRow[]>> {
   const supabase = await getServerSupabase();
   const { plans, stages, error } = await loadPlans(supabase);
   if (error) return { ok: false, error: planErrorMessage(error) };
   const byPlan = groupStages(stages);
+
+  const overrides = await loadOverrides(supabase);
+  if (overrides.error) {
+    return { ok: false, error: planErrorMessage(overrides.error) };
+  }
+  const machines = await loadMachineHp(supabase);
+  if (machines.error) {
+    return { ok: false, error: planErrorMessage(machines.error) };
+  }
+
+  const total = new Map<string, number>();
+  const overridden = new Map<string, number>();
+  for (const m of machines.rows) {
+    const matched = matchPlan(m, plans, overrides.map);
+    if (!matched.plan) continue;
+    const id = matched.plan.id;
+    total.set(id, (total.get(id) ?? 0) + 1);
+    if (matched.source === "override") {
+      overridden.set(id, (overridden.get(id) ?? 0) + 1);
+    }
+  }
+
   return {
     ok: true,
-    data: plans.map((p) => ({ ...p, stages: byPlan.get(p.id) ?? [] })),
+    data: plans.map((p) => ({
+      ...p,
+      stages: byPlan.get(p.id) ?? [],
+      override_machine_count: overridden.get(p.id) ?? 0,
+      machine_count: total.get(p.id) ?? 0,
+    })),
   };
 }
 
@@ -333,14 +414,14 @@ export async function listMachinePlanRows(): Promise<
   if (overrides.error) {
     return { ok: false, error: planErrorMessage(overrides.error) };
   }
-  const readings = await loadReadings(supabase);
-  if (readings.error) {
-    return { ok: false, error: planErrorMessage(readings.error) };
+  const hours = await loadHours(supabase);
+  if (hours.error) {
+    return { ok: false, error: planErrorMessage(hours.error) };
   }
 
   const rows = machines.rows.map((m): MachinePlanRow => {
     const matched = matchPlan(m, plans, overrides.map);
-    const latest = latestHours(readings.map.get(m.id) ?? []);
+    const latest = latestHours(hours.readings.get(m.id) ?? []);
     return {
       machine_id: m.id,
       customer_id: m.customer_id,
@@ -376,6 +457,11 @@ export async function listMachinePlanRows(): Promise<
 /**
  * 到期提醒清單（spec §5.6）：未封存空壓機 × 比對到的方案 × 下一個未開過的階段，
  * 已達門檻或 14 天內預估到期者列入，已達門檻在前。
+ *
+ * 抄表只讀最近 READING_WINDOW_DAYS 天（這份清單每次列表頁都會算，不能整表掃
+ * mx_records）。窗內完全沒有抄表的機台不會出現在提醒中（與「從未抄表」相同）；
+ * 窗內只有一筆抄表的機台無法推估使用速度，只可能以「已達門檻」列入。
+ * 已開過的階段不受此窗限制，舊保養不會被當成沒做過而重複提醒。
  */
 export async function listReminders(
   /** 今天（台北）西元 ISO；省略則以台北時間的今天計算。 */
@@ -395,18 +481,18 @@ export async function listReminders(
   if (overrides.error) {
     return { ok: false, error: planErrorMessage(overrides.error) };
   }
-  const readings = await loadReadings(supabase);
-  if (readings.error) {
-    return { ok: false, error: planErrorMessage(readings.error) };
+  const hours = await loadHours(supabase, {
+    sinceDate: addDaysIso(todayIso, -READING_WINDOW_DAYS),
+  });
+  if (hours.error) {
+    return { ok: false, error: planErrorMessage(hours.error) };
   }
-  const issued = await loadIssuedStages(supabase);
-  if (issued.error) return { ok: false, error: planErrorMessage(issued.error) };
 
   const reminders: StageReminder[] = [];
   for (const m of machines.rows) {
     const plan = matchPlan(m, plans, overrides.map).plan;
     if (!plan) continue;
-    const stage = nextStage(byPlan.get(plan.id) ?? [], issued.map.get(m.id));
+    const stage = nextStage(byPlan.get(plan.id) ?? [], hours.issued.get(m.id));
     if (!stage) continue;
     const reminder = reminderFor({
       machine: {
@@ -419,7 +505,7 @@ export async function listReminders(
       },
       plan,
       stage,
-      readings: readings.map.get(m.id) ?? [],
+      readings: hours.readings.get(m.id) ?? [],
       todayIso,
     });
     if (reminder) reminders.push(reminder);
@@ -464,16 +550,14 @@ export async function listStagesForMachine(
   if (overrides.error) {
     return { ok: false, error: planErrorMessage(overrides.error) };
   }
-  const readings = await loadReadings(supabase, machineId);
-  if (readings.error) {
-    return { ok: false, error: planErrorMessage(readings.error) };
+  const hours = await loadHours(supabase, { machineId });
+  if (hours.error) {
+    return { ok: false, error: planErrorMessage(hours.error) };
   }
-  const issued = await loadIssuedStages(supabase, machineId);
-  if (issued.error) return { ok: false, error: planErrorMessage(issued.error) };
 
   const matched = matchPlan(machine, plans, overrides.map);
-  const latest = latestHours(readings.map.get(machineId) ?? []);
-  const issuedSet = issued.map.get(machineId) ?? new Set<string>();
+  const latest = latestHours(hours.readings.get(machineId) ?? []);
+  const issuedSet = hours.issued.get(machineId) ?? new Set<string>();
   const planStages = matched.plan
     ? (groupStages(stages).get(matched.plan.id) ?? [])
     : [];

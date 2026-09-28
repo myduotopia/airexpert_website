@@ -4,9 +4,11 @@ import { describe, it, expect } from "vitest";
 // 以及報告單新增的 plan_stage_* 欄位（spec §4 / §6.2）。
 
 import {
+  SP_CHECK_VIOLATION_MESSAGE,
   SP_DUPLICATE_MESSAGE,
   SP_DUPLICATE_NAME_MESSAGE,
   SP_DUPLICATE_STAGE_HOURS_MESSAGE,
+  SP_FK_MISSING_MESSAGE,
   planErrorMessage,
 } from "@/lib/service-report/plan/errors";
 import {
@@ -175,6 +177,42 @@ describe("planErrorMessage", () => {
     );
   });
 
+  it("23505 只比對 constraint 名稱，不看含使用者資料的 details", () => {
+    // 方案名稱剛好叫「Stages 20HP」：details 帶了使用者輸入也不能影響判定
+    expect(
+      planErrorMessage({
+        code: "23505",
+        constraint: "sr_service_plans_name_key",
+        message:
+          'duplicate key value violates unique constraint "sr_service_plans_name_key"',
+        details: "Key (name)=(Stages 20HP) already exists.",
+      }),
+    ).toBe(SP_DUPLICATE_NAME_MESSAGE);
+    // 認不出 constraint 時用通用訊息，不因 details 猜錯
+    expect(
+      planErrorMessage({
+        code: "23505",
+        message: "duplicate key value violates unique constraint",
+        details: "Key (name)=(Stages plan_hours) already exists.",
+      }),
+    ).toBe(SP_DUPLICATE_MESSAGE);
+  });
+
+  it("23503 / 23514 用方案語境的中文訊息", () => {
+    expect(
+      planErrorMessage({
+        code: "23503",
+        message: 'violates foreign key constraint "sr_reports_plan_stage_fk"',
+      }),
+    ).toBe(SP_FK_MISSING_MESSAGE);
+    expect(
+      planErrorMessage({
+        code: "23514",
+        message: 'new row violates check constraint "sr_service_plans_name_ck"',
+      }),
+    ).toBe(SP_CHECK_VIOLATION_MESSAGE);
+  });
+
   it("其他錯誤沿用報告單模組的訊息", () => {
     expect(planErrorMessage({ code: "42501", message: "denied" })).toBe(
       "沒有機台維護報告單權限",
@@ -241,6 +279,39 @@ describe("報告單的 plan_stage_* 欄位", () => {
     expect(out.plan_stage_id).toBe(STAGE_ID);
     expect(out.plan_stage_hours).toBe(4000);
     expect(out.plan_stage_label).toBe("基礎保養");
+  });
+
+  it("正規化：只帶 id（沒有快照）→ 快照寫 null，不留上一階段的值", () => {
+    const out = normalizeReportInput(input({ plan_stage_id: STAGE_ID }));
+    expect(out.plan_stage_id).toBe(STAGE_ID);
+    expect(out.plan_stage_hours).toBeNull();
+    expect(out.plan_stage_label).toBeNull();
+  });
+
+  it("正規化：值是 undefined（React Flight 會保留 key）＝不更動，不當成清除", () => {
+    const out = normalizeReportInput(
+      input({
+        plan_stage_id: undefined,
+        plan_stage_hours: undefined,
+        plan_stage_label: undefined,
+      }),
+    );
+    expect("plan_stage_id" in out).toBe(false);
+    expect("plan_stage_hours" in out).toBe(false);
+    expect("plan_stage_label" in out).toBe(false);
+  });
+
+  it("正規化：id 傳空字串＝清除", () => {
+    const out = normalizeReportInput(
+      input({
+        plan_stage_id: "",
+        plan_stage_hours: 4000,
+        plan_stage_label: "基礎保養",
+      }),
+    );
+    expect(out.plan_stage_id).toBeNull();
+    expect(out.plan_stage_hours).toBeNull();
+    expect(out.plan_stage_label).toBeNull();
   });
 
   it("正規化：id 傳 null＝清除，快照一併清空", () => {

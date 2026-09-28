@@ -27,6 +27,10 @@ export interface ServicePlanStage {
   id: string;
   plan_id: string;
   hours: number;
+  /**
+   * 階段名稱原文（如「基礎保養」）。開單時快照到 sr_reports.plan_stage_label 的就是這個值，
+   * 不是 stageLabel(stage) 的「4000 小時 基礎保養」— 完整顯示文字會撞上快照欄位的 50 字上限。
+   */
   label: string;
   parts: PlanPart[];
   created_at?: string;
