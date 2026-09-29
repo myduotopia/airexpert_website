@@ -16,7 +16,7 @@ export interface PlanMatchMachine {
 export interface PlanMatchResult<T extends PlanMatchable> {
   plan: T | null;
   source: PlanMatchSource;
-  /** 依馬力比到多個方案時的全部候選（依名稱排序）；≤1 筆時為空陣列。 */
+  /** 依馬力／通用預設比到多個方案時的全部候選（依名稱排序）；≤1 筆時為空陣列。 */
   conflicts: T[];
 }
 
@@ -35,6 +35,16 @@ export function normalizeHpTag(tag: string | null | undefined): string {
     .replace(/HP/g, "")
     .replace(/^0+(?=\d)/, "")
     .trim();
+}
+
+/**
+ * 是否為「通用預設方案」的馬力標籤：正規化後一個有效標籤都沒有。
+ * 這種方案套用到所有沒有比到其他方案的空壓機（match 的最後一層 fallback）。
+ */
+export function isDefaultHpTags(
+  tags: readonly string[] | null | undefined,
+): boolean {
+  return !(tags ?? []).some((tag) => normalizeHpTag(tag) !== "");
 }
 
 /** 方案名稱排序（穩定、與語系無關；spec §5.3「取 name 排序第一」）。 */
@@ -63,7 +73,9 @@ function lookupOverride(
  * 比對機台的保養方案：
  * 1. 逐台指定（sr_machine_plans）→ 直接用，即使方案已停用（避免突然失效）；
  * 2. 否則依馬力正規化比對啟用中方案的 hp_tags，多筆相符取名稱排序第一並回 conflicts；
- * 3. 都沒有 → plan: null。
+ * 3. 仍沒有 → 通用預設方案（啟用中且未填適用馬力），同樣多筆取名稱排序第一並回
+ *    conflicts；機台沒填馬力（或無法正規化）時也走這一層；
+ * 4. 都沒有 → plan: null。
  * 指定的方案不在 plans 內（已刪除 / 未載入）時退回馬力比對。
  */
 export function matchPlan<T extends PlanMatchable>(
@@ -78,18 +90,32 @@ export function matchPlan<T extends PlanMatchable>(
   }
 
   const hp = normalizeHpTag(machine.horsepower);
-  if (hp === "") return { plan: null, source: null, conflicts: [] };
+  if (hp !== "") {
+    const matched = plans
+      .filter(
+        (p) =>
+          p.active &&
+          (p.hp_tags ?? []).some((tag) => normalizeHpTag(tag) === hp),
+      )
+      .sort(byName);
+    if (matched.length > 0) {
+      return {
+        plan: matched[0],
+        source: "hp",
+        conflicts: matched.length > 1 ? matched : [],
+      };
+    }
+  }
 
-  const matched = plans
-    .filter(
-      (p) =>
-        p.active && (p.hp_tags ?? []).some((tag) => normalizeHpTag(tag) === hp),
-    )
+  // 通用預設：沒填適用馬力的啟用方案，接住所有沒有其他對應的空壓機
+  //（含馬力空白或無法正規化的機台）。
+  const defaults = plans
+    .filter((p) => p.active && isDefaultHpTags(p.hp_tags))
     .sort(byName);
-  if (matched.length === 0) return { plan: null, source: null, conflicts: [] };
+  if (defaults.length === 0) return { plan: null, source: null, conflicts: [] };
   return {
-    plan: matched[0],
-    source: "hp",
-    conflicts: matched.length > 1 ? matched : [],
+    plan: defaults[0],
+    source: "default",
+    conflicts: defaults.length > 1 ? defaults : [],
   };
 }

@@ -220,7 +220,7 @@ export function PlanForm({
           />
           <p className="text-text-muted text-[12px]">
             以頓號或逗號分隔（空白不算分隔）。比對時會自動正規化，20HP／20／20
-            馬力視為同一個；留白則此方案只能逐台指定。
+            馬力視為同一個；留空＝通用預設，套用到所有沒有其他對應的空壓機。
           </p>
         </div>
         <div className="flex flex-col gap-1.5 sm:col-span-2">
@@ -240,7 +240,7 @@ export function PlanForm({
             checked={draft.active}
             onChange={(e) => set("active", e.target.checked)}
           />
-          啟用（停用後不再依馬力自動比對；已逐台指定者仍沿用）
+          啟用（停用後不再自動比對，含通用預設；已逐台指定者仍沿用）
         </label>
       </div>
 

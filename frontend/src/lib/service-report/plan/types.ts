@@ -57,8 +57,11 @@ export interface HoursReading {
   source: "record" | "report";
 }
 
-/** 方案來源：override＝逐台指定、hp＝馬力比對、null＝沒有方案。 */
-export type PlanMatchSource = "override" | "hp" | null;
+/**
+ * 方案來源：override＝逐台指定、hp＝馬力比對、default＝通用預設（未填適用馬力的方案）、
+ * null＝沒有方案。
+ */
+export type PlanMatchSource = "override" | "hp" | "default" | null;
 
 export type ReminderStatus = "due" | "upcoming";
 
@@ -117,9 +120,13 @@ export const REMINDER_STATUS_LABELS: Record<ReminderStatus, string> = {
   upcoming: "即將到期",
 };
 
-export const PLAN_MATCH_SOURCE_LABELS: Record<"override" | "hp", string> = {
+export const PLAN_MATCH_SOURCE_LABELS: Record<
+  Exclude<PlanMatchSource, null>,
+  string
+> = {
   override: "逐台指定",
   hp: "馬力比對",
+  default: "通用預設",
 };
 
 /** 提醒的預設展望天數（spec §5.6：14 天內到期才提醒）。 */

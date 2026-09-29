@@ -1,6 +1,7 @@
 // 保養方案頁共用的版面小元件與樣式常數。無 hooks，server / client 皆可用。
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { isDefaultHpTags } from "@/lib/service-report/plan/match";
 import { SERVICE_REPORTS_PATH } from "../../_components/list-params";
 
 export const PLANS_PATH = `${SERVICE_REPORTS_PATH}/plans`;
@@ -101,9 +102,18 @@ export function PlanActiveBadge({ active }: { active: boolean }) {
   );
 }
 
-/** 適用馬力 chips。 */
+/** 適用馬力 chips；未填（通用預設方案）改顯示徽章。 */
 export function HpTagChips({ tags }: { tags: readonly string[] }) {
-  if (tags.length === 0) return <span className="text-text-muted">—</span>;
+  if (isDefaultHpTags(tags)) {
+    return (
+      <span
+        title="套用到所有沒有其他對應的空壓機"
+        className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[12px] font-medium whitespace-nowrap text-amber-700"
+      >
+        通用預設
+      </span>
+    );
+  }
   return (
     <span className="flex flex-wrap gap-1">
       {tags.map((t) => (

@@ -102,7 +102,8 @@ create index if not exists sr_reports_plan_stage_idx
 ### 5.3 方案比對 `matchPlan(machine, plans, overrides)`
 1. `sr_machine_plans` 有指定 → 用指定方案（即使 `active=false` 也用，避免突然失效）。
 2. 否則依 `machine.horsepower` 正規化後（大寫、去空白、去 `HP`、去前導零）比對 `plan.hp_tags` 正規化集合，取第一個 `active` 方案；多筆相符取 `name` 排序第一並在管理頁標示衝突。
-3. 都沒有 → 無方案（不提醒、不自動帶入）。
+3. 仍比不到 → 「通用預設方案」：`active` 且 `hp_tags` 正規化後為空的方案（`source: "default"`）。機台沒填馬力或馬力無法正規化時也走這一層；多個通用預設方案同樣取 `name` 排序第一並標示衝突。
+4. 都沒有 → 無方案（不提醒、不自動帶入）。
 
 ### 5.4 下一個階段 `nextStage(stages, issuedStageIds)`
 - 階段依 `hours` 由小到大排序，排除已開過（存在未作廢報告單）的階段，取第一個。

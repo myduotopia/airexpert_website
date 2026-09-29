@@ -1,5 +1,6 @@
 // 機台對應（spec §6）：未封存空壓機清單（客戶、機台、馬力、目前方案與來源、
-// 目前時數與抄表日），每列可逐台指定方案或改回自動比對；馬力同時符合多個方案時標示衝突。
+// 目前時數與抄表日），每列可逐台指定方案或改回自動比對；
+// 馬力同時符合多個方案（或有多個通用預設方案）時標示衝突。
 import Link from "next/link";
 import { requireModule } from "@/lib/admin/auth";
 import { rocDate } from "@/lib/admin/minguo";
@@ -28,7 +29,7 @@ export default async function MachinePlansPage() {
       <PlanTabs active="machines" />
       <PlanHeader
         title="機台對應"
-        description="未封存的空壓機；預設依馬力自動比對方案，需要時可逐台指定（覆寫比對結果）。"
+        description="未封存的空壓機；預設依馬力自動比對方案，比不到時套用通用預設方案，需要時可逐台指定（覆寫比對結果）。"
         actions={
           <Link href={PLANS_PATH} className={PLAN_LINK_SECONDARY}>
             管理方案
@@ -57,7 +58,7 @@ export default async function MachinePlansPage() {
             </thead>
             <tbody>
               {rows.map((m) => {
-                const conflict = planConflictText(m.conflicts);
+                const conflict = planConflictText(m.conflicts, m.plan_source);
                 return (
                   <tr
                     key={m.machine_id}
