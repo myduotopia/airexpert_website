@@ -27,10 +27,8 @@ import {
   hasFilledParts,
   stageLabel,
 } from "@/lib/service-report/plan/stage";
-import type {
-  PlanPart,
-  ServicePlanStage,
-} from "@/lib/service-report/plan/types";
+import type { MilestoneTarget } from "@/lib/service-report/plan/stage";
+import type { PlanPart } from "@/lib/service-report/plan/types";
 import { PART_ROW_COUNT } from "@/lib/service-report/validate";
 
 /** 表單狀態（文字欄位皆為 string；列舉欄位可為 null＝未選）。 */
@@ -71,6 +69,7 @@ export interface ReportFormState {
 
 /**
  * 報告單上的階段快照（對應 sr_reports.plan_stage_*）。
+ * hours 存的是**循環里程碑**（如 22000），不是階段原時數（2000）；
  * label 存 stage.label 原文（如「基礎保養」），不是 stageLabel() 的完整顯示文字。
  * id 可為 null：階段被刪除後 DB 的 id 轉 null，快照時數與名稱仍在。
  */
@@ -243,7 +242,7 @@ export function planStageFromReport(
   return { id, hours, label };
 }
 
-/** 階段顯示文字：「4000 小時 基礎保養」；無時數時只有名稱，皆空回 null。 */
+/** 階段顯示文字：「22000 小時 基礎保養」；無時數時只有名稱，皆空回 null。 */
 export function planStageText(stage: PlanStageSnapshot | null): string | null {
   if (!stage) return null;
   const label = (stage.label ?? "").trim();
@@ -447,17 +446,19 @@ export function stageApplyNeedsConfirm(state: ReportFormState): boolean {
 }
 
 /**
- * 套用保養階段（spec §6.2）：
+ * 套用保養里程碑（spec §6.2）：
  * 1. 依品名比對填入既有 10 列、其餘填空白列（overwrite=false 時只填數量空白的列）；
  * 2. 勾選服務項目「定期大/小保養」（已勾選則維持原順序）；
- * 3. 記錄階段（label 存 stage.label 原文，不是 stageLabel() 的完整顯示文字）。
+ * 3. 記錄階段：hours 存**里程碑**（如 22000，不是階段原時數 2000），
+ *    label 存 stage.label 原文（不是 stageLabel() 的完整顯示文字）。
  * 其他欄位一律不動。
  */
 export function applyStageToState(
   state: ReportFormState,
-  stage: Pick<ServicePlanStage, "id" | "hours" | "label" | "parts">,
+  target: MilestoneTarget,
   options: { overwrite?: boolean } = {},
 ): ApplyStageToStateResult {
+  const { milestone, stage } = target;
   const { parts, overflow } = applyStageToParts(state.parts, stage, {
     overwrite: options.overwrite ?? false,
   });
@@ -471,7 +472,7 @@ export function applyStageToState(
         : [...state.service_items, periodic],
       plan_stage: {
         id: stage.id,
-        hours: stage.hours,
+        hours: milestone,
         label: stage.label ?? null,
       },
       plan_stage_dirty: true,

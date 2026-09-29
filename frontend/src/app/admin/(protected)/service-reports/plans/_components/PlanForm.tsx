@@ -249,7 +249,9 @@ export function PlanForm({
           <div>
             <h2 className="text-ink text-[16px] font-semibold">保養階段</h2>
             <p className="text-text-muted mt-1 text-[13px]">
-              依累計運轉時數分階段；儲存後會依時數由小到大排序。階段與料件的變更都在按下「儲存」時一併寫入。
+              依累計運轉時數分階段；儲存後會依時數由小到大排序。最大時數＝一輪循環，之後自動延伸（2000／4000／6000
+              → 8000／10000／12000…），不必另外建 8000
+              以上的階段。階段與料件的變更都在按下「儲存」時一併寫入。
             </p>
           </div>
           <button

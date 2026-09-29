@@ -25,6 +25,8 @@ export const metadata = { title: "開立機台維護報告單 · 後台" };
 interface NewReportSearchParams {
   machineId?: string | string[];
   stageId?: string | string[];
+  /** 循環里程碑（如 22000）；省略時退回該階段在這一輪的里程碑。 */
+  milestone?: string | string[];
 }
 
 function uuidParam(v: string | string[] | undefined): string | null {
@@ -32,9 +34,16 @@ function uuidParam(v: string | string[] | undefined): string | null {
   return typeof s === "string" && isUuid(s) ? s : null;
 }
 
+function numberParam(v: string | string[] | undefined): number | null {
+  const s = Array.isArray(v) ? v[0] : v;
+  if (typeof s !== "string" || !/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
 // 開單頁：客戶／機台選單一次載入（client 端搜尋與依客戶篩選）。
 // 不在此呼叫 nextReportNoAction — 開頁即取號會吃掉流水號，單號留空由 saveReportAction 自動編。
-// ?machineId= 預選機台並帶入欄位；?stageId= 進頁即套用該階段的料件。
+// ?machineId= 預選機台並帶入欄位；?stageId=&milestone= 進頁即套用該里程碑的料件。
 export default async function NewServiceReportPage({
   searchParams,
 }: {
@@ -44,6 +53,7 @@ export default async function NewServiceReportPage({
   const sp = await searchParams;
   const machineId = uuidParam(sp.machineId);
   const stageId = uuidParam(sp.stageId);
+  const milestone = numberParam(sp.milestone);
 
   const [customers, machines, branding, stagesRes] = await Promise.all([
     listCustomerOptions(),
@@ -74,12 +84,17 @@ export default async function NewServiceReportPage({
     initial = applyMachinePrefill(initial, machine, customer);
   }
 
-  const stage = stageId
-    ? (stages?.stages.find((s) => s.id === stageId) ?? null)
+  // 里程碑對得起來才套用；沒帶 milestone（舊連結）就取該階段在這一輪的里程碑。
+  const target = stageId
+    ? (stages?.milestones.find(
+        (m) =>
+          m.stage.id === stageId &&
+          (milestone === null || m.milestone === milestone),
+      ) ?? null)
     : null;
-  if (stage) {
+  if (target) {
     // 剛開的空表單沒有已填料件，直接覆蓋（等同只填空白列）。
-    const applied = applyStageToState(initial, stage, { overwrite: true });
+    const applied = applyStageToState(initial, target, { overwrite: true });
     initial = applied.state;
     initialOverflow = applied.overflow;
   }

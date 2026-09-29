@@ -1,4 +1,4 @@
-// 階段判定與料件套用（spec §5.4 / §6.2）— 純函式（client / server 皆可用）。
+// 循環里程碑判定與料件套用（spec §5.4 / §6.2）— 純函式（client / server 皆可用）。
 import type { ServiceReportPart } from "../types";
 import { PART_ROW_COUNT } from "../validate";
 import type { PlanPart, ServicePlanStage } from "./types";
@@ -30,23 +30,155 @@ export function sortStages(
   );
 }
 
-function toIdSet(
-  ids: ReadonlySet<string> | readonly string[] | null | undefined,
-): ReadonlySet<string> {
-  if (!ids) return new Set<string>();
-  return ids instanceof Set ? ids : new Set(ids as readonly string[]);
+/**
+ * 一個循環里程碑：實際門檻時數（22000）與它對應的方案階段（2000 基礎保養）。
+ * 報告單的 plan_stage_hours 存的就是 milestone，plan_stage_label 存 stage.label 原文。
+ */
+export interface MilestoneTarget {
+  /** 里程碑時數（如 22000）。 */
+  milestone: number;
+  /** 對應的方案階段（hours 為階段原時數，如 2000）。 */
+  stage: ServicePlanStage;
+}
+
+/** 階段時數由小到大、去重（皆 > 0 且有限）。 */
+function stageHours(stages: readonly ServicePlanStage[]): number[] {
+  const out: number[] = [];
+  for (const s of stages) {
+    if (!Number.isFinite(s.hours) || s.hours <= 0) continue;
+    if (!out.includes(s.hours)) out.push(s.hours);
+  }
+  return out.sort((a, b) => a - b);
 }
 
 /**
- * 下一個階段：時數由小到大，排除已開過（存在未作廢報告單）的階段，取第一個。
- * 全部開過回 null（每個階段只觸發一次）。
+ * 一輪循環的長度＝方案中最大的階段時數（2000／4000／6000 → 6000）。
+ * 沒有可用階段回 0。
  */
-export function nextStage(
+export function cycleLength(
   stages: readonly ServicePlanStage[] | null | undefined,
-  issuedStageIds?: ReadonlySet<string> | readonly string[] | null,
+): number {
+  const hours = stageHours(sortStages(stages));
+  return hours.length === 0 ? 0 : hours[hours.length - 1];
+}
+
+/**
+ * 里程碑 → 對應階段：`rem = milestone % cycle`；`rem === 0` 取時數＝cycle 的階段，
+ * 否則取時數＝rem 的階段。不是合法里程碑（對不到階段）回 null。
+ */
+export function milestoneStage(
+  stages: readonly ServicePlanStage[] | null | undefined,
+  milestone: number,
 ): ServicePlanStage | null {
-  const issued = toIdSet(issuedStageIds);
-  return sortStages(stages).find((s) => !issued.has(s.id)) ?? null;
+  const sorted = sortStages(stages);
+  const cycle = cycleLength(sorted);
+  if (cycle <= 0) return null;
+  if (!Number.isFinite(milestone) || milestone <= 0) return null;
+  const rem = milestone % cycle;
+  const target = rem === 0 ? cycle : rem;
+  return sorted.find((s) => s.hours === target) ?? null;
+}
+
+/** 里程碑 + 對應階段；對不到階段回 null。 */
+function targetOf(
+  stages: readonly ServicePlanStage[],
+  milestone: number,
+): MilestoneTarget | null {
+  const stage = milestoneStage(stages, milestone);
+  return stage ? { milestone, stage } : null;
+}
+
+/**
+ * 依 `hours` 找里程碑：`pick` 為 "last" 取 ≤ hours 的最大者、"next" 取 > hours 的最小者。
+ * 里程碑集合＝{ k × cycle + h }（k ≥ 0、h 為各階段時數；h = cycle 時即下一輪起點），
+ * 只需檢查 hours 前後各一輪即可涵蓋。
+ */
+function pickMilestone(
+  stages: readonly ServicePlanStage[] | null | undefined,
+  hours: number | null | undefined,
+  pick: "last" | "next",
+): MilestoneTarget | null {
+  const sorted = sortStages(stages);
+  const cycle = cycleLength(sorted);
+  if (cycle <= 0) return null;
+  const list = stageHours(sorted);
+  const current =
+    typeof hours === "number" && Number.isFinite(hours) ? hours : null;
+  // 沒有時數：談不上「已達」，下一個就是第一個里程碑。
+  if (current === null) {
+    return pick === "next" ? targetOf(sorted, list[0]) : null;
+  }
+
+  const round = Math.floor(current / cycle);
+  let best: number | null = null;
+  for (let k = round - 1; k <= round + 1; k += 1) {
+    if (k < 0) continue;
+    for (const h of list) {
+      const m = k * cycle + h;
+      if (m <= 0) continue;
+      if (pick === "last") {
+        if (m <= current && (best === null || m > best)) best = m;
+      } else if (m > current && (best === null || m < best)) best = m;
+    }
+  }
+  return best === null ? null : targetOf(sorted, best);
+}
+
+/** 已達的最後一個里程碑（≤ 目前時數的最大者）；還沒到第一個里程碑回 null。 */
+export function lastMilestone(
+  stages: readonly ServicePlanStage[] | null | undefined,
+  hours: number | null | undefined,
+): MilestoneTarget | null {
+  return pickMilestone(stages, hours, "last");
+}
+
+/** 下一個里程碑（> 目前時數的最小者）；無時數時回第一個里程碑。 */
+export function nextMilestone(
+  stages: readonly ServicePlanStage[] | null | undefined,
+  hours: number | null | undefined,
+): MilestoneTarget | null {
+  return pickMilestone(stages, hours, "next");
+}
+
+/**
+ * 開單頁下拉的里程碑選項：以「下一個里程碑」為錨點往前補滿一輪（階段數）個選項，
+ * 前面不夠（時數還很低）就往後補。保證同時涵蓋 lastMilestone 與 nextMilestone。
+ */
+export function milestoneOptions(
+  stages: readonly ServicePlanStage[] | null | undefined,
+  hours: number | null | undefined,
+): MilestoneTarget[] {
+  const sorted = sortStages(stages);
+  const cycle = cycleLength(sorted);
+  if (cycle <= 0) return [];
+  const size = stageHours(sorted).length;
+  const anchor = nextMilestone(sorted, hours);
+  if (!anchor) return [];
+
+  const out: MilestoneTarget[] = [anchor];
+  // 已達的最後一個里程碑一定要在選項裡（階段只有一個時，往前補不會執行到）。
+  const reached = lastMilestone(sorted, hours);
+  if (reached) out.unshift(reached);
+  let first = out[0];
+  while (out.length < size) {
+    const prev = lastMilestone(sorted, first.milestone - 1);
+    if (!prev) break;
+    out.unshift(prev);
+    first = prev;
+  }
+  let last = out[out.length - 1];
+  while (out.length < size) {
+    const nxt = nextMilestone(sorted, last.milestone);
+    if (!nxt) break;
+    out.push(nxt);
+    last = nxt;
+  }
+  return out;
+}
+
+/** 「已開過」比對用的鍵：報告單的 (plan_stage_id, plan_stage_hours)。 */
+export function milestoneKey(stageId: string, milestone: number): string {
+  return `${stageId}@${milestone}`;
 }
 
 /** 階段顯示文字：「4000 小時 基礎保養」（名稱空白時只有時數）。 */
@@ -57,13 +189,21 @@ export function stageLabel(
   return name === "" ? `${stage.hours} 小時` : `${stage.hours} 小時 ${name}`;
 }
 
-/** 目前時數是否已達該階段門檻。 */
-export function isStageReached(
-  stage: Pick<ServicePlanStage, "hours">,
+/** 里程碑顯示文字：「22000 小時 基礎保養」（時數用里程碑、名稱用階段原文）。 */
+export function milestoneLabel(
+  milestone: number,
+  stage: Pick<ServicePlanStage, "label">,
+): string {
+  return stageLabel({ hours: milestone, label: stage.label });
+}
+
+/** 目前時數是否已達某個門檻（里程碑或階段時數）。 */
+export function isHoursReached(
+  target: number,
   hours: number | null | undefined,
 ): boolean {
   return typeof hours === "number" && Number.isFinite(hours)
-    ? hours >= stage.hours
+    ? hours >= target
     : false;
 }
 
