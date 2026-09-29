@@ -374,5 +374,19 @@ describe("前置檢查與文案", () => {
     expect(text).toContain("馬力同時符合 2 個方案");
     expect(text).toContain("20HP 空壓機、20 匹舊機");
     expect(text).toContain("「20HP 空壓機」");
+    // 來源是馬力比對時與省略相同
+    expect(planConflictText(["A 方案", "B 方案"], "hp")).toBe(
+      planConflictText(["A 方案", "B 方案"]),
+    );
+  });
+
+  it("多個通用預設方案時換成通用預設的說法", () => {
+    const text = planConflictText(["A 通用", "B 通用"], "default");
+    expect(text).toContain("有 2 個通用預設方案");
+    expect(text).not.toContain("馬力同時符合");
+    expect(text).toContain("（A 通用、B 通用）");
+    expect(text).toContain("目前取「A 通用」");
+    // 仍要求 2 筆以上才提示
+    expect(planConflictText(["A 通用"], "default")).toBeNull();
   });
 });

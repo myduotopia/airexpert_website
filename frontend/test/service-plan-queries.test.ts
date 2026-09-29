@@ -119,7 +119,23 @@ const M1 = uuid(21);
 const M2 = uuid(22);
 const M3 = uuid(23);
 const M4 = uuid(24);
+const M5 = uuid(25);
+const M6 = uuid(26);
 const TODAY = "2026-09-11";
+
+/** 通用預設方案（未填適用馬力）：接住所有沒有其他對應的空壓機。 */
+function defaultPlanRow(id: string, name = "通用預設"): Row {
+  return {
+    id,
+    name,
+    hp_tags: [],
+    active: true,
+    note: null,
+    created_by: null,
+    created_at: "",
+    updated_at: "",
+  };
+}
 
 function machine(
   id: string,
@@ -254,6 +270,46 @@ describe("listPlansWithStages / getPlanWithStages", () => {
     });
   });
 
+  it("通用預設方案計入機台數，且每台只算進一個方案", async () => {
+    tables.sr_service_plans.push(defaultPlanRow(P3));
+    // M5：50HP 比不到任何方案；M6：沒填馬力 → 兩台都靠通用預設
+    tables.mx_machines.push(
+      machine(M5, "丁客戶", "50HP", null, "IJ-5"),
+      machine(M6, "戊客戶", null, null, "KL-6"),
+    );
+    const r = await listPlansWithStages();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const byId = new Map(r.data.map((p) => [p.id, p]));
+    // P1 仍是 M1 / M4（馬力）+ M3（逐台指定），沒有被通用預設搶走
+    expect(byId.get(P1)).toMatchObject({
+      machine_count: 3,
+      override_machine_count: 1,
+    });
+    expect(byId.get(P2)).toMatchObject({
+      machine_count: 1,
+      override_machine_count: 0,
+    });
+    expect(byId.get(P3)).toMatchObject({
+      machine_count: 2,
+      override_machine_count: 0,
+    });
+    // 6 台機台、每台只計一次
+    expect(r.data.reduce((n, p) => n + p.machine_count, 0)).toBe(6);
+  });
+
+  it("停用的通用預設方案不計入機台數", async () => {
+    tables.sr_service_plans.push({
+      ...defaultPlanRow(P3),
+      active: false,
+    });
+    tables.mx_machines.push(machine(M5, "丁客戶", "50HP", null, "IJ-5"));
+    const r = await listPlansWithStages();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.find((p) => p.id === P3)?.machine_count).toBe(0);
+  });
+
   it("單一方案；id 不合法 / 不存在 → null", async () => {
     const r = await getPlanWithStages(P1);
     expect(r.ok && r.data?.stages.map((s) => s.id)).toEqual([S1, S2]);
@@ -305,6 +361,32 @@ describe("listMachinePlanRows", () => {
     ]);
   });
 
+  it("比不到馬力 → 來源為通用預設；多個通用預設帶出 conflicts", async () => {
+    tables.sr_service_plans.push(
+      defaultPlanRow(P3, "B 通用預設"),
+      defaultPlanRow(uuid(4), "A 通用預設"),
+    );
+    tables.mx_machines.push(machine(M5, "丁客戶", "50HP", null, "IJ-5"));
+    const r = await listMachinePlanRows();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const m5 = r.data.rows.find((x) => x.machine_id === M5)!;
+    expect(m5).toMatchObject({
+      plan_id: uuid(4),
+      plan_name: "A 通用預設",
+      plan_source: "default",
+      override_plan_id: null,
+    });
+    expect(m5.conflicts).toEqual(["A 通用預設", "B 通用預設"]);
+    // 逐台指定與馬力比對仍優先
+    expect(r.data.rows.find((x) => x.machine_id === M3)?.plan_source).toBe(
+      "override",
+    );
+    expect(r.data.rows.find((x) => x.machine_id === M1)?.plan_source).toBe(
+      "hp",
+    );
+  });
+
   it("多方案相符 → conflicts 帶出方案名稱", async () => {
     tables.sr_service_plans.push({
       id: P3,
@@ -349,6 +431,23 @@ describe("listReminders", () => {
     expect(r.data.some((x) => x.machine_id === M4)).toBe(false);
     // M3 沒有任何抄表 → 不提醒
     expect(r.data.some((x) => x.machine_id === M3)).toBe(false);
+  });
+
+  it("通用預設方案也會提醒（比不到馬力的機台）", async () => {
+    tables.sr_service_plans = [defaultPlanRow(P3)];
+    tables.sr_service_plan_stages = [
+      { id: S3, plan_id: P3, hours: 2000, label: "基礎保養", parts: [] },
+    ];
+    const r = await listReminders(TODAY);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // M1（20HP，2100 小時）原本靠馬力比到 P1，現在改由通用預設接住
+    expect(r.data.find((x) => x.machine_id === M1)).toMatchObject({
+      plan_id: P3,
+      plan_name: "通用預設",
+      stage_id: S3,
+      status: "due",
+    });
   });
 
   it("沒有方案 → 空清單；DB 錯誤 → 中文訊息", async () => {
@@ -402,6 +501,24 @@ describe("listStagesForMachine", () => {
       [4000, false],
     ]);
     expect(r.data?.suggested_stage_id).toBeNull();
+  });
+
+  it("沒填馬力且無逐台指定 → 套用通用預設的階段", async () => {
+    tables.sr_service_plans.push(defaultPlanRow(P3));
+    tables.sr_service_plan_stages.push({
+      id: uuid(14),
+      plan_id: P3,
+      hours: 2000,
+      label: "基礎保養",
+      parts: [],
+    });
+    tables.mx_machines.push(machine(M6, "戊客戶", null, null, "KL-6"));
+    const r = await listStagesForMachine(M6);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data?.plan?.id).toBe(P3);
+    expect(r.data?.plan_source).toBe("default");
+    expect(r.data?.stages.map((s) => s.hours)).toEqual([2000]);
   });
 
   it("機台不存在 / id 不合法 → null", async () => {

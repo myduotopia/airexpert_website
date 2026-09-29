@@ -6,6 +6,7 @@
 import { SP_DUPLICATE_STAGE_HOURS_MESSAGE } from "@/lib/service-report/plan/errors";
 import { normalizeHpTag } from "@/lib/service-report/plan/match";
 import type {
+  PlanMatchSource,
   PlanPart,
   ServicePlan,
   ServicePlanInput,
@@ -311,11 +312,16 @@ export function planDeleteConfirmText(plan: {
   return `確定要刪除方案「${plan.name}」？${tail}此動作無法復原（已開立的報告單會保留階段紀錄）。`;
 }
 
-/** 馬力同時比到多個方案時的提示文字；無衝突回 null。 */
+/** 同時比到多個方案時的提示文字（依來源換句）；無衝突回 null。 */
 export function planConflictText(
   conflicts: readonly string[] | null | undefined,
+  source?: PlanMatchSource,
 ): string | null {
   const names = (conflicts ?? []).filter((n) => n.trim() !== "");
   if (names.length < 2) return null;
-  return `馬力同時符合 ${names.length} 個方案（${names.join("、")}），目前取「${names[0]}」；建議逐台指定。`;
+  const head =
+    source === "default"
+      ? `有 ${names.length} 個通用預設方案`
+      : `馬力同時符合 ${names.length} 個方案`;
+  return `${head}（${names.join("、")}），目前取「${names[0]}」；建議逐台指定。`;
 }
