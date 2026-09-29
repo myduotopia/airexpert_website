@@ -63,6 +63,12 @@ export default async function ServiceReportsPage({
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
+            href={`${SERVICE_REPORTS_PATH}/plans`}
+            className={SECONDARY_BUTTON}
+          >
+            保養方案
+          </Link>
+          <Link
             href={`${SERVICE_REPORTS_PATH}/print/blank`}
             target="_blank"
             rel="noreferrer"
