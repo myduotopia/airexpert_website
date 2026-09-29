@@ -5,6 +5,7 @@ import { requireModule } from "@/lib/admin/auth";
 import { rocDate, rocDateTime } from "@/lib/admin/minguo";
 import { listReports } from "@/lib/service-report/queries";
 import { SERVICE_ITEM_LABELS } from "@/lib/service-report/types";
+import { MaintenanceReminders } from "./_components/MaintenanceReminders";
 import { ReportListFilters } from "./_components/ReportListFilters";
 import { ReportStatusBadge } from "./_components/ReportStatusBadge";
 import {
@@ -74,6 +75,8 @@ export default async function ServiceReportsPage({
           </Link>
         </div>
       </div>
+
+      <MaintenanceReminders />
 
       <ReportListFilters
         key={`${query.q}|${query.status}|${query.from}|${query.to}`}
