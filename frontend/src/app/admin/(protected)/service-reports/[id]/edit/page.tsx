@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requireModule } from "@/lib/admin/auth";
 import { getBranding } from "@/lib/data/site";
+import { listStagesForMachine } from "@/lib/service-report/plan/queries";
 import {
   getReport,
   listCustomerOptions,
@@ -11,6 +12,7 @@ import { STATUS_LABELS } from "@/lib/service-report/types";
 import { formStateFromReport } from "@/components/service-report/form-state";
 import { ReportForm } from "@/components/service-report/ReportForm";
 import { nextReportNoAction, saveReportAction } from "../../actions";
+import { listMachineStagesAction } from "../../stage-actions";
 
 export const metadata = { title: "編輯機台維護報告單 · 後台" };
 
@@ -60,16 +62,20 @@ export default async function EditServiceReportPage({
     );
   }
 
-  const [customers, machines, branding] = await Promise.all([
+  const [customers, machines, branding, stagesRes] = await Promise.all([
     listCustomerOptions(),
     listMachineOptions(),
     getBranding(),
+    report.machine_id
+      ? listStagesForMachine(report.machine_id)
+      : Promise.resolve(null),
   ]);
   const loadError = !customers.ok
     ? customers.error
     : !machines.ok
       ? machines.error
       : null;
+  const stages = stagesRes?.ok ? stagesRes.data : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -100,6 +106,8 @@ export default async function EditServiceReportPage({
         logoUrl={branding.logo_url}
         onSave={saveReportAction}
         onReserveNo={report.print_count > 0 ? undefined : nextReportNoAction}
+        stages={stages}
+        onLoadStages={listMachineStagesAction}
       />
     </div>
   );

@@ -22,6 +22,15 @@ import {
   type Suggestion,
   type TimeSlot,
 } from "@/lib/service-report/types";
+import {
+  applyStageToParts,
+  hasFilledParts,
+  stageLabel,
+} from "@/lib/service-report/plan/stage";
+import type {
+  PlanPart,
+  ServicePlanStage,
+} from "@/lib/service-report/plan/types";
 import { PART_ROW_COUNT } from "@/lib/service-report/validate";
 
 /** 表單狀態（文字欄位皆為 string；列舉欄位可為 null＝未選）。 */
@@ -50,6 +59,25 @@ export interface ReportFormState {
   technician: string;
   customer_signer: string;
   note: string;
+  /** 本單對應的保養方案階段（null＝無）；顯示用快照，見 PlanStageSnapshot。 */
+  plan_stage: PlanStageSnapshot | null;
+  /**
+   * 這次編輯有沒有動過階段。
+   * false → 送出時三個 plan_stage_* 欄位一律省略（undefined＝不更動 DB 既有值），
+   * 一般儲存才不會把既有階段洗掉；套用 / 清除階段才設為 true。
+   */
+  plan_stage_dirty: boolean;
+}
+
+/**
+ * 報告單上的階段快照（對應 sr_reports.plan_stage_*）。
+ * label 存 stage.label 原文（如「基礎保養」），不是 stageLabel() 的完整顯示文字。
+ * id 可為 null：階段被刪除後 DB 的 id 轉 null，快照時數與名稱仍在。
+ */
+export interface PlanStageSnapshot {
+  id: string | null;
+  hours: number | null;
+  label: string | null;
 }
 
 /** 表單中的純文字欄位（狀態為 string、DB 為 text null）。 */
@@ -175,6 +203,8 @@ export function emptyFormState(todayIso: string): ReportFormState {
     technician: "",
     customer_signer: "",
     note: "",
+    plan_stage: null,
+    plan_stage_dirty: false,
   };
 }
 
@@ -194,7 +224,31 @@ export function formStateFromReport(report: ServiceReport): ReportFormState {
     suggestions: [...(report.suggestions ?? [])],
     results: report.results ?? {},
     parts: normalizeParts(report.parts),
+    plan_stage: planStageFromReport(report),
+    plan_stage_dirty: false,
   };
+}
+
+/** DB 資料列 → 階段快照（三個欄位皆空＝這張單沒有對應階段）。 */
+export function planStageFromReport(
+  report: Pick<
+    ServiceReport,
+    "plan_stage_id" | "plan_stage_hours" | "plan_stage_label"
+  >,
+): PlanStageSnapshot | null {
+  const id = report.plan_stage_id ?? null;
+  const hours = report.plan_stage_hours ?? null;
+  const label = report.plan_stage_label ?? null;
+  if (id === null && hours === null && (label ?? "") === "") return null;
+  return { id, hours, label };
+}
+
+/** 階段顯示文字：「4000 小時 基礎保養」；無時數時只有名稱，皆空回 null。 */
+export function planStageText(stage: PlanStageSnapshot | null): string | null {
+  if (!stage) return null;
+  const label = (stage.label ?? "").trim();
+  if (stage.hours === null) return label === "" ? null : label;
+  return stageLabel({ hours: stage.hours, label });
 }
 
 /** 表單狀態 → ReportSheet 預覽資料（空字串以 null 呈現＝紙上留白）。 */
@@ -233,7 +287,11 @@ export function sheetDataFromReport(
   return formStateToSheetData(formStateFromReport(report));
 }
 
-/** 表單狀態 → saveReportAction 輸入（id 省略＝新增）。 */
+/**
+ * 表單狀態 → saveReportAction 輸入（id 省略＝新增）。
+ * 沒動過階段（plan_stage_dirty = false）就完全不帶 plan_stage_* 三個欄位
+ * （undefined＝不更動），一般儲存不會清掉既有階段。
+ */
 export function formStateToInput(
   state: ReportFormState,
   id?: string | null,
@@ -245,6 +303,13 @@ export function formStateToInput(
     note: orNull(state.note),
   };
   if (id) input.id = id;
+  if (state.plan_stage_dirty) {
+    const stage = state.plan_stage;
+    // plan_stage_id 傳 null＝清除，action 端會把兩個快照欄位一併清空。
+    input.plan_stage_id = stage?.id ?? null;
+    input.plan_stage_hours = stage?.hours ?? null;
+    input.plan_stage_label = stage?.label ?? null;
+  }
   return input;
 }
 
@@ -366,6 +431,58 @@ export function applyMachinePrefill(
 /** 清除機台：只清選取，快照文字保留。 */
 export function clearMachine(state: ReportFormState): ReportFormState {
   return { ...state, machine_id: null };
+}
+
+/* ------------------------------------------------------ 保養階段（§6.2） */
+
+export interface ApplyStageToStateResult {
+  state: ReportFormState;
+  /** 10 列放不下而未填入的料件（呼叫端提示手動調整）。 */
+  overflow: PlanPart[];
+}
+
+/** 套用階段前是否需要先問「要覆蓋已填的料件嗎」（任一列已有數量）。 */
+export function stageApplyNeedsConfirm(state: ReportFormState): boolean {
+  return hasFilledParts(state.parts);
+}
+
+/**
+ * 套用保養階段（spec §6.2）：
+ * 1. 依品名比對填入既有 10 列、其餘填空白列（overwrite=false 時只填數量空白的列）；
+ * 2. 勾選服務項目「定期大/小保養」（已勾選則維持原順序）；
+ * 3. 記錄階段（label 存 stage.label 原文，不是 stageLabel() 的完整顯示文字）。
+ * 其他欄位一律不動。
+ */
+export function applyStageToState(
+  state: ReportFormState,
+  stage: Pick<ServicePlanStage, "id" | "hours" | "label" | "parts">,
+  options: { overwrite?: boolean } = {},
+): ApplyStageToStateResult {
+  const { parts, overflow } = applyStageToParts(state.parts, stage, {
+    overwrite: options.overwrite ?? false,
+  });
+  const periodic: ServiceItem = "periodic";
+  return {
+    state: {
+      ...state,
+      parts,
+      service_items: state.service_items.includes(periodic)
+        ? state.service_items
+        : [...state.service_items, periodic],
+      plan_stage: {
+        id: stage.id,
+        hours: stage.hours,
+        label: stage.label ?? null,
+      },
+      plan_stage_dirty: true,
+    },
+    overflow,
+  };
+}
+
+/** 清除本單對應的階段（料件與勾選不動；清除後該階段視為未開過）。 */
+export function clearPlanStage(state: ReportFormState): ReportFormState {
+  return { ...state, plan_stage: null, plan_stage_dirty: true };
 }
 
 /* ------------------------------------------------------------ 欄位編輯 */

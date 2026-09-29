@@ -1,6 +1,10 @@
 // 報告單詳情（spec §6）：ReportSheet 唯讀預覽 ＋ 狀態 / 列印紀錄面板 ＋ 依狀態顯示的操作列。
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import {
+  planStageFromReport,
+  planStageText,
+} from "@/components/service-report/form-state";
 import { ReportSheet } from "@/components/service-report/ReportSheet";
 import { requireModule } from "@/lib/admin/auth";
 import { rocDate, rocDateTime } from "@/lib/admin/minguo";
@@ -10,6 +14,7 @@ import { TIME_SLOT_LABELS } from "@/lib/service-report/types";
 import { ReportActions } from "../_components/ReportActions";
 import { ReportStatusBadge } from "../_components/ReportStatusBadge";
 import { SERVICE_REPORTS_PATH } from "../_components/list-params";
+import { PlanStagePanel } from "./PlanStagePanel";
 
 export const metadata = { title: "報告單明細 · 機台維護報告單" };
 
@@ -39,6 +44,7 @@ export default async function ServiceReportDetailPage({
   if (!report) notFound();
 
   const branding = await getBranding();
+  const stageText = planStageText(planStageFromReport(report));
   const meta: [string, string][] = [
     ["維護日期", rocDate(report.report_date)],
     ["時段", report.time_slot ? TIME_SLOT_LABELS[report.time_slot] : "—"],
@@ -121,6 +127,14 @@ export default async function ServiceReportDetailPage({
               )}
             </dl>
           </section>
+
+          {stageText && (
+            <PlanStagePanel
+              id={report.id}
+              stageText={stageText}
+              canClear={report.status !== "voided"}
+            />
+          )}
 
           <section className="border-border rounded-xl border bg-white p-4">
             <h2 className="text-ink mb-2 text-[15px] font-semibold">
