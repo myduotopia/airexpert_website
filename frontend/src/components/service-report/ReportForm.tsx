@@ -9,6 +9,7 @@ import {
   useCallback,
   useDeferredValue,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type ReactNode,
@@ -30,6 +31,15 @@ import {
   type SrCustomerOption,
   type SrMachineOption,
 } from "@/lib/service-report/prefill";
+import type {
+  MachineStageRow,
+  MachineStagesData,
+} from "@/lib/service-report/plan/queries";
+import {
+  STAGE_PARTS_OVERFLOW_MESSAGE,
+  stageLabel,
+} from "@/lib/service-report/plan/stage";
+import type { PlanPart } from "@/lib/service-report/plan/types";
 import {
   CHECK_STATUS_LABELS,
   FILTER_CONSUMABLE_LABELS,
@@ -43,6 +53,7 @@ import {
   type ServiceItem,
   type ServiceReportInput,
   type ServiceReportStatus,
+  type SrResult,
   type Suggestion,
   type TimeSlot,
 } from "@/lib/service-report/types";
@@ -52,13 +63,17 @@ import {
   FIELD_LABELS,
   applyCustomerPrefill,
   applyMachinePrefill,
+  applyStageToState,
   clearCustomer,
   clearMachine,
+  clearPlanStage,
   customerPrefillConflicts,
   formStateToInput,
   formStateToSheetData,
+  planStageText,
   setFilterConsumable,
   setResultField,
+  stageApplyNeedsConfirm,
   toggleSingle,
   toggleValue,
   updatePart,
@@ -92,6 +107,14 @@ export interface ReportFormProps {
   ) => Promise<
     { ok: true; data: { report_no: string } } | { ok: false; error: string }
   >;
+  /** 初始機台的保養方案 / 階段（server 端先查好；沒選機台時為 null）。 */
+  stages?: MachineStagesData | null;
+  /** server 端已先套用階段時，10 列放不下的料件（開單頁 ?stageId= 用）。 */
+  initialOverflow?: PlanPart[];
+  /** 換機台後重查階段（server action）；不傳則只用 stages。 */
+  onLoadStages?: (
+    machineId: string,
+  ) => Promise<SrResult<MachineStagesData | null>>;
 }
 
 // 回填欄位（key 型別對齊 ServiceReportResults，讀寫都不必轉型）。
@@ -155,6 +178,9 @@ export function ReportForm({
   logoUrl,
   onSave,
   onReserveNo,
+  stages = null,
+  initialOverflow,
+  onLoadStages,
 }: ReportFormProps) {
   const router = useRouter();
   const [state, setState] = useState<ReportFormState>(initial);
@@ -163,6 +189,17 @@ export function ReportForm({
     status === "printed" || status === "completed",
   );
   const [pending, startTransition] = useTransition();
+
+  // ── 保養階段（spec §6.2）
+  const [stageData, setStageData] = useState<MachineStagesData | null>(stages);
+  const [stageLoading, setStageLoading] = useState(false);
+  const [stageError, setStageError] = useState<string | null>(null);
+  const [stageNotice, setStageNotice] = useState<string | null>(
+    overflowMessage(initialOverflow),
+  );
+  const [pickedStageId, setPickedStageId] = useState("");
+  // 連續換機台時，只採用最後一次查詢的結果。
+  const stageReqRef = useRef(0);
 
   // 預覽跟著輸入更新，但讓輸入優先（整張 A4 重繪較重）。
   const deferred = useDeferredValue(state);
@@ -208,6 +245,7 @@ export function ReportForm({
     setError(null);
     if (!option) {
       setState((s) => clearMachine(s));
+      resetStages(null);
       return;
     }
     const customer =
@@ -215,6 +253,62 @@ export function ReportForm({
         (c) => c.id === (state.customer_id ?? option.customer_id),
       ) ?? null;
     setState((s) => applyMachinePrefill(s, option, customer));
+    resetStages(option.id);
+  }
+
+  /** 換機台：清掉上一台的提示與選擇，再（可能）重查階段。 */
+  function resetStages(machineId: string | null) {
+    const req = ++stageReqRef.current;
+    setStageError(null);
+    setStageNotice(null);
+    setPickedStageId("");
+    if (!machineId || !onLoadStages) {
+      setStageData(
+        machineId && stages?.machine_id === machineId ? stages : null,
+      );
+      setStageLoading(false);
+      return;
+    }
+    if (stageData?.machine_id === machineId) return;
+    setStageData(null);
+    setStageLoading(true);
+    void (async () => {
+      try {
+        const res = await onLoadStages(machineId);
+        if (req !== stageReqRef.current) return;
+        if (!res.ok) setStageError(res.error);
+        else setStageData(res.data);
+      } catch (e) {
+        unstable_rethrow(e);
+        if (req === stageReqRef.current) {
+          setStageError("讀取保養方案失敗，請檢查網路連線後再試一次。");
+        }
+      } finally {
+        if (req === stageReqRef.current) setStageLoading(false);
+      }
+    })();
+  }
+
+  /** 套用階段：料件已有內容時先問覆蓋（取消＝只填空白列）。 */
+  function applyStage(stage: MachineStageRow) {
+    setError(null);
+    const overwrite =
+      !stageApplyNeedsConfirm(state) ||
+      window.confirm(
+        `更換料件已有內容，要改用「${stageLabel(stage)}」的料件嗎？\n\n` +
+          "確定：同品名的數量改成方案的數量；取消：只填入空白列。",
+      );
+    const applied = applyStageToState(state, stage, { overwrite });
+    setState(applied.state);
+    setResultsOpen(true);
+    setStageNotice(overflowMessage(applied.overflow));
+    setPickedStageId("");
+  }
+
+  function clearStage() {
+    setError(null);
+    setStageNotice(null);
+    setState((s) => clearPlanStage(s));
   }
 
   function reserveNo() {
@@ -262,6 +356,14 @@ export function ReportForm({
       }
     });
   }
+
+  const currentStageText = planStageText(state.plan_stage);
+  const stageRows = stageData?.stages ?? [];
+  const suggested =
+    stageRows.find((s) => s.id === stageData?.suggested_stage_id) ?? null;
+  // 本單已經套用這個階段就不必再提示。
+  const suggestedStage =
+    suggested && state.plan_stage?.id === suggested.id ? null : suggested;
 
   const cancelHref = reportId
     ? `${SERVICE_REPORTS_PATH}/${reportId}`
@@ -505,6 +607,118 @@ export function ReportForm({
               onChange={(e) => setText("summary", e.target.value)}
             />
             <Hint>表單上約 8 行；過長的內容在紙上會被裁掉。</Hint>
+          </Section>
+
+          {/* ── 保養階段 ─────────────────────────── */}
+          <Section title="保養階段">
+            <div className="flex flex-col gap-3">
+              {currentStageText && (
+                <div className="border-border flex flex-wrap items-center gap-3 rounded-lg border bg-white px-3 py-2">
+                  <span className="text-ink text-[14px]">
+                    本單對應：
+                    <span className="font-semibold">{currentStageText}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className={ERP_BUTTON_SECONDARY}
+                    onClick={clearStage}
+                  >
+                    清除
+                  </button>
+                  <Hint>
+                    清除後按「儲存」才生效；清掉的階段會重新視為未開過。
+                  </Hint>
+                </div>
+              )}
+
+              {stageError && (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[13px] text-red-800"
+                >
+                  {stageError}
+                </p>
+              )}
+
+              {!state.machine_id ? (
+                <Hint>選機台後，可依保養方案階段一鍵帶入更換料件。</Hint>
+              ) : stageLoading ? (
+                <Hint>讀取保養方案…</Hint>
+              ) : !stageData?.plan ? (
+                <Hint>
+                  此機台尚未對應保養方案，可在「保養方案」頁設定馬力或逐台指定。
+                </Hint>
+              ) : stageRows.length === 0 ? (
+                <Hint>方案「{stageData.plan.name}」尚未設定階段。</Hint>
+              ) : (
+                <>
+                  {suggestedStage && (
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+                      <span className="text-[14px] text-amber-900">
+                        此機台已達 {stageLabel(suggestedStage)}，套用料件？
+                      </span>
+                      <button
+                        type="button"
+                        className={ERP_BUTTON_SECONDARY}
+                        onClick={() => applyStage(suggestedStage)}
+                      >
+                        套用
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className={ERP_LABEL} htmlFor="sr-stage">
+                      套用其他階段
+                    </label>
+                    <select
+                      id="sr-stage"
+                      className={`${ERP_INPUT} w-auto min-w-[16rem]`}
+                      value={pickedStageId}
+                      onChange={(e) => setPickedStageId(e.target.value)}
+                    >
+                      <option value="">請選擇階段</option>
+                      {stageRows.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {stageOptionLabel(row)}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={ERP_BUTTON_SECONDARY}
+                      disabled={pickedStageId === ""}
+                      onClick={() => {
+                        const row = stageRows.find(
+                          (r) => r.id === pickedStageId,
+                        );
+                        if (row) applyStage(row);
+                      }}
+                    >
+                      套用
+                    </button>
+                  </div>
+
+                  <Hint>
+                    方案：{stageData.plan.name}
+                    {stageData.latest
+                      ? `；目前時數 ${stageData.latest.hours} 小時`
+                      : "；尚無時數記錄"}
+                    。套用會填入更換料件並勾選「
+                    {SERVICE_ITEM_LABELS.periodic}」。
+                  </Hint>
+                </>
+              )}
+
+              {stageNotice && (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-900"
+                >
+                  {stageNotice}
+                </p>
+              )}
+            </div>
           </Section>
 
           {/* ── 回填結果 ─────────────────────────── */}
@@ -772,6 +986,23 @@ export function ReportForm({
       </div>
     </div>
   );
+}
+
+/** 下拉選項文字：「4000 小時 基礎保養（已開過 / 未達門檻）」。 */
+function stageOptionLabel(row: MachineStageRow): string {
+  const note = row.issued ? "已開過" : row.reached ? "已達門檻" : "未達門檻";
+  return `${stageLabel(row)}（${note}）`;
+}
+
+/** 10 列放不下的料件提示；沒有溢出回 null。 */
+function overflowMessage(
+  overflow: readonly PlanPart[] | undefined,
+): string | null {
+  if (!overflow || overflow.length === 0) return null;
+  const names = overflow.map((p) => p.name).filter((n) => n.trim() !== "");
+  return names.length
+    ? `${STAGE_PARTS_OVERFLOW_MESSAGE}：${names.join("、")}`
+    : STAGE_PARTS_OVERFLOW_MESSAGE;
 }
 
 /* ---------------------------------------------------------------- 小元件 */
