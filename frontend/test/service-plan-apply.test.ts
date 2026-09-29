@@ -12,6 +12,7 @@ import {
   updatePart,
   type ReportFormState,
 } from "@/components/service-report/form-state";
+import type { MilestoneTarget } from "@/lib/service-report/plan/stage";
 import type { ServicePlanStage } from "@/lib/service-report/plan/types";
 import { defaultParts, type ServiceReport } from "@/lib/service-report/types";
 
@@ -35,6 +36,16 @@ function stage(patch: Partial<ServicePlanStage> = {}): ServicePlanStage {
   };
 }
 
+/**
+ * 要套用的里程碑：第 4 輪的 4000 小時階段（一輪 6000）＝ 22000 小時。
+ * 快照的 plan_stage_hours 存的是這個 22000，不是階段原時數 4000。
+ */
+const MILESTONE = 22000;
+
+function target(patch: Partial<ServicePlanStage> = {}): MilestoneTarget {
+  return { milestone: MILESTONE, stage: stage(patch) };
+}
+
 function stateWith(patch: Partial<ReportFormState>): ReportFormState {
   return { ...emptyFormState(TODAY), ...patch };
 }
@@ -47,7 +58,7 @@ describe("applyStageToState", () => {
   it("空表單：品名比對填數量、其餘填空白列、勾選定期保養、記錄階段", () => {
     const { state, overflow } = applyStageToState(
       emptyFormState(TODAY),
-      stage(),
+      target(),
     );
     expect(overflow).toEqual([]);
     expect(qtyOf(state, "螺旋專用油")).toBe("20L");
@@ -58,18 +69,20 @@ describe("applyStageToState", () => {
     expect(state.parts[7]).toEqual({ no: 8, name: "高壓軟管", qty: "2條" });
     expect(state.parts).toHaveLength(10);
     expect(state.service_items).toEqual(["periodic"]);
+    // hours 存里程碑（22000），不是階段原時數（4000）
     expect(state.plan_stage).toEqual({
       id: STAGE_ID,
-      hours: 4000,
+      hours: MILESTONE,
       label: "基礎保養",
     });
+    expect(state.plan_stage?.hours).not.toBe(stage().hours);
     expect(state.plan_stage_dirty).toBe(true);
   });
 
   it("已勾選的服務項目不重複、順序不變", () => {
     const { state } = applyStageToState(
       stateWith({ service_items: ["periodic", "repair"] }),
-      stage(),
+      target(),
     );
     expect(state.service_items).toEqual(["periodic", "repair"]);
   });
@@ -77,7 +90,7 @@ describe("applyStageToState", () => {
   it("未勾選時把定期保養加在最後，其他勾選不動", () => {
     const { state } = applyStageToState(
       stateWith({ service_items: ["routine"] }),
-      stage(),
+      target(),
     );
     expect(state.service_items).toEqual(["routine", "periodic"]);
   });
@@ -86,7 +99,7 @@ describe("applyStageToState", () => {
     const filled = stateWith({
       parts: updatePart(defaultParts(), 1, { qty: "18L" }),
     });
-    const { state } = applyStageToState(filled, stage(), { overwrite: false });
+    const { state } = applyStageToState(filled, target(), { overwrite: false });
     expect(qtyOf(state, "螺旋專用油")).toBe("18L");
     expect(qtyOf(state, "空氣濾清器(外)")).toBe("1個");
     expect(qtyOf(state, "高壓軟管")).toBe("2條");
@@ -96,7 +109,7 @@ describe("applyStageToState", () => {
     const filled = stateWith({
       parts: updatePart(defaultParts(), 1, { qty: "18L" }),
     });
-    const { state } = applyStageToState(filled, stage(), { overwrite: true });
+    const { state } = applyStageToState(filled, target(), { overwrite: true });
     expect(qtyOf(state, "螺旋專用油")).toBe("20L");
   });
 
@@ -104,7 +117,7 @@ describe("applyStageToState", () => {
     const filled = stateWith({
       parts: updatePart(defaultParts(), 1, { qty: "18L" }),
     });
-    expect(qtyOf(applyStageToState(filled, stage()).state, "螺旋專用油")).toBe(
+    expect(qtyOf(applyStageToState(filled, target()).state, "螺旋專用油")).toBe(
       "18L",
     );
   });
@@ -117,7 +130,7 @@ describe("applyStageToState", () => {
     }));
     const { state, overflow } = applyStageToState(
       emptyFormState(TODAY),
-      stage({ parts }),
+      target({ parts }),
     );
     // 預設 10 列只有第 8、9 列是空白，其餘已有預設品名
     expect(overflow.map((p) => p.name)).toEqual([
@@ -139,7 +152,7 @@ describe("applyStageToState", () => {
 
   it("不動其他欄位（只碰料件、服務項目與階段）", () => {
     const base = stateWith({ summary: "更換濾芯", technician: "陳技師" });
-    const { state } = applyStageToState(base, stage());
+    const { state } = applyStageToState(base, target());
     expect(state.summary).toBe("更換濾芯");
     expect(state.technician).toBe("陳技師");
     expect(state.report_date).toBe(TODAY);
@@ -158,13 +171,26 @@ describe("stageApplyNeedsConfirm", () => {
 });
 
 describe("送出時的 plan_stage_* 三個欄位", () => {
-  it("套用後：三個欄位一起送，label 存階段名稱原文", () => {
-    const { state } = applyStageToState(emptyFormState(TODAY), stage());
+  it("套用後：三個欄位一起送，hours 存里程碑、label 存階段名稱原文", () => {
+    const { state } = applyStageToState(emptyFormState(TODAY), target());
     const input = formStateToInput(state);
     expect(input.plan_stage_id).toBe(STAGE_ID);
-    expect(input.plan_stage_hours).toBe(4000);
-    // 不是 stageLabel() 的「4000 小時 基礎保養」
+    // 里程碑 22000，不是階段原時數 4000
+    expect(input.plan_stage_hours).toBe(22000);
+    expect(input.plan_stage_hours).not.toBe(4000);
+    // 不是 milestoneLabel() 的「22000 小時 基礎保養」
     expect(input.plan_stage_label).toBe("基礎保養");
+  });
+
+  it("換一個里程碑（同階段）→ 只有 plan_stage_hours 不同", () => {
+    const a = applyStageToState(emptyFormState(TODAY), target()).state;
+    const b = applyStageToState(emptyFormState(TODAY), {
+      milestone: 28000,
+      stage: stage(),
+    }).state;
+    expect(a.plan_stage?.id).toBe(b.plan_stage?.id);
+    expect(a.plan_stage?.hours).toBe(22000);
+    expect(b.plan_stage?.hours).toBe(28000);
   });
 
   it("沒動過階段：三個欄位皆 undefined（不更動 DB 既有值）", () => {
@@ -206,7 +232,7 @@ describe("送出時的 plan_stage_* 三個欄位", () => {
   });
 
   it("套用後再清除，料件與勾選不會被還原", () => {
-    const { state } = applyStageToState(emptyFormState(TODAY), stage());
+    const { state } = applyStageToState(emptyFormState(TODAY), target());
     const cleared = clearPlanStage(state);
     expect(qtyOf(cleared, "螺旋專用油")).toBe("20L");
     expect(cleared.service_items).toEqual(["periodic"]);
@@ -219,15 +245,15 @@ describe("planStageFromReport / planStageText", () => {
     expect(planStageText(null)).toBeNull();
   });
 
-  it("有階段 → 「4000 小時 基礎保養」", () => {
+  it("有階段 → 「22000 小時 基礎保養」（時數是里程碑）", () => {
     const snapshot = planStageFromReport(
       makeReport({
         plan_stage_id: STAGE_ID,
-        plan_stage_hours: 4000,
+        plan_stage_hours: 22000,
         plan_stage_label: "基礎保養",
       }),
     );
-    expect(planStageText(snapshot)).toBe("4000 小時 基礎保養");
+    expect(planStageText(snapshot)).toBe("22000 小時 基礎保養");
   });
 
   it("階段被刪除（id 轉 null）仍以快照顯示", () => {

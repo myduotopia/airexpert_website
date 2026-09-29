@@ -212,6 +212,7 @@ beforeEach(() => {
         status: "printed",
         results: { compressor: { run_hours: "1500" } },
         plan_stage_id: null,
+        plan_stage_hours: null,
       },
       {
         id: "x2",
@@ -220,23 +221,27 @@ beforeEach(() => {
         status: "printed",
         results: { compressor: { run_hours: "1,900" } },
         plan_stage_id: null,
+        plan_stage_hours: null,
       },
       {
-        // 作廢單：時數與已開過階段皆不計入
+        // 作廢單：時數與已開過里程碑皆不計入
         id: "x3",
         machine_id: M1,
         report_date: "2026-09-10",
         status: "voided",
         results: { compressor: { run_hours: "99999" } },
         plan_stage_id: S1,
+        plan_stage_hours: 2000,
       },
       {
+        // M4 的 2000 小時里程碑已開過（未作廢）
         id: "x4",
         machine_id: M4,
         report_date: "2026-09-06",
         status: "completed",
         results: {},
         plan_stage_id: S1,
+        plan_stage_hours: 2000,
       },
     ],
   };
@@ -409,7 +414,7 @@ describe("listMachinePlanRows", () => {
 });
 
 describe("listReminders", () => {
-  it("已達門檻在前、即將到期在後；作廢單不計入、已開過階段不再提醒", async () => {
+  it("已達門檻在前、即將到期在後；作廢單不計入、已開過里程碑不再提醒", async () => {
     const r = await listReminders(TODAY);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -423,11 +428,12 @@ describe("listReminders", () => {
       customer_name: "甲客戶",
       machine_label: "2-AB-1",
       plan_name: "20HP 空壓機",
+      milestone: 2000,
       stage_label: "2000 小時 基礎保養",
       latest_hours: 2100,
       latest_source: "record",
     });
-    // M4 的 2000 小時階段已開過（未作廢單），下一階段 4000 還很遠 → 不提醒
+    // M4 的 2000 小時里程碑已開過（未作廢單），下一個 4000 還很遠 → 不提醒
     expect(r.data.some((x) => x.machine_id === M4)).toBe(false);
     // M3 沒有任何抄表 → 不提醒
     expect(r.data.some((x) => x.machine_id === M3)).toBe(false);
@@ -448,6 +454,102 @@ describe("listReminders", () => {
       stage_id: S3,
       status: "due",
     });
+  });
+
+  it("循環里程碑：22278 小時只提醒 22000，不補 2000／4000／6000", async () => {
+    // 正式站的方案：2000／4000 基礎保養、6000 年度保養（一輪 6000）
+    tables.sr_service_plan_stages = [
+      { id: S1, plan_id: P1, hours: 2000, label: "基礎保養", parts: [] },
+      { id: S2, plan_id: P1, hours: 4000, label: "基礎保養", parts: [] },
+      { id: S3, plan_id: P1, hours: 6000, label: "年度保養", parts: [] },
+    ];
+    tables.mx_machines = [machine(M5, "丁客戶", "20HP", "5", "IJ-5")];
+    tables.mx_records = [
+      { id: "f1", machine_id: M5, service_date: "2026-09-01", hours: "22178" },
+      { id: "f2", machine_id: M5, service_date: "2026-09-11", hours: "22278" },
+    ];
+    tables.sr_reports = [];
+
+    const r = await listReminders(TODAY);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data).toHaveLength(1);
+    expect(r.data[0]).toMatchObject({
+      machine_id: M5,
+      status: "due",
+      milestone: 22000,
+      stage_id: S2,
+      stage_label: "22000 小時 基礎保養",
+      due_date: null,
+    });
+    expect([2000, 4000, 6000]).not.toContain(r.data[0].milestone);
+
+    // 開過 22000 之後：距 24000 還很遠 → 不再提醒（也不會退回舊里程碑）
+    tables.sr_reports = [
+      {
+        id: "f-x1",
+        machine_id: M5,
+        report_date: "2026-09-11",
+        status: "completed",
+        results: {},
+        plan_stage_id: S2,
+        plan_stage_hours: 22000,
+      },
+    ];
+    const after = await listReminders(TODAY);
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.data).toEqual([]);
+  });
+
+  it("已開過同時看階段與里程碑（同階段的舊里程碑不算已開過）", async () => {
+    tables.sr_service_plan_stages = [
+      { id: S1, plan_id: P1, hours: 2000, label: "基礎保養", parts: [] },
+      { id: S2, plan_id: P1, hours: 4000, label: "基礎保養", parts: [] },
+      { id: S3, plan_id: P1, hours: 6000, label: "年度保養", parts: [] },
+    ];
+    tables.mx_machines = [machine(M5, "丁客戶", "20HP", "5", "IJ-5")];
+    tables.mx_records = [
+      { id: "f1", machine_id: M5, service_date: "2026-09-01", hours: "22178" },
+      { id: "f2", machine_id: M5, service_date: "2026-09-11", hours: "22278" },
+    ];
+    // 同一個階段 S2，但里程碑是 4000（第一輪）→ 22000 仍要提醒
+    tables.sr_reports = [
+      {
+        id: "f-x2",
+        machine_id: M5,
+        report_date: "2024-03-01",
+        status: "completed",
+        results: {},
+        plan_stage_id: S2,
+        plan_stage_hours: 4000,
+      },
+      {
+        // 作廢的 22000：不算已開過
+        id: "f-x3",
+        machine_id: M5,
+        report_date: "2026-09-10",
+        status: "voided",
+        results: {},
+        plan_stage_id: S2,
+        plan_stage_hours: 22000,
+      },
+      {
+        // 沒記錄時數的舊單：對不到里程碑，也不算已開過
+        id: "f-x4",
+        machine_id: M5,
+        report_date: "2026-09-09",
+        status: "completed",
+        results: {},
+        plan_stage_id: S2,
+        plan_stage_hours: null,
+      },
+    ];
+    const r = await listReminders(TODAY);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data).toHaveLength(1);
+    expect(r.data[0]).toMatchObject({ milestone: 22000, status: "due" });
   });
 
   it("沒有方案 → 空清單；DB 錯誤 → 中文訊息", async () => {
@@ -474,7 +576,7 @@ describe("listReminders", () => {
 });
 
 describe("listStagesForMachine", () => {
-  it("階段帶已開過 / 已達門檻旗標與建議套用的階段", async () => {
+  it("里程碑帶已開過 / 已達門檻旗標與建議套用的里程碑", async () => {
     const r = await listStagesForMachine(M1);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -485,22 +587,66 @@ describe("listStagesForMachine", () => {
       hours: 2100,
       source: "record",
     });
-    expect(r.data?.stages.map((s) => [s.hours, s.issued, s.reached])).toEqual([
+    expect(
+      r.data?.milestones.map((m) => [m.milestone, m.issued, m.reached]),
+    ).toEqual([
       [2000, false, true],
       [4000, false, false],
     ]);
-    expect(r.data?.suggested_stage_id).toBe(S1);
+    expect(r.data?.milestones.map((m) => m.stage.id)).toEqual([S1, S2]);
+    expect(r.data?.suggested_milestone).toBe(2000);
   });
 
-  it("已開過的階段跳過，下一階段未達門檻 → 不建議套用", async () => {
+  it("已開過的里程碑不再建議套用（仍留在下拉裡）", async () => {
     const r = await listStagesForMachine(M4);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.data?.stages.map((s) => [s.hours, s.issued])).toEqual([
+    expect(r.data?.milestones.map((m) => [m.milestone, m.issued])).toEqual([
       [2000, true],
       [4000, false],
     ]);
-    expect(r.data?.suggested_stage_id).toBeNull();
+    expect(r.data?.suggested_milestone).toBeNull();
+  });
+
+  it("跑到第 6 輪：選項與建議都是循環後的里程碑", async () => {
+    // P1 一輪 4000（階段 2000／4000）；M1 改成 22278 小時
+    tables.mx_records = [
+      { id: "n1", machine_id: M1, service_date: "2026-09-01", hours: "22178" },
+      { id: "n2", machine_id: M1, service_date: "2026-09-11", hours: "22278" },
+    ];
+    const r = await listStagesForMachine(M1);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // 22278：已達 22000（22000 % 4000 = 2000 → S1），下一個 24000（餘 0 → S2）
+    expect(
+      r.data?.milestones.map((m) => [m.milestone, m.stage.id, m.reached]),
+    ).toEqual([
+      [22000, S1, true],
+      [24000, S2, false],
+    ]);
+    expect(r.data?.suggested_milestone).toBe(22000);
+  });
+
+  it("同階段的舊里程碑開過不算：仍建議目前的里程碑", async () => {
+    tables.mx_records = [
+      { id: "n1", machine_id: M1, service_date: "2026-09-11", hours: "22278" },
+    ];
+    tables.sr_reports = [
+      {
+        id: "n-x1",
+        machine_id: M1,
+        report_date: "2024-01-01",
+        status: "completed",
+        results: {},
+        plan_stage_id: S1,
+        plan_stage_hours: 2000,
+      },
+    ];
+    const r = await listStagesForMachine(M1);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data?.suggested_milestone).toBe(22000);
+    expect(r.data?.milestones.map((m) => m.issued)).toEqual([false, false]);
   });
 
   it("沒填馬力且無逐台指定 → 套用通用預設的階段", async () => {
@@ -518,7 +664,8 @@ describe("listStagesForMachine", () => {
     if (!r.ok) return;
     expect(r.data?.plan?.id).toBe(P3);
     expect(r.data?.plan_source).toBe("default");
-    expect(r.data?.stages.map((s) => s.hours)).toEqual([2000]);
+    // 沒有抄表 → 從第一個里程碑開始
+    expect(r.data?.milestones.map((m) => m.milestone)).toEqual([2000]);
   });
 
   it("機台不存在 / id 不合法 → null", async () => {
@@ -578,8 +725,8 @@ describe("抄表讀取：排序、期間窗與分頁保護", () => {
     );
   });
 
-  it("已開過的階段不受期間窗限制（舊保養不會被重複提醒）", async () => {
-    // M4 的 2000 小時階段在期間窗之前就開過了
+  it("已開過的里程碑不受期間窗限制（舊保養不會被重複提醒）", async () => {
+    // M4 的 2000 小時里程碑在期間窗之前就開過了
     tables.sr_reports = tables.sr_reports.map((r) =>
       r.id === "x4" ? { ...r, report_date: "2023-05-01" } : r,
     );

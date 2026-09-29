@@ -32,12 +32,12 @@ import {
   type SrMachineOption,
 } from "@/lib/service-report/prefill";
 import type {
-  MachineStageRow,
+  MachineMilestoneRow,
   MachineStagesData,
 } from "@/lib/service-report/plan/queries";
 import {
   STAGE_PARTS_OVERFLOW_MESSAGE,
-  stageLabel,
+  milestoneLabel,
 } from "@/lib/service-report/plan/stage";
 import type { PlanPart } from "@/lib/service-report/plan/types";
 import {
@@ -197,7 +197,7 @@ export function ReportForm({
   const [stageNotice, setStageNotice] = useState<string | null>(
     overflowMessage(initialOverflow),
   );
-  const [pickedStageId, setPickedStageId] = useState("");
+  const [pickedMilestone, setPickedMilestone] = useState("");
   // 連續換機台時，只採用最後一次查詢的結果。
   const stageReqRef = useRef(0);
 
@@ -261,7 +261,7 @@ export function ReportForm({
     const req = ++stageReqRef.current;
     setStageError(null);
     setStageNotice(null);
-    setPickedStageId("");
+    setPickedMilestone("");
     if (!machineId || !onLoadStages) {
       setStageData(
         machineId && stages?.machine_id === machineId ? stages : null,
@@ -289,20 +289,20 @@ export function ReportForm({
     })();
   }
 
-  /** 套用階段：料件已有內容時先問覆蓋（取消＝只填空白列）。 */
-  function applyStage(stage: MachineStageRow) {
+  /** 套用里程碑：料件已有內容時先問覆蓋（取消＝只填空白列）。 */
+  function applyStage(row: MachineMilestoneRow) {
     setError(null);
     const overwrite =
       !stageApplyNeedsConfirm(state) ||
       window.confirm(
-        `更換料件已有內容，要改用「${stageLabel(stage)}」的料件嗎？\n\n` +
+        `更換料件已有內容，要改用「${milestoneRowLabel(row)}」的料件嗎？\n\n` +
           "確定：同品名的數量改成方案的數量；取消：只填入空白列。",
       );
-    const applied = applyStageToState(state, stage, { overwrite });
+    const applied = applyStageToState(state, row, { overwrite });
     setState(applied.state);
     setResultsOpen(true);
     setStageNotice(overflowMessage(applied.overflow));
-    setPickedStageId("");
+    setPickedMilestone("");
   }
 
   function clearStage() {
@@ -358,12 +358,17 @@ export function ReportForm({
   }
 
   const currentStageText = planStageText(state.plan_stage);
-  const stageRows = stageData?.stages ?? [];
+  const stageRows = stageData?.milestones ?? [];
   const suggested =
-    stageRows.find((s) => s.id === stageData?.suggested_stage_id) ?? null;
-  // 本單已經套用這個階段就不必再提示。
+    stageRows.find((r) => r.milestone === stageData?.suggested_milestone) ??
+    null;
+  // 本單已經套用這個里程碑就不必再提示。
   const suggestedStage =
-    suggested && state.plan_stage?.id === suggested.id ? null : suggested;
+    suggested &&
+    state.plan_stage?.id === suggested.stage.id &&
+    state.plan_stage?.hours === suggested.milestone
+      ? null
+      : suggested;
 
   const cancelHref = reportId
     ? `${SERVICE_REPORTS_PATH}/${reportId}`
@@ -655,7 +660,8 @@ export function ReportForm({
                   {suggestedStage && (
                     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
                       <span className="text-[14px] text-amber-900">
-                        此機台已達 {stageLabel(suggestedStage)}，套用料件？
+                        此機台已達 {milestoneRowLabel(suggestedStage)}
+                        ，套用料件？
                       </span>
                       <button
                         type="button"
@@ -674,12 +680,12 @@ export function ReportForm({
                     <select
                       id="sr-stage"
                       className={`${ERP_INPUT} w-auto min-w-[16rem]`}
-                      value={pickedStageId}
-                      onChange={(e) => setPickedStageId(e.target.value)}
+                      value={pickedMilestone}
+                      onChange={(e) => setPickedMilestone(e.target.value)}
                     >
                       <option value="">請選擇階段</option>
                       {stageRows.map((row) => (
-                        <option key={row.id} value={row.id}>
+                        <option key={row.milestone} value={row.milestone}>
                           {stageOptionLabel(row)}
                         </option>
                       ))}
@@ -687,10 +693,10 @@ export function ReportForm({
                     <button
                       type="button"
                       className={ERP_BUTTON_SECONDARY}
-                      disabled={pickedStageId === ""}
+                      disabled={pickedMilestone === ""}
                       onClick={() => {
                         const row = stageRows.find(
-                          (r) => r.id === pickedStageId,
+                          (r) => String(r.milestone) === pickedMilestone,
                         );
                         if (row) applyStage(row);
                       }}
@@ -988,10 +994,15 @@ export function ReportForm({
   );
 }
 
-/** 下拉選項文字：「4000 小時 基礎保養（已開過 / 未達門檻）」。 */
-function stageOptionLabel(row: MachineStageRow): string {
+/** 里程碑顯示文字：「22000 小時 基礎保養」。 */
+function milestoneRowLabel(row: MachineMilestoneRow): string {
+  return milestoneLabel(row.milestone, row.stage);
+}
+
+/** 下拉選項文字：「22000 小時 基礎保養（已開過 / 未達門檻）」。 */
+function stageOptionLabel(row: MachineMilestoneRow): string {
   const note = row.issued ? "已開過" : row.reached ? "已達門檻" : "未達門檻";
-  return `${stageLabel(row)}（${note}）`;
+  return `${milestoneRowLabel(row)}（${note}）`;
 }
 
 /** 10 列放不下的料件提示；沒有溢出回 null。 */

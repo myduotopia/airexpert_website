@@ -35,7 +35,7 @@ export interface ReminderRowView {
   hoursText: string;
   /** 民國抄表日，如「民國115/09/11」。 */
   readAtText: string;
-  /** 下一階段，如「4000 小時 基礎保養」。 */
+  /** 這次要提醒的里程碑，如「22000 小時 基礎保養」。 */
   stageText: string;
   /** 方案名稱（title 補充用）。 */
   planName: string;
@@ -84,11 +84,19 @@ export function reminderStatusText(
   return `預計 ${short} 到期`;
 }
 
-/** 開立報告單連結：/admin/service-reports/new?machineId=…&stageId=…（#202 負責接收）。 */
-export function newReportHref(machineId: string, stageId: string): string {
+/**
+ * 開立報告單連結：/admin/service-reports/new?machineId=…&stageId=…&milestone=…。
+ * milestone 是循環里程碑（如 22000）；開單頁以「階段 + 里程碑」找出要套用的那一列。
+ */
+export function newReportHref(
+  machineId: string,
+  stageId: string,
+  milestone: number,
+): string {
   const params = new URLSearchParams({
     machineId,
     stageId,
+    milestone: String(milestone),
   });
   return `${SERVICE_REPORTS_PATH}/new?${params.toString()}`;
 }
@@ -102,7 +110,7 @@ export function toReminderRow(reminder: StageReminder): ReminderRowView {
   const full = (reminder.customer_name ?? "").trim() || "（未命名客戶）";
   const shown = truncate(full, REMINDER_CUSTOMER_MAX);
   return {
-    key: `${reminder.machine_id}:${reminder.stage_id}`,
+    key: `${reminder.machine_id}:${reminder.stage_id}:${reminder.milestone}`,
     customerName: shown,
     customerTitle: full,
     truncated: shown !== full,
@@ -114,7 +122,11 @@ export function toReminderRow(reminder: StageReminder): ReminderRowView {
     status: reminder.status,
     statusText: reminderStatusText(reminder.status, reminder.due_date),
     statusTone: TONES[reminder.status] ?? "info",
-    href: newReportHref(reminder.machine_id, reminder.stage_id),
+    href: newReportHref(
+      reminder.machine_id,
+      reminder.stage_id,
+      reminder.milestone,
+    ),
   };
 }
 

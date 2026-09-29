@@ -28,7 +28,7 @@ export default async function ServicePlansPage() {
       <PlanTabs active="plans" />
       <PlanHeader
         title="保養方案"
-        description="階段保養設定；開單時會依累計時數自動帶入該階段的料件。未填適用馬力的方案為「通用預設」，套用到所有沒有其他對應的空壓機。"
+        description="階段保養設定；階段以最大時數為一輪循環（2000／4000／6000 → 8000／10000／12000…），開單時依累計時數自動帶入該里程碑的料件。未填適用馬力的方案為「通用預設」，套用到所有沒有其他對應的空壓機。"
         actions={
           <Link href={`${PLANS_PATH}/new`} className={PLAN_LINK_PRIMARY}>
             新增方案

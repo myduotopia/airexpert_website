@@ -23,10 +23,11 @@ function reminder(patch: Partial<StageReminder> = {}): StageReminder {
     machine_label: "2-AB123",
     plan_id: "33333333-3333-4333-8333-333333333333",
     plan_name: "20HP 空壓機保養",
+    milestone: 22000,
     stage_id: "44444444-4444-4444-8444-444444444444",
     stage_hours: 4000,
     stage_name: "基礎保養",
-    stage_label: "4000 小時 基礎保養",
+    stage_label: "22000 小時 基礎保養",
     latest_hours: 22278,
     latest_date: "2026-09-11",
     latest_source: "record",
@@ -83,15 +84,15 @@ describe("reminderStatusText", () => {
 });
 
 describe("newReportHref", () => {
-  it("帶 machineId 與 stageId", () => {
-    expect(newReportHref("m-1", "s-1")).toBe(
-      "/admin/service-reports/new?machineId=m-1&stageId=s-1",
+  it("帶 machineId、stageId 與里程碑", () => {
+    expect(newReportHref("m-1", "s-1", 22000)).toBe(
+      "/admin/service-reports/new?machineId=m-1&stageId=s-1&milestone=22000",
     );
   });
 
   it("特殊字元會被編碼", () => {
-    expect(newReportHref("a b", "c&d")).toBe(
-      "/admin/service-reports/new?machineId=a+b&stageId=c%26d",
+    expect(newReportHref("a b", "c&d", 2000)).toBe(
+      "/admin/service-reports/new?machineId=a+b&stageId=c%26d&milestone=2000",
     );
   });
 });
@@ -104,14 +105,22 @@ describe("toReminderRow", () => {
     expect(row.statusTone).toBe("warning");
     expect(row.hoursText).toBe("22,278 小時");
     expect(row.readAtText).toBe("民國115/09/11");
-    expect(row.stageText).toBe("4000 小時 基礎保養");
+    expect(row.stageText).toBe("22000 小時 基礎保養");
     expect(row.machineLabel).toBe("2-AB123");
     expect(row.href).toBe(
-      "/admin/service-reports/new?machineId=11111111-1111-4111-8111-111111111111&stageId=44444444-4444-4444-8444-444444444444",
+      "/admin/service-reports/new?machineId=11111111-1111-4111-8111-111111111111&stageId=44444444-4444-4444-8444-444444444444&milestone=22000",
     );
     expect(row.key).toBe(
-      "11111111-1111-4111-8111-111111111111:44444444-4444-4444-8444-444444444444",
+      "11111111-1111-4111-8111-111111111111:44444444-4444-4444-8444-444444444444:22000",
     );
+  });
+
+  it("同一階段的不同里程碑是不同列（key 與連結都要不同）", () => {
+    const a = toReminderRow(reminder({ milestone: 22000 }));
+    const b = toReminderRow(reminder({ milestone: 28000 }));
+    expect(a.key).not.toBe(b.key);
+    expect(a.href).not.toBe(b.href);
+    expect(b.href).toContain("milestone=28000");
   });
 
   it("即將到期：一般提示色、顯示預估日期", () => {

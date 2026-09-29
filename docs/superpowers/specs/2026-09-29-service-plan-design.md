@@ -105,9 +105,15 @@ create index if not exists sr_reports_plan_stage_idx
 3. 仍比不到 → 「通用預設方案」：`active` 且 `hp_tags` 正規化後為空的方案（`source: "default"`）。機台沒填馬力或馬力無法正規化時也走這一層；多個通用預設方案同樣取 `name` 排序第一並標示衝突。
 4. 都沒有 → 無方案（不提醒、不自動帶入）。
 
-### 5.4 下一個階段 `nextStage(stages, issuedStageIds)`
-- 階段依 `hours` 由小到大排序，排除已開過（存在未作廢報告單）的階段，取第一個。
-- 全部開過 → 無下一階段（不再提醒）。**每個階段只觸發一次**；日後要延伸循環，於方案新增 8000／10000… 等階段即可。
+### 5.4 循環里程碑 `cycleLength` / `milestoneStage` / `lastMilestone` / `nextMilestone`
+階段不是一次性的門檻，而是**無限循環的里程碑**（#211）：機台跑到 22278 小時時，要提醒的是 22000，不是把 2000／4000／6000 三個舊階段都補提醒一次。
+
+- **一輪長度 `cycleLength(stages)`** ＝方案中最大的階段時數（2000／4000／6000 → `6000`）。
+- **里程碑集合** ＝ `k × cycle + h`（`k ≥ 0`、`h` 為各階段時數）：2000、4000、6000、8000、10000、12000…
+- **里程碑 → 階段 `milestoneStage(stages, milestone)`**：`rem = milestone % cycle`；`rem === 0` 取時數＝`cycle` 的階段（22000 → 4000 基礎保養、24000 → 6000 年度保養），否則取時數＝`rem` 的階段。階段可以是任意組合（如 1500／3000／9000），一律由排序後的階段時數推導。
+- **`lastMilestone(stages, hours)`** ＝ ≤ 目前時數的最大里程碑；**`nextMilestone(stages, hours)`** ＝ > 目前時數的最小里程碑。
+- **已開過（issued）** ＝存在未作廢報告單，其 `plan_stage_id` ＝對應階段**且** `plan_stage_hours` ＝該里程碑。所以開單時 `plan_stage_hours` 存的是**里程碑**（22000），`plan_stage_label` 仍存階段名稱原文（「基礎保養」）。
+- 顯示文字一律用里程碑：「22000 小時 基礎保養」（`milestoneLabel(milestone, stage)`）。
 
 ### 5.5 使用速度與預估到期 `estimateDue(readings, target, today)`
 - 取該機台最近 6 筆可解析且**時數遞增**的記錄。
@@ -116,9 +122,9 @@ create index if not exists sr_reports_plan_stage_idx
 - `daysToTarget = ceil((target - latest.hours) / rate)`，`dueDate = latest.date + daysToTarget`。
 
 ### 5.6 是否列入提醒 `reminderFor(machine, …)`
-依序判定，成立即列入：
-1. **已達門檻**：`latest.hours >= stage.hours` → `status: "due"`（最優先）。
-2. **即將到期**：可推估且 `dueDate <= today + 14 天` → `status: "upcoming"`，附預估日期。
+依序判定，成立即列入（一台機台最多一筆提醒）：
+1. **已達門檻**：`lastMilestone(stages, latest.hours)` 存在且**未開過** → `status: "due"`（最優先，無預估日期）。只看最後一個里程碑，**不回頭補更舊的**（22278 小時只提醒 22000，不補 2000／4000／6000）。
+2. **即將到期**：`nextMilestone(stages, latest.hours)` 未開過、可推估且 `dueDate <= today + 14 天` → `status: "upcoming"`，附預估日期。
 3. 其他 → 不列入。
 - **備援**：無法推估速度（資料不足）時只靠條件 1，避免新機台或資料少的機台完全不提醒。
 - 排序：`due` 在前，其次依 `dueDate` 由近到遠，再依客戶名稱。
@@ -136,18 +142,18 @@ create index if not exists sr_reports_plan_stage_idx
 ### 6.1 提醒區塊
 - Server component，於 `page.tsx` header 與 `ReportListFilters` 之間；無提醒項目時整塊不渲染。
 - 標題：「保養到期提醒（N）」；預設顯示前 5 筆，其餘以 `<details>` 展開。
-- 每列：客戶名稱｜機台（`代號-機號` 或型號）｜目前時數（民國抄表日）｜下一階段（`4000 小時 基礎保養`）｜狀態徽章（**已達門檻** / **預計 115/10/12 到期**）｜「開立報告單」連結（帶 `?machineId=&stageId=`）。
+- 每列：客戶名稱｜機台（`代號-機號` 或型號）｜目前時數（民國抄表日）｜里程碑（`22000 小時 基礎保養`）｜狀態徽章（**已達門檻** / **預計 115/10/12 到期**）｜「開立報告單」連結（帶 `?machineId=&stageId=&milestone=`）。
 - 樣式沿用後台既有元件；`due` 用警示色、`upcoming` 用一般提示色。
 
 ### 6.2 開單自動帶入
-- `new` 頁帶 `machineId` → 預選機台並帶入既有欄位（沿用 `prefill`）；帶 `stageId` → 直接套用該階段。
-- 未帶參數而選了機台：若該機台有「已達且未開過」的階段，表單於料件區上方顯示提示列「此機台已達 4000 小時 基礎保養，套用料件？」＋「套用」按鈕；另有下拉可選擇套用其他階段（含未達門檻者，供提前保養）。
+- `new` 頁帶 `machineId` → 預選機台並帶入既有欄位（沿用 `prefill`）；帶 `stageId`＋`milestone` → 直接套用該里程碑（沒帶 `milestone` 的舊連結退回該階段在這一輪的里程碑）。
+- 未帶參數而選了機台：若該機台「已達的最後一個里程碑」未開過，表單於料件區上方顯示提示列「此機台已達 22000 小時 基礎保養，套用料件？」＋「套用」按鈕；另有下拉可選擇套用這一輪的其他里程碑（含未達門檻者，供提前保養）。
 - **套用行為**：
   - 料件已有內容（任一列 `qty` 非空）時，先 `confirm` 詢問是否覆蓋；取消則只填入空白列。
   - 依品名比對既有 10 列（正規化後相同者填數量），其餘依序填入空白列；超過 10 列時，超出部分不填並提示「料件超過 10 列，請手動調整」。
   - 勾選服務項目 `periodic`（定期大/小保養）。
-  - 記錄 `plan_stage_id`、`plan_stage_hours`、`plan_stage_label`。
-- 已套用階段的報告單，在編輯頁與詳情頁顯示「本單對應：4000 小時 基礎保養」，可清除（清除後該階段視為未開過）。
+  - 記錄 `plan_stage_id`（階段 id）、`plan_stage_hours`（**里程碑**，如 22000）、`plan_stage_label`（階段名稱原文）。
+- 已套用階段的報告單，在編輯頁與詳情頁顯示「本單對應：22000 小時 基礎保養」，可清除（清除後該里程碑視為未開過）。
 
 ## 7. 錯誤處理
 - 沿用報告單模組：server action 回 `{ ok, error }`，訊息中文；`unstable_rethrow` 於 client 表單。
@@ -155,7 +161,7 @@ create index if not exists sr_reports_plan_stage_idx
 - 提醒區塊查詢失敗不擋列表：記錄錯誤並隱藏區塊（列表仍可用）。
 
 ## 8. 測試
-- **純函式（Vitest）**：`parseHours`（單位、逗號、全形、`0/1500`、異常值）、`latestHours`（同日期優先序、作廢單排除）、`matchPlan`（覆寫優先、馬力正規化、多方案衝突）、`nextStage`（已開過排除、全開完）、`estimateDue`（資料不足、時數倒退、速率上下限、邊界 14 天）、`reminderFor`（due / upcoming / 不列入、排序）、料件套用（品名比對、空白列、超過 10 列、覆寫與否）。
+- **純函式（Vitest）**：`parseHours`（單位、逗號、全形、`0/1500`、異常值）、`latestHours`（同日期優先序、作廢單排除）、`matchPlan`（覆寫優先、馬力正規化、多方案衝突）、循環里程碑（`cycleLength`、`milestoneStage` 餘數 0、`lastMilestone`／`nextMilestone` 邊界、已開過比對同時看階段與里程碑）、`estimateDue`（資料不足、時數倒退、速率上下限、邊界 14 天）、`reminderFor`（due / upcoming / 不列入、排序）、料件套用（品名比對、空白列、超過 10 列、覆寫與否）。
 - **Server action（mock supabase）**：未授權拒絕、方案／階段 CRUD 驗證、名稱與時數重複訊息、指定方案寫入與清除。
 - **SQL（`supabase/tests/service_plan_test.sql`，接 `local-db.sh`）**：RLS（無授權讀不到、有授權可讀寫）、`mx_records` 只讀、FK 行為（刪方案 → 階段連動刪、報告單 `plan_stage_id` 轉 null 且快照仍在）、階段時數唯一。
 - 正式 DB 套用 0022 前備份並經使用者確認。

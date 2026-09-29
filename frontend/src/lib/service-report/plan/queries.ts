@@ -15,7 +15,14 @@ import {
 } from "./errors";
 import { latestHours, readingFrom } from "./hours";
 import { matchPlan } from "./match";
-import { isStageReached, nextStage, sortStages } from "./stage";
+import {
+  isHoursReached,
+  lastMilestone,
+  milestoneKey,
+  milestoneOptions,
+  sortStages,
+  type MilestoneTarget,
+} from "./stage";
 import type {
   HoursReading,
   PlanMatchSource,
@@ -202,7 +209,11 @@ interface HoursScope {
 interface HoursData {
   /** machine_id → 抄表陣列（未排序；latestHours / estimateDue 會自行處理）。 */
   readings: Map<string, HoursReading[]>;
-  /** machine_id → 已開過（未作廢報告單記錄過）的階段 id。 */
+  /**
+   * machine_id → 已開過的里程碑鍵 milestoneKey(plan_stage_id, plan_stage_hours)。
+   * 循環里程碑下「同階段不同里程碑」是不同的一次保養，所以鍵必須含時數；
+   * 沒有記錄時數（plan_stage_hours 為 null）的舊報告單不算已開過。
+   */
   issued: Map<string, Set<string>>;
   error: DbError | null;
 }
@@ -258,10 +269,13 @@ async function loadHours(
     report_date: string;
     results: ServiceReportResults | null;
     plan_stage_id: string | null;
+    plan_stage_hours: number | null;
   }>((from, to) => {
     let q = supabase
       .from("sr_reports")
-      .select("machine_id, report_date, results, plan_stage_id")
+      .select(
+        "machine_id, report_date, results, plan_stage_id, plan_stage_hours",
+      )
       .neq("status", "voided")
       .not("machine_id", "is", null);
     if (machineId) q = q.eq("machine_id", machineId);
@@ -281,10 +295,11 @@ async function loadHours(
         readingFrom(r.report_date, r.results?.compressor?.run_hours, "report"),
       );
     }
-    if (r.plan_stage_id) {
+    if (r.plan_stage_id && typeof r.plan_stage_hours === "number") {
+      const key = milestoneKey(r.plan_stage_id, r.plan_stage_hours);
       const set = issued.get(r.machine_id);
-      if (set) set.add(r.plan_stage_id);
-      else issued.set(r.machine_id, new Set([r.plan_stage_id]));
+      if (set) set.add(key);
+      else issued.set(r.machine_id, new Set([key]));
     }
   }
   return { readings, issued, error: null };
@@ -455,8 +470,9 @@ export async function listMachinePlanRows(): Promise<
 }
 
 /**
- * 到期提醒清單（spec §5.6）：未封存空壓機 × 比對到的方案 × 下一個未開過的階段，
- * 已達門檻或 14 天內預估到期者列入，已達門檻在前。
+ * 到期提醒清單（spec §5.6）：未封存空壓機 × 比對到的方案 × 循環里程碑，
+ * 已達的最後一個里程碑未開過（due）或下一個里程碑 14 天內預估到期（upcoming）者列入，
+ * 已達門檻在前。
  *
  * 抄表只讀最近 READING_WINDOW_DAYS 天（這份清單每次列表頁都會算，不能整表掃
  * mx_records）。窗內完全沒有抄表的機台不會出現在提醒中（與「從未抄表」相同）；
@@ -492,8 +508,8 @@ export async function listReminders(
   for (const m of machines.rows) {
     const plan = matchPlan(m, plans, overrides.map).plan;
     if (!plan) continue;
-    const stage = nextStage(byPlan.get(plan.id) ?? [], hours.issued.get(m.id));
-    if (!stage) continue;
+    const stages = byPlan.get(plan.id) ?? [];
+    if (stages.length === 0) continue;
     const reminder = reminderFor({
       machine: {
         id: m.id,
@@ -504,7 +520,8 @@ export async function listReminders(
         model: m.model,
       },
       plan,
-      stage,
+      stages,
+      issued: hours.issued.get(m.id),
       readings: hours.readings.get(m.id) ?? [],
       todayIso,
     });
@@ -513,11 +530,11 @@ export async function listReminders(
   return { ok: true, data: sortReminders(reminders) };
 }
 
-/** 單一機台的階段狀態（開單頁套用階段用）。 */
-export interface MachineStageRow extends ServicePlanStage {
-  /** 已存在未作廢報告單記錄此階段。 */
+/** 單一機台的里程碑狀態（開單頁套用階段用）。 */
+export interface MachineMilestoneRow extends MilestoneTarget {
+  /** 已存在未作廢報告單記錄此「階段 + 里程碑」。 */
   issued: boolean;
-  /** 目前時數已達此階段門檻。 */
+  /** 目前時數已達此里程碑。 */
   reached: boolean;
 }
 
@@ -525,10 +542,11 @@ export interface MachineStagesData {
   machine_id: string;
   plan: ServicePlan | null;
   plan_source: PlanMatchSource;
-  stages: MachineStageRow[];
+  /** 這台機台目前這一輪的里程碑選項（時數由小到大）。 */
+  milestones: MachineMilestoneRow[];
   latest: HoursReading | null;
-  /** 已達門檻且未開過的階段 id（開單時主動提示套用）；無則 null。 */
-  suggested_stage_id: string | null;
+  /** 已達且未開過的里程碑（開單時主動提示套用）；無則 null。 */
+  suggested_milestone: number | null;
 }
 
 /** 機台的方案 / 階段 + 已開過與已達門檻旗標；機台不存在（或非空壓機）回 data: null。 */
@@ -561,22 +579,29 @@ export async function listStagesForMachine(
   const planStages = matched.plan
     ? (groupStages(stages).get(matched.plan.id) ?? [])
     : [];
-  const rows: MachineStageRow[] = planStages.map((s) => ({
-    ...s,
-    issued: issuedSet.has(s.id),
-    reached: isStageReached(s, latest?.hours ?? null),
+  const rows: MachineMilestoneRow[] = milestoneOptions(
+    planStages,
+    latest?.hours ?? null,
+  ).map((t) => ({
+    ...t,
+    issued: issuedSet.has(milestoneKey(t.stage.id, t.milestone)),
+    reached: isHoursReached(t.milestone, latest?.hours ?? null),
   }));
-  const next = nextStage(planStages, issuedSet);
+  // 主動提示只看「已達的最後一個里程碑」且它未開過（不回頭補更舊的）。
+  const last = lastMilestone(planStages, latest?.hours ?? null);
+  const suggested =
+    last && !issuedSet.has(milestoneKey(last.stage.id, last.milestone))
+      ? last
+      : null;
   return {
     ok: true,
     data: {
       machine_id: machineId,
       plan: matched.plan,
       plan_source: matched.source,
-      stages: rows,
+      milestones: rows,
       latest,
-      suggested_stage_id:
-        next && isStageReached(next, latest?.hours ?? null) ? next.id : null,
+      suggested_milestone: suggested?.milestone ?? null,
     },
   };
 }

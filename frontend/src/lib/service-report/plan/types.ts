@@ -74,11 +74,14 @@ export interface StageReminder {
   machine_label: string;
   plan_id: string;
   plan_name: string;
+  /** 這次要提醒的循環里程碑（如 22000）；報告單的 plan_stage_hours 就存這個值。 */
+  milestone: number;
   stage_id: string;
+  /** 對應階段的原時數（如 2000）；顯示一律用 milestone。 */
   stage_hours: number;
   /** 階段名稱（如「基礎保養」）。 */
   stage_name: string;
-  /** 階段完整顯示文字（如「4000 小時 基礎保養」）。 */
+  /** 里程碑完整顯示文字（如「22000 小時 基礎保養」）。 */
   stage_label: string;
   latest_hours: number;
   latest_date: string;

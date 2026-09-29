@@ -10,6 +10,7 @@ import {
   reminderFor,
   sortReminders,
 } from "@/lib/service-report/plan/due";
+import { milestoneKey } from "@/lib/service-report/plan/stage";
 import type {
   HoursReading,
   ServicePlanStage,
@@ -36,6 +37,13 @@ const PLAN = { id: "p1", name: "20HP 空壓機" };
 function stage(hours: number, label = "基礎保養"): ServicePlanStage {
   return { id: `s${hours}`, plan_id: "p1", hours, label, parts: [] };
 }
+
+/** 正式站的方案：2000／4000 基礎保養、6000 年度保養（一輪 6000）。 */
+const STAGES = [stage(2000), stage(4000), stage(6000, "年度保養")];
+
+/** 已開過的鍵：同階段但不同里程碑不算同一次保養。 */
+const issuedKey = (hours: number, milestone: number) =>
+  milestoneKey(`s${hours}`, milestone);
 
 /** 10 天內跑 100 小時 → 每天 10 小時。 */
 const STEADY = [R("2026-09-01", 1000), R("2026-09-11", 1100)];
@@ -130,48 +138,106 @@ describe("reminderFor", () => {
   const base = {
     machine: MACHINE,
     plan: PLAN,
+    stages: STAGES,
     readings: STEADY,
     todayIso: TODAY,
   };
+  /** 22278 小時（正式站實際資料）：10 天跑 100 小時。 */
+  const FAR = [R("2026-09-01", 22178), R("2026-09-11", 22278)];
 
-  it("已達門檻 → due（最優先、無預估日期）", () => {
-    const r = reminderFor({ ...base, stage: stage(1000) });
+  it("22278 小時 → 只提醒已達的 22000，不回頭補 2000／4000／6000", () => {
+    const r = reminderFor({ ...base, readings: FAR });
     expect(r?.status).toBe("due");
     expect(r?.due_date).toBeNull();
-    expect(r?.stage_label).toBe("1000 小時 基礎保養");
-    expect(r?.latest_hours).toBe(1100);
+    expect(r?.milestone).toBe(22000);
+    expect(r?.stage_id).toBe("s4000"); // 22000 % 6000 = 4000
+    expect(r?.stage_hours).toBe(4000);
+    expect(r?.stage_name).toBe("基礎保養");
+    expect(r?.stage_label).toBe("22000 小時 基礎保養");
+    expect(r?.latest_hours).toBe(22278);
     expect(r?.machine_label).toBe("2-AB-123");
+    expect([2000, 4000, 6000]).not.toContain(r?.milestone);
+  });
+
+  it("22000 已開過 → 下一個是 24000 年度保養（餘數 0 對到最大階段）", () => {
+    // 距 24000 還有 1722 小時（每天 10 小時）→ 還太遠，不列入
+    expect(
+      reminderFor({ ...base, readings: FAR, issued: [issuedKey(4000, 22000)] }),
+    ).toBeNull();
+    // 逼近 24000（10 天後到）→ 以 24000 年度保養列入 upcoming
+    const r = reminderFor({
+      ...base,
+      readings: [R("2026-09-01", 23800), R("2026-09-11", 23900)],
+      issued: [issuedKey(4000, 22000)],
+    });
+    expect(r).toMatchObject({
+      status: "upcoming",
+      milestone: 24000,
+      stage_id: "s6000",
+      stage_hours: 6000,
+      stage_name: "年度保養",
+      stage_label: "24000 小時 年度保養",
+      due_date: "2026-09-21",
+    });
+  });
+
+  it("已開過只認同階段＋同里程碑（同階段的舊里程碑不算）", () => {
+    // s4000 的 4000 小時開過，但 22000 沒開過 → 仍要提醒 22000
+    const r = reminderFor({
+      ...base,
+      readings: FAR,
+      issued: [issuedKey(4000, 4000), issuedKey(2000, 22000)],
+    });
+    expect(r?.milestone).toBe(22000);
+    expect(r?.status).toBe("due");
   });
 
   it("14 天內預估到期 → upcoming（含邊界第 14 天）", () => {
-    expect(reminderFor({ ...base, stage: stage(1200) })).toMatchObject({
+    // 1900 小時、每天 10 小時：已達 0 個里程碑？已達 0；下一個 2000 → 10 天後
+    const near = [R("2026-09-01", 1800), R("2026-09-11", 1900)];
+    expect(reminderFor({ ...base, readings: near, issued: [] })).toMatchObject({
       status: "upcoming",
+      milestone: 2000,
+      stage_label: "2000 小時 基礎保養",
       due_date: "2026-09-21",
     });
-    expect(reminderFor({ ...base, stage: stage(1240) })).toMatchObject({
-      status: "upcoming",
-      due_date: "2026-09-25", // = 今天 + 14
-    });
+    // 剛好第 14 天：1860 → 2000 還差 140 小時 = 14 天
+    expect(
+      reminderFor({
+        ...base,
+        readings: [R("2026-09-01", 1760), R("2026-09-11", 1860)],
+      }),
+    ).toMatchObject({ status: "upcoming", due_date: "2026-09-25" });
   });
 
   it("超過 14 天 → 不列入", () => {
-    expect(reminderFor({ ...base, stage: stage(1250) })).toBeNull();
+    // 1850 → 2000 還差 150 小時 = 15 天
+    expect(
+      reminderFor({
+        ...base,
+        readings: [R("2026-09-01", 1750), R("2026-09-11", 1850)],
+      }),
+    ).toBeNull();
+  });
+
+  it("下一個里程碑已開過（提前保養）→ 不再提醒", () => {
+    const near = [R("2026-09-01", 1800), R("2026-09-11", 1900)];
+    expect(
+      reminderFor({ ...base, readings: near, issued: [issuedKey(2000, 2000)] }),
+    ).toBeNull();
   });
 
   it("無法推估（資料不足）時只靠「已達門檻」", () => {
-    const few = [R("2026-09-11", 1100)];
+    const few = [R("2026-09-11", 1900)];
+    expect(reminderFor({ ...base, readings: few })).toBeNull();
     expect(
-      reminderFor({ ...base, readings: few, stage: stage(1200) }),
-    ).toBeNull();
-    expect(
-      reminderFor({ ...base, readings: few, stage: stage(1000) })?.status,
+      reminderFor({ ...base, readings: [R("2026-09-11", 2100)] })?.status,
     ).toBe("due");
   });
 
-  it("完全沒有可用抄表 → 不列入", () => {
-    expect(
-      reminderFor({ ...base, readings: [], stage: stage(100) }),
-    ).toBeNull();
+  it("完全沒有可用抄表 / 方案沒有階段 → 不列入", () => {
+    expect(reminderFor({ ...base, readings: [] })).toBeNull();
+    expect(reminderFor({ ...base, stages: [] })).toBeNull();
   });
 });
 
@@ -186,6 +252,7 @@ describe("sortReminders", () => {
       machine_label: "1",
       plan_id: "p1",
       plan_name: "20HP",
+      milestone: 2000,
       stage_id: "s",
       stage_hours: 2000,
       stage_name: "基礎保養",
