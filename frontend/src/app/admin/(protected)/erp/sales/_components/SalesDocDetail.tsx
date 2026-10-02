@@ -226,10 +226,12 @@ export async function SalesDocDetail({
                     <td className="text-text-muted px-2 py-2 text-center tabular-nums">
                       {index + 1}
                     </td>
-                    <td className="px-2 py-2 font-mono text-[13px]">
+                    <td
+                      className={`px-2 py-2 text-[13px] ${item ? "font-mono" : ""}`}
+                    >
                       {l.line_type === "discount"
                         ? "折扣"
-                        : (item?.code ?? "—")}
+                        : (item?.code ?? (l.item_text?.trim() || "—"))}
                     </td>
                     <td className="px-2 py-2">
                       {l.description}

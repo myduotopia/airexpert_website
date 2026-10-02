@@ -187,11 +187,15 @@ select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-000
 insert into erp_documents (id, doc_type, doc_date, customer_id, tax_type) values
   ('00000000-0000-0000-0000-00000000e030', 'Q', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded'),
   ('00000000-0000-0000-0000-00000000e031', 'Q', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded'),
-  ('00000000-0000-0000-0000-00000000e032', 'S', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded');
+  ('00000000-0000-0000-0000-00000000e032', 'S', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded'),
+  ('00000000-0000-0000-0000-00000000e033', 'Q', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded');
 insert into erp_document_lines (document_id, line_no, line_type, item_id, description, qty, unit_price) values
   ('00000000-0000-0000-0000-00000000e030', 1, 'item', null, 'LS-20 機型保養', 2, 5000),
   ('00000000-0000-0000-0000-00000000e031', 1, 'item', null, '  ', 1, 100),
   ('00000000-0000-0000-0000-00000000e032', 1, 'item', null, 'LS-20 機型保養', 1, 100);
+-- 0024：只有品項文字（item_text）、品名規格空白也可確認
+insert into erp_document_lines (document_id, line_no, line_type, item_text, qty, unit_price) values
+  ('00000000-0000-0000-0000-00000000e033', 1, 'item', 'LS-30', 1, 100);
 update erp_documents set warehouse_id = erp_test.main() where id = '00000000-0000-0000-0000-00000000e032';
 do $$
 declare v jsonb; d erp_documents;
@@ -199,6 +203,8 @@ begin
   v := erp_post_document('00000000-0000-0000-0000-00000000e030');
   select * into d from erp_documents where id = '00000000-0000-0000-0000-00000000e030';
   assert d.status = 'posted' and d.amount_untaxed = 10000 and d.total_amount = 10500, format('Q 自由輸入 %s', d);
+  v := erp_post_document('00000000-0000-0000-0000-00000000e033');
+  assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e033') = 'posted', 'Q 只有 item_text';
   raise notice 'ok  Q 自由輸入品項行可確認';
 end $$;
 select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e031')$q$, 'validation');

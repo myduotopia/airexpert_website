@@ -45,11 +45,11 @@ export function validateDraftDocument(doc: DraftDocument): string | null {
     const n = i + 1;
     if (line.line_type === "item") {
       if (!line.item_id) {
-        // 報價單可自由輸入（只填品名規格）；由其轉入的銷貨草稿也可先存，過帳時 RPC 會要求指定品項。
+        // 報價單可自由輸入（品項文字或品名規格）；由其轉入的銷貨草稿也可先存，過帳時 RPC 會要求指定品項。
         if (!FREE_TEXT_LINE_DOCS.has(doc.doc_type)) {
           return `第 ${n} 行請選擇品項。`;
         }
-        if (!line.description?.trim()) {
+        if (!line.item_text?.trim() && !line.description?.trim()) {
           return `第 ${n} 行請選擇品項或填寫品名規格。`;
         }
       }

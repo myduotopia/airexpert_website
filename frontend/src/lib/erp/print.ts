@@ -133,7 +133,12 @@ export function buildPrintLines(
     return {
       ...base,
       code: item?.code ?? "",
-      name: isAdjust ? (item?.name ?? "") : description || (item?.name ?? ""),
+      name: isAdjust
+        ? (item?.name ?? "")
+        : item
+          ? description || item.name
+          : // 自由輸入行（報價單）：品項文字 + 品名規格。
+            [(l.item_text ?? "").trim(), description].filter(Boolean).join(" "),
       reason: isAdjust ? description : "",
       qty: Number(l.qty),
       unit: item?.unit ?? "",

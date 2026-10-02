@@ -41,6 +41,27 @@ const items = new Map<string, PrintItemInfo>([
 ]);
 
 describe("buildPrintLines", () => {
+  it("報價單自由輸入行：品項文字 + 品名規格，無產品編號", () => {
+    const [a, b] = buildPrintLines(
+      {
+        doc_type: "Q",
+        lines: [
+          line({
+            id: "a",
+            item_text: "LS-20",
+            description: "含安裝",
+            qty: 1,
+            unit_price: 5000,
+            amount: 5000,
+          }),
+          line({ id: "b", line_no: 2, item_text: "LS-30", qty: 1 }),
+        ],
+      },
+      items,
+    );
+    expect([a.code, a.name]).toEqual(["", "LS-20 含安裝"]);
+    expect(b.name).toBe("LS-30");
+  });
   it("銷貨單：品項 / 機號 / 折扣 / 備註", () => {
     const lines = buildPrintLines(
       {

@@ -161,6 +161,8 @@ export interface ErpDocumentLine {
   line_no: number;
   line_type: LineType;
   item_id: string | null;
+  /** 未指定品項時的品項文字（報價單自由輸入 / 保養卡機型，0024）。 */
+  item_text?: string | null;
   description: string | null;
   qty: number;
   unit_price: number;
@@ -335,6 +337,8 @@ export interface DraftLine {
   id?: string | null;
   line_type: LineType;
   item_id: string | null;
+  /** 未指定品項時的品項文字（僅報價單自由輸入；選定品項時清空）。與 description（品名規格）各自獨立。 */
+  item_text?: string;
   description: string;
   qty: number;
   unit_price: number;

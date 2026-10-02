@@ -118,16 +118,18 @@ export function DocumentLinesEditor({
     const price = item && priceField ? Number(item[priceField] ?? 0) : 0;
     patchLine(line.key, {
       item_id: item?.id ?? null,
+      item_text: "",
       description: item?.name ?? "",
       unit_price: priceField ? price : line.unit_price,
       serial_ids: [],
       serial_nos: [],
     });
   }
+  // 自由輸入只改品項文字；品名規格（description）維持使用者自行填寫的內容。
   function setFreeText(line: DraftLine, text: string) {
     patchLine(line.key, {
       item_id: null,
-      description: text,
+      item_text: text,
       serial_ids: [],
       serial_nos: [],
     });
@@ -231,7 +233,7 @@ export function DocumentLinesEditor({
                               items={items}
                               models={freeText.models}
                               itemId={line.item_id}
-                              text={line.description}
+                              text={line.item_text ?? ""}
                               disabled={disabled}
                               onPickItem={(it) => pickItem(line, it)}
                               onText={(text) => setFreeText(line, text)}

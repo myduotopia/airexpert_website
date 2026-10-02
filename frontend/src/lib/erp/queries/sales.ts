@@ -67,7 +67,14 @@ export function quoteToSaleDraft(
     lines: sortedLines(quote).map((l) =>
       newDraftLine(l.line_type, {
         item_id: l.line_type === "item" ? l.item_id : null,
-        description: l.description ?? "",
+        // 銷貨單無品項文字欄：自由輸入行把品項文字併入品名規格，待選定品項後過帳。
+        description:
+          l.line_type === "item" && !l.item_id
+            ? [l.item_text, l.description]
+                .map((t) => t?.trim())
+                .filter(Boolean)
+                .join(" ")
+            : (l.description ?? ""),
         qty: l.line_type === "item" ? Number(l.qty) : 0,
         unit_price: l.line_type === "item" ? Number(l.unit_price) : 0,
         amount: Number(l.amount),

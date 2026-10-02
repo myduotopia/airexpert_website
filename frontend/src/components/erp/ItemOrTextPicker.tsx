@@ -1,6 +1,6 @@
 "use client";
 // 報價單用品項欄：可搜尋品項（代碼 / 名稱 / 型號）、保養卡機型，或直接自由輸入。
-// - 選品項 → onPickItem(item)；選機型或自由輸入 → onText(text)（item_id 清空，文字寫入品名規格）。
+// - 選品項 → onPickItem(item)；選機型或自由輸入 → onText(text)（item_id 清空，文字存於品項文字，不動品名規格）。
 // - 打字即時以 onText 回寫，失焦不需另外確認；鍵盤 ↑↓ Enter Esc 同 Combobox。
 import { useId, useMemo, useState } from "react";
 import type { ItemOption } from "@/lib/erp/types";
@@ -26,7 +26,7 @@ export function ItemOrTextPicker({
   /** 保養卡 / 維護報告單上的機型。 */
   models: string[];
   itemId: string | null;
-  /** 未選品項時顯示的自由輸入文字（= 品名規格）。 */
+  /** 未選品項時顯示的自由輸入文字（品項文字）。 */
   text: string;
   onPickItem: (item: ItemOption) => void;
   onText: (text: string) => void;

@@ -214,6 +214,36 @@ describe("saveDraftDocument — 新增草稿", () => {
     });
   });
 
+  it("報價自由輸入行：item_text 與品名規格分開存；選定品項的行不存 item_text", async () => {
+    const res = await saveDraftDocument(
+      salesDraft({
+        doc_type: "Q",
+        lines: [
+          newDraftLine("item", {
+            item_text: " LS-20 ",
+            description: "含安裝",
+            unit_price: 5000,
+          }),
+          newDraftLine("item", {
+            item_id: "item-1",
+            item_text: "殘留文字",
+            unit_price: 100,
+          }),
+        ],
+      }),
+    );
+    expect(res.ok).toBe(true);
+    const lines = recorded.find(
+      (r) => r.table === "erp_document_lines" && r.kind === "insert",
+    )!.payload as Record<string, unknown>[];
+    expect(lines[0]).toMatchObject({
+      item_id: null,
+      item_text: "LS-20",
+      description: "含安裝",
+    });
+    expect(lines[1]).toMatchObject({ item_id: "item-1", item_text: null });
+  });
+
   it("表頭合計以 calc.ts 重算、快照客戶、明細與機號關聯", async () => {
     const res = await saveDraftDocument(salesDraft());
     expect(res).toEqual({ ok: true, data: { id: "erp_documents-1" } });
@@ -246,6 +276,7 @@ describe("saveDraftDocument — 新增草稿", () => {
       [3, "note", 0],
     ]);
     expect(lines[2]).toMatchObject({ item_id: null, qty: 0 });
+    expect(lines[0]).toMatchObject({ item_text: null });
 
     const serials = recorded.find(
       (r) => r.table === "erp_document_line_serials",
