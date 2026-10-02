@@ -183,6 +183,27 @@ begin
 end $$;
 select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e001')$q$, 'not_draft');
 
+-- 0023：報價單自由輸入品項行（item_id 為 null，需填品名規格）；其他單別仍需品項
+insert into erp_documents (id, doc_type, doc_date, customer_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e030', 'Q', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded'),
+  ('00000000-0000-0000-0000-00000000e031', 'Q', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded'),
+  ('00000000-0000-0000-0000-00000000e032', 'S', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, description, qty, unit_price) values
+  ('00000000-0000-0000-0000-00000000e030', 1, 'item', null, 'LS-20 機型保養', 2, 5000),
+  ('00000000-0000-0000-0000-00000000e031', 1, 'item', null, '  ', 1, 100),
+  ('00000000-0000-0000-0000-00000000e032', 1, 'item', null, 'LS-20 機型保養', 1, 100);
+update erp_documents set warehouse_id = erp_test.main() where id = '00000000-0000-0000-0000-00000000e032';
+do $$
+declare v jsonb; d erp_documents;
+begin
+  v := erp_post_document('00000000-0000-0000-0000-00000000e030');
+  select * into d from erp_documents where id = '00000000-0000-0000-0000-00000000e030';
+  assert d.status = 'posted' and d.amount_untaxed = 10000 and d.total_amount = 10500, format('Q 自由輸入 %s', d);
+  raise notice 'ok  Q 自由輸入品項行可確認';
+end $$;
+select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e031')$q$, 'validation');
+select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e032')$q$, 'validation');
+
 -- I1：部分到貨（ALH-15AI 1 台 + 油 4 桶）
 insert into erp_documents (id, doc_type, doc_date, vendor_id, warehouse_id, source_doc_id) values
   ('00000000-0000-0000-0000-00000000e002', 'I', '2026-09-05', '00000000-0000-0000-0000-00000000b001', erp_test.main(), '00000000-0000-0000-0000-00000000e001');

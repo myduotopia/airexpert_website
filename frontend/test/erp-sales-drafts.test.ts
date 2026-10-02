@@ -206,6 +206,25 @@ describe("quoteToSaleDraft", () => {
     ]);
     expect(new Set(draft.lines.map((l) => l.key)).size).toBe(3);
   });
+
+  it("自由輸入的報價行（無品項）不帶 source_line_id", () => {
+    const draft = quoteToSaleDraft(
+      doc("Q", [
+        line("ql-9", 1, "item", {
+          description: "LS-20 機型保養",
+          qty: 1,
+          unit_price: 5000,
+          amount: 5000,
+        }),
+      ]),
+      { docDate: "2026-09-15", warehouseId: null },
+    );
+    expect(draft.lines[0]).toMatchObject({
+      item_id: null,
+      description: "LS-20 機型保養",
+      source_line_id: null,
+    });
+  });
 });
 
 describe("銷退：saleToReturnDraft / returnableLines / validateReturnQty", () => {

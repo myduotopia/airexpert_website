@@ -122,10 +122,26 @@ describe("validateDraftDocument", () => {
       "匯率",
     );
   });
-  it("item 行需品項；同單機號不可重複", () => {
+  it("報價 / 銷貨的 item 行可只填品名規格；其他單別仍需品項", () => {
+    const freeText = [newDraftLine("item", { description: "LS-20 機型保養" })];
+    expect(
+      validateDraftDocument({ ...ok(), doc_type: "Q", lines: freeText }),
+    ).toBeNull();
+    expect(validateDraftDocument({ ...ok(), lines: freeText })).toBeNull();
+    expect(
+      validateDraftDocument({
+        ...ok(),
+        doc_type: "P",
+        customer_id: null,
+        vendor_id: "v1",
+        lines: freeText,
+      }),
+    ).toBe("第 1 行請選擇品項。");
+  });
+  it("item 行需品項或品名規格；同單機號不可重複", () => {
     expect(
       validateDraftDocument({ ...ok(), lines: [newDraftLine("item")] }),
-    ).toBe("第 1 行請選擇品項。");
+    ).toBe("第 1 行請選擇品項或填寫品名規格。");
     expect(
       validateDraftDocument({
         ...ok(),
