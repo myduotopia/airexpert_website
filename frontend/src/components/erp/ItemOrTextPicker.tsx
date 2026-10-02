@@ -91,11 +91,8 @@ export function ItemOrTextPicker({
     }
   }
 
-  const display = open
-    ? query
-    : selected
-      ? `${selected.code} ${selected.name}`
-      : text;
+  // 已選品項只顯示產品編號（與單據明細頁的「產品編號」欄一致；品名在品名規格欄）。
+  const display = open ? query : selected ? selected.code : text;
 
   return (
     <div className="relative">
@@ -109,9 +106,7 @@ export function ItemOrTextPicker({
         autoComplete="off"
         value={display}
         placeholder={
-          selected && open
-            ? `${selected.code} ${selected.name}`
-            : "搜尋品項 / 機型，或直接輸入"
+          selected && open ? selected.code : "搜尋品項 / 機型，或直接輸入"
         }
         disabled={disabled}
         onFocus={onFocus}
