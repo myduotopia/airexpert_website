@@ -43,6 +43,8 @@ export interface DocumentLinesEditorProps {
   /** 可新增的行類型（預設三種皆可）。 */
   allowedLineTypes?: LineType[];
   disabled?: boolean;
+  /** 品項欄的標題（預設「品項」；報價單用「產品編號」）。 */
+  itemLabel?: string;
   /** 品項行文字欄的標題（預設「品名規格」；盤點調整單用「調整原因」）。 */
   descriptionLabel?: string;
   /** 傳入時輸出 <input type="hidden" name={name} value={JSON.stringify(lines)}>。 */
@@ -75,6 +77,7 @@ export function DocumentLinesEditor({
   allowNegativeQty = false,
   allowedLineTypes = ["item", "discount", "note"],
   disabled,
+  itemLabel = "品項",
   descriptionLabel = "品名規格",
   name,
   freeText,
@@ -144,7 +147,9 @@ export function DocumentLinesEditor({
           <thead className="bg-surface-muted text-text-muted text-left text-[13px]">
             <tr>
               <th className="w-10 px-2 py-2 text-center font-medium">#</th>
-              <th className="min-w-[220px] px-2 py-2 font-medium">品項</th>
+              <th className="min-w-[220px] px-2 py-2 font-medium">
+                {itemLabel}
+              </th>
               <th className="min-w-[200px] px-2 py-2 font-medium">
                 {descriptionLabel}
               </th>
@@ -230,6 +235,7 @@ export function DocumentLinesEditor({
                         <td className="px-2 py-2">
                           {freeText ? (
                             <ItemOrTextPicker
+                              aria-label={itemLabel}
                               items={items}
                               models={freeText.models}
                               itemId={line.item_id}

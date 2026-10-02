@@ -188,6 +188,7 @@ export function SalesDocForm({
           exchangeRate={header.exchange_rate}
           disabled={pending}
           freeText={docType === "Q" ? { models: machineModels } : undefined}
+          itemLabel={docType === "Q" ? "產品編號" : undefined}
         />
         {docType === "S" && !header.warehouse_id && (
           <p className="mt-2 text-[13px] text-amber-700">
