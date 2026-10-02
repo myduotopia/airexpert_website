@@ -194,6 +194,7 @@ export async function saveDraftDocument(
       line_no: i + 1,
       line_type: l.line_type,
       item_id: isItem ? l.item_id : null,
+      item_text: isItem && !l.item_id ? cleanText(l.item_text) : null,
       description: cleanText(l.description),
       qty: isItem ? l.qty : 0,
       unit_price: isItem ? l.unit_price : 0,

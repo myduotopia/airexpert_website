@@ -131,6 +131,13 @@ describe("validateDraftDocument", () => {
     expect(
       validateDraftDocument({
         ...ok(),
+        doc_type: "Q",
+        lines: [newDraftLine("item", { item_text: "LS-20" })],
+      }),
+    ).toBeNull();
+    expect(
+      validateDraftDocument({
+        ...ok(),
         doc_type: "P",
         customer_id: null,
         vendor_id: "v1",

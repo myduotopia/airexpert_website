@@ -95,6 +95,7 @@ export function draftDocumentFromRow(doc: ErpDocumentWithLines): DraftDocument {
         newDraftLine(l.line_type, {
           id: l.id,
           item_id: l.item_id,
+          item_text: l.item_text ?? "",
           description: l.description ?? "",
           qty: Number(l.qty),
           unit_price: Number(l.unit_price),
