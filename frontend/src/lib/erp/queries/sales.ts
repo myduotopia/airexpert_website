@@ -71,7 +71,8 @@ export function quoteToSaleDraft(
         qty: l.line_type === "item" ? Number(l.qty) : 0,
         unit_price: l.line_type === "item" ? Number(l.unit_price) : 0,
         amount: Number(l.amount),
-        source_line_id: l.line_type === "item" ? l.id : null,
+        // 自由輸入的報價行（無品項）不連來源行：銷貨單選定品項後與來源行品項不同，過帳會被擋。
+        source_line_id: l.line_type === "item" && l.item_id ? l.id : null,
       }),
     ),
   });

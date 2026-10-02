@@ -82,6 +82,10 @@ psql_run -1 < "$ROOT/migrations/0021_service_report.sql"
 echo "==> 重跑 0022（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0022_service_plan.sql"
 
+# 0023 會 create or replace erp_post_document；重跑 0020 會蓋回舊版，故需在其後重跑。
+echo "==> 重跑 0023（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0023_quote_free_text_lines.sql"
+
 echo "==> 執行 erp_posting_test.sql"
 psql_run < "$ROOT/tests/erp_posting_test.sql"
 

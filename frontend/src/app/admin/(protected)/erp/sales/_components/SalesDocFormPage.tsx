@@ -7,6 +7,7 @@ import {
   listAvailableSerials,
   listCustomerOptions,
   listItemOptions,
+  listMachineModelOptions,
   listWarehouseOptions,
 } from "@/lib/erp/queries/pickers";
 import {
@@ -56,10 +57,11 @@ export async function SalesDocNewPage({
 }: {
   docType: Exclude<SalesDocType, "SR">;
 }) {
-  const [customers, warehouses, items] = await Promise.all([
+  const [customers, warehouses, items, machineModels] = await Promise.all([
     listCustomerOptions(),
     listWarehouseOptions(),
     listItemOptions(),
+    docType === "Q" ? listMachineModelOptions() : Promise.resolve([]),
   ]);
   const serials =
     docType === "S"
@@ -86,6 +88,7 @@ export async function SalesDocNewPage({
         warehouses={warehouses}
         items={items}
         serials={serials}
+        machineModels={machineModels}
       />
     </Shell>
   );
@@ -105,10 +108,11 @@ export async function SalesDocEditPage({
   const basePath = SALES_BASE_PATH[docType];
   if (doc.status !== "draft") redirect(`${basePath}/${doc.id}`);
 
-  const [customers, warehouses, items] = await Promise.all([
+  const [customers, warehouses, items, machineModels] = await Promise.all([
     listCustomerOptions({ includeInactive: true }),
     listWarehouseOptions(),
     listItemOptions(),
+    docType === "Q" ? listMachineModelOptions() : Promise.resolve([]),
   ]);
   const trackIds = items.filter((i) => i.track_serial).map((i) => i.id);
   const initial: DraftDocument = draftDocumentFromRow(doc);
@@ -179,6 +183,7 @@ export async function SalesDocEditPage({
         items={items}
         serials={serials}
         returnSource={returnSource}
+        machineModels={machineModels}
       />
     </Shell>
   );

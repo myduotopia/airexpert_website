@@ -1,5 +1,6 @@
 "use client";
 // 銷售單據表單（報價 / 銷貨 / 銷退共用）：受控表頭 + 明細編輯器，「儲存草稿」後導向明細頁（於明細頁過帳）。
+// - 報價單：儲存即確認（存草稿後立刻過帳取號，列表直接看到正式單）；品項欄可自由輸入或帶入保養卡機型。
 // - 銷貨單：追機號品項只列「出庫倉」中 in_stock 的機號（serials 由 server 讀出，client 依倉庫篩選）。
 // - 銷退單：客戶鎖定為來源銷貨單客戶；上方列出各來源行可退數量。
 import { useState, useTransition } from "react";
@@ -20,7 +21,7 @@ import type {
   SerialOption,
   WarehouseOption,
 } from "@/lib/erp/types";
-import { saveSalesDraftAction } from "../actions";
+import { postSalesDocumentAction, saveSalesDraftAction } from "../actions";
 import { SALES_BASE_PATH, SALES_DOC_LABEL } from "./sales-config";
 
 export interface SalesDocFormProps {
@@ -35,6 +36,8 @@ export interface SalesDocFormProps {
     customerId: string | null;
     lines: ReturnableLine[];
   } | null;
+  /** 報價單：保養卡 / 維護報告單上的機型，供品項欄搜尋帶入。 */
+  machineModels?: string[];
 }
 
 export function SalesDocForm({
@@ -44,6 +47,7 @@ export function SalesDocForm({
   items,
   serials,
   returnSource,
+  machineModels = [],
 }: SalesDocFormProps) {
   const router = useRouter();
   const docType = initial.doc_type as SalesDocType;
@@ -79,6 +83,15 @@ export function SalesDocForm({
           setError(res.error);
           return;
         }
+        if (confirmOnSave) {
+          // 記住草稿 id：確認失敗時修正後再存，會更新同一張草稿而非另建新單。
+          setHeader((h) => ({ ...h, id: res.data.id }));
+          const posted = await postSalesDocumentAction(res.data.id);
+          if (!posted.ok) {
+            setError(`報價單已存為草稿，但確認失敗：${posted.error}`);
+            return;
+          }
+        }
         router.push(`${basePath}/${res.data.id}`);
       } catch (e) {
         unstable_rethrow(e);
@@ -87,6 +100,8 @@ export function SalesDocForm({
     });
   }
 
+  // 報價單目前不經草稿流程：儲存即確認（草稿狀態保留供日後流程調整）。
+  const confirmOnSave = docType === "Q";
   const cancelHref = initial.id ? `${basePath}/${initial.id}` : basePath;
   const itemCode = new Map(items.map((i) => [i.id, i.code]));
 
@@ -153,7 +168,7 @@ export function SalesDocForm({
         )}
         {docType === "Q" && (
           <p className="text-text-muted mt-2 text-[12px]">
-            報價單不動庫存；確認後取號，可再「轉銷貨單」。
+            報價單不動庫存；儲存後即確認取號，可再「轉銷貨單」。
           </p>
         )}
       </section>
@@ -172,6 +187,7 @@ export function SalesDocForm({
           currency={header.currency}
           exchangeRate={header.exchange_rate}
           disabled={pending}
+          freeText={docType === "Q" ? { models: machineModels } : undefined}
         />
         {docType === "S" && !header.warehouse_id && (
           <p className="mt-2 text-[13px] text-amber-700">
@@ -196,7 +212,11 @@ export function SalesDocForm({
           disabled={pending}
           className="bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-5 text-[14px] font-semibold text-white disabled:opacity-60"
         >
-          {pending ? "儲存中…" : `儲存${SALES_DOC_LABEL[docType]}草稿`}
+          {pending
+            ? "儲存中…"
+            : confirmOnSave
+              ? `儲存${SALES_DOC_LABEL[docType]}`
+              : `儲存${SALES_DOC_LABEL[docType]}草稿`}
         </button>
         <Link href={cancelHref} className={`${ERP_BUTTON_SECONDARY} h-10`}>
           取消

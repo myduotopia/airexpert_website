@@ -16,7 +16,7 @@ export default async function QuotesListPage({
     <SalesDocList
       docType="Q"
       searchParams={await searchParams}
-      description="報價不動庫存；確認後取號，可一鍵轉為銷貨單草稿。"
+      description="報價不動庫存；儲存即確認取號，可一鍵轉為銷貨單草稿。"
       newHref="/admin/erp/quotes/new"
       newLabel="新增報價單"
     />

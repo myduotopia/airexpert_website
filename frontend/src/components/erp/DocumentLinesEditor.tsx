@@ -13,6 +13,7 @@ import type {
   SerialOption,
   TaxType,
 } from "@/lib/erp/types";
+import { ItemOrTextPicker } from "./ItemOrTextPicker";
 import { ItemPicker } from "./ItemPicker";
 import { MoneyText } from "./MoneyText";
 import { NumberInput } from "./NumberInput";
@@ -46,6 +47,11 @@ export interface DocumentLinesEditorProps {
   descriptionLabel?: string;
   /** 傳入時輸出 <input type="hidden" name={name} value={JSON.stringify(lines)}>。 */
   name?: string;
+  /**
+   * 允許品項欄自由輸入（報價單）：可搜尋品項與 models（保養卡機型），
+   * 或直接輸入文字（不指定品項，文字寫入品名規格）。
+   */
+  freeText?: { models: string[] };
 }
 
 const TAX_LABEL: Record<TaxType, string> = {
@@ -71,6 +77,7 @@ export function DocumentLinesEditor({
   disabled,
   descriptionLabel = "品名規格",
   name,
+  freeText,
 }: DocumentLinesEditorProps) {
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const serialsByItem = useMemo(() => {
@@ -113,6 +120,14 @@ export function DocumentLinesEditor({
       item_id: item?.id ?? null,
       description: item?.name ?? "",
       unit_price: priceField ? price : line.unit_price,
+      serial_ids: [],
+      serial_nos: [],
+    });
+  }
+  function setFreeText(line: DraftLine, text: string) {
+    patchLine(line.key, {
+      item_id: null,
+      description: text,
       serial_ids: [],
       serial_nos: [],
     });
@@ -211,12 +226,24 @@ export function DocumentLinesEditor({
                     {line.line_type === "item" && (
                       <>
                         <td className="px-2 py-2">
-                          <ItemPicker
-                            options={items}
-                            value={line.item_id}
-                            disabled={disabled}
-                            onChange={(_, it) => pickItem(line, it)}
-                          />
+                          {freeText ? (
+                            <ItemOrTextPicker
+                              items={items}
+                              models={freeText.models}
+                              itemId={line.item_id}
+                              text={line.description}
+                              disabled={disabled}
+                              onPickItem={(it) => pickItem(line, it)}
+                              onText={(text) => setFreeText(line, text)}
+                            />
+                          ) : (
+                            <ItemPicker
+                              options={items}
+                              value={line.item_id}
+                              disabled={disabled}
+                              onChange={(_, it) => pickItem(line, it)}
+                            />
+                          )}
                         </td>
                         <td className="px-2 py-2">
                           <input

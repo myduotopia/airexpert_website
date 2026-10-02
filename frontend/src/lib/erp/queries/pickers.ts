@@ -29,6 +29,46 @@ export async function listItemOptions(
   return (data ?? []) as ItemOption[];
 }
 
+const MODEL_PAGE_SIZE = 1000;
+
+/**
+ * 保養卡 / 維護報告單上出現過的機型（去重、排序），供報價單自由輸入品項時搜尋帶入。
+ * 讀 mx_machines（erp 有 select policy）與 sr_reports（僅有 service_report 模組時讀得到，
+ * 讀不到即略過）；PostgREST 單次上限 1000 筆，分頁讀完。
+ */
+export async function listMachineModelOptions(): Promise<string[]> {
+  const supabase = await getServerSupabase();
+  const models = new Map<string, string>();
+  const add = (rows: { model: string | null }[]) => {
+    for (const r of rows) {
+      const m = r.model?.trim();
+      if (m && !models.has(m.toLowerCase())) models.set(m.toLowerCase(), m);
+    }
+  };
+
+  for (let from = 0; ; from += MODEL_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("mx_machines")
+      .select("model")
+      .is("archived_at", null)
+      .not("model", "is", null)
+      .order("id")
+      .range(from, from + MODEL_PAGE_SIZE - 1);
+    if (error) throw new Error(`讀取保養卡機型失敗：${error.message}`);
+    add((data ?? []) as { model: string | null }[]);
+    if (!data || data.length < MODEL_PAGE_SIZE) break;
+  }
+
+  const { data: reports } = await supabase
+    .from("sr_reports")
+    .select("model")
+    .not("model", "is", null)
+    .limit(MODEL_PAGE_SIZE);
+  add((reports ?? []) as { model: string | null }[]);
+
+  return [...models.values()].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+}
+
 /** 客戶選項（mx_customers，預設只列 erp_active）。 */
 export async function listCustomerOptions(
   opts: { includeInactive?: boolean } = {},

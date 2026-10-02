@@ -7,6 +7,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const CUSTOMER_DOCS = new Set(["Q", "S", "SR"]);
 const VENDOR_DOCS = new Set(["P", "I", "PR"]);
+/** 品項行可不指定品項（只填品名規格）的單別。 */
+const FREE_TEXT_LINE_DOCS = new Set(["Q", "S"]);
 
 /** 回傳第一個錯誤訊息；通過回 null。 */
 export function validateDraftDocument(doc: DraftDocument): string | null {
@@ -42,7 +44,15 @@ export function validateDraftDocument(doc: DraftDocument): string | null {
   for (const [i, line] of doc.lines.entries()) {
     const n = i + 1;
     if (line.line_type === "item") {
-      if (!line.item_id) return `第 ${n} 行請選擇品項。`;
+      if (!line.item_id) {
+        // 報價單可自由輸入（只填品名規格）；由其轉入的銷貨草稿也可先存，過帳時 RPC 會要求指定品項。
+        if (!FREE_TEXT_LINE_DOCS.has(doc.doc_type)) {
+          return `第 ${n} 行請選擇品項。`;
+        }
+        if (!line.description?.trim()) {
+          return `第 ${n} 行請選擇品項或填寫品名規格。`;
+        }
+      }
       if (!Number.isFinite(line.qty)) return `第 ${n} 行數量不正確。`;
       if (!Number.isFinite(line.unit_price)) return `第 ${n} 行單價不正確。`;
       for (const id of line.serial_ids ?? []) {
