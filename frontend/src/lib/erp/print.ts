@@ -1,6 +1,6 @@
 // ERP 列印（spec §7）純函式：分頁、明細列轉換、單據標題、公司抬頭常數。client / server 皆可用。
 // 資料讀取見 lib/erp/queries/print.ts；版面見 components/erp/print/*。
-import { currencyDecimals } from "./calc";
+import { computeSubtotals, currencyDecimals, subtotalLabel } from "./calc";
 import { formatMoney } from "./format";
 import type { DocStatus, DocType, ErpDocumentWithLines } from "./types";
 
@@ -83,10 +83,13 @@ export interface PrintItemInfo {
 
 export interface PrintLine {
   key: string;
-  kind: "item" | "discount" | "note";
+  kind: "item" | "discount" | "note" | "subtotal";
   /** 產品編號（品項行）。 */
   code: string;
-  /** 品名規格（品項行：明細 description，空則品項名稱；A 單為品項名稱）。 */
+  /**
+   * 品名規格（品項行：明細 description，空則品項名稱；A 單為品項名稱；小計行為標題）。
+   * 可含換行（多行規格，#221），版面以 white-space: pre-line 呈現。
+   */
   name: string;
   /** 盤點調整原因（僅 A 單品項行，取自明細 description）。 */
   reason: string;
@@ -98,12 +101,13 @@ export interface PrintLine {
   serials: string[];
 }
 
-/** 單據明細 → 列印列（依 line_no 已排序的 doc.lines）。 */
+/** 單據明細 → 列印列（依 line_no 已排序的 doc.lines）。小計行金額依 computeSubtotals 即時計算。 */
 export function buildPrintLines(
   doc: Pick<ErpDocumentWithLines, "doc_type" | "lines">,
   items: ReadonlyMap<string, PrintItemInfo>,
 ): PrintLine[] {
-  return doc.lines.map((l) => {
+  const subtotals = computeSubtotals(doc.lines);
+  return doc.lines.map((l, i) => {
     const description = (l.description ?? "").trim();
     const base: PrintLine = {
       key: l.id,
@@ -118,6 +122,13 @@ export function buildPrintLines(
       serials: [],
     };
     if (l.line_type === "note") return base;
+    if (l.line_type === "subtotal") {
+      return {
+        ...base,
+        name: subtotalLabel(description),
+        amount: subtotals[i],
+      };
+    }
     if (l.line_type === "discount") {
       return { ...base, name: description || "折扣", amount: Number(l.amount) };
     }
@@ -177,7 +188,7 @@ export function textUnits(text: string): number {
 export function estimateTextRows(text: string, unitsPerRow: number): number {
   const width = Math.max(1, Math.floor(unitsPerRow));
   return text
-    .split("\n")
+    .split(/\r?\n/)
     .reduce(
       (sum, seg) => sum + Math.max(1, Math.ceil(textUnits(seg) / width)),
       0,
@@ -187,12 +198,22 @@ export function estimateTextRows(text: string, unitsPerRow: number): number {
 /** 品名規格欄每列可容納的寬度單位（約 25 個中文字）。 */
 export const NAME_UNITS_PER_ROW = 48;
 
-/** 一行明細佔用的列數：品名（可能換行）+ 每個機號一列。 */
+/** 盤點調整單「調整原因」欄每列可容納的寬度單位（52mm，約 13 個中文字）。 */
+export const REASON_UNITS_PER_ROW = 26;
+
+/**
+ * 一行明細佔用的列數：品名（多行規格每行至少一列、過長再折行）與調整原因（A 單）取較多者，
+ * 再加每個機號一列。
+ */
 export function printLineRows(
   line: PrintLine,
   unitsPerRow = NAME_UNITS_PER_ROW,
 ): number {
-  return estimateTextRows(line.name || " ", unitsPerRow) + line.serials.length;
+  const nameRows = estimateTextRows(line.name || " ", unitsPerRow);
+  const reasonRows = line.reason
+    ? estimateTextRows(line.reason, REASON_UNITS_PER_ROW)
+    : 1;
+  return Math.max(nameRows, reasonRows) + line.serials.length;
 }
 
 // ── 分頁 ─────────────────────────────────────────────────────

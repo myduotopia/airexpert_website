@@ -400,7 +400,7 @@ export async function StockDocDetailPage({
                     </td>
                     <td
                       colSpan={posted ? 5 : 4}
-                      className={`${TD} text-text-muted`}
+                      className={`${TD} text-text-muted whitespace-pre-line`}
                     >
                       {l.description}
                     </td>
@@ -427,7 +427,9 @@ export async function StockDocDetailPage({
                       "—"
                     )}
                   </td>
-                  <td className={TD}>{l.description ?? "—"}</td>
+                  <td className={`${TD} whitespace-pre-line`}>
+                    {l.description ?? "—"}
+                  </td>
                   <td
                     className={`${TD} text-right tabular-nums ${
                       qty < 0 ? "text-red-600" : ""

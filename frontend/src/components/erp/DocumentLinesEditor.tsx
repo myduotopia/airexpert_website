@@ -1,11 +1,18 @@
 "use client";
-// 單據明細編輯器（受控）：品項 / 折扣 / 備註三種行，新增、刪除、上下移動，
+// 單據明細編輯器（受控）：品項 / 折扣 / 備註 / 小計（僅報價單）行，新增、刪除、上下移動，
 // 選品項自動帶入品名規格與單價；序號品項可選既有機號（serialMode="existing"）
 // 或逐行輸入新機號（serialMode="new"）；下方以 calc.ts 即時試算合計 / 稅額 / 總計。
 // 純呈現元件：不讀 DB、不送出；傳 name 時輸出 hidden input（JSON）供 <form> 送出。
 // allowCreateItem：品項欄找不到時可就地新增品項主檔（#218）；新品項收在本元件，同張單每一行都搜得到。
+// 品名規格 / 備註為多行輸入（#221）：Enter 換行、不送出表單，列印時保留換行。
+// 小計行（#221）：標題可改（例「總價款」），金額 = 上一個小計之後的品項 + 折扣合計，不計入合計 / 稅額。
 import { Fragment, useMemo, useState, type ReactNode } from "react";
-import { calcDocumentTotals, calcLineAmount } from "@/lib/erp/calc";
+import {
+  calcDocumentTotals,
+  calcLineAmount,
+  computeSubtotals,
+  SUBTOTAL_DEFAULT_LABEL,
+} from "@/lib/erp/calc";
 import { newDraftLine, parseSerialLines } from "@/lib/erp/draft";
 import type {
   DraftLine,
@@ -42,7 +49,7 @@ export interface DocumentLinesEditorProps {
   showPrices?: boolean;
   /** 允許負數量（盤點調整單 A 的盤虧）。 */
   allowNegativeQty?: boolean;
-  /** 可新增的行類型（預設三種皆可）。 */
+  /** 可新增的行類型（預設品項 / 折扣 / 備註；小計需明確指定，目前僅報價單）。 */
   allowedLineTypes?: LineType[];
   disabled?: boolean;
   /** 品項欄的標題（預設「品項」；報價單用「產品編號」）。 */
@@ -104,6 +111,7 @@ export function DocumentLinesEditor({
     return m;
   }, [serials]);
 
+  const subtotals = computeSubtotals(value);
   const totals = calcDocumentTotals({
     lines: value,
     taxType,
@@ -269,17 +277,13 @@ export function DocumentLinesEditor({
                           )}
                         </td>
                         <td className="px-2 py-2">
-                          <input
-                            type="text"
+                          <MultilineInput
                             aria-label={descriptionLabel}
                             value={line.description}
                             disabled={disabled}
-                            onChange={(e) =>
-                              patchLine(line.key, {
-                                description: e.target.value,
-                              })
+                            onChange={(text) =>
+                              patchLine(line.key, { description: text })
                             }
-                            className={ERP_INPUT}
                           />
                         </td>
                         <td className="px-2 py-2">
@@ -368,20 +372,53 @@ export function DocumentLinesEditor({
                     )}
                     {line.line_type === "note" && (
                       <td colSpan={showPrices ? 5 : 3} className="px-2 py-2">
-                        <input
-                          type="text"
+                        <MultilineInput
                           aria-label="備註內容"
                           placeholder="備註（列印時顯示於明細中）"
                           value={line.description}
                           disabled={disabled}
-                          onChange={(e) =>
-                            patchLine(line.key, {
-                              description: e.target.value,
-                            })
+                          onChange={(text) =>
+                            patchLine(line.key, { description: text })
                           }
-                          className={ERP_INPUT}
                         />
                       </td>
+                    )}
+                    {line.line_type === "subtotal" && (
+                      <>
+                        <td className="text-text-muted px-2 py-2 pt-4 text-[13px]">
+                          小計
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            type="text"
+                            aria-label="小計標題"
+                            placeholder={SUBTOTAL_DEFAULT_LABEL}
+                            value={line.description}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              patchLine(line.key, {
+                                description: e.target.value,
+                              })
+                            }
+                            className={`${ERP_INPUT} font-semibold`}
+                          />
+                        </td>
+                        <td
+                          colSpan={showPrices ? 2 : 1}
+                          className="text-text-muted px-2 py-2 pt-4 text-right text-[12px]"
+                        >
+                          {showPrices ? "上方品項＋折扣合計，不計入總計" : ""}
+                        </td>
+                        {showPrices && (
+                          <td className="text-ink px-2 py-2 pt-4 text-right font-semibold">
+                            <MoneyText
+                              value={subtotals[index] ?? 0}
+                              currency={currency}
+                              negativeRed
+                            />
+                          </td>
+                        )}
+                      </>
                     )}
                     <td className="px-2 py-2 pt-3">{controls}</td>
                   </tr>
@@ -462,6 +499,16 @@ export function DocumentLinesEditor({
               ＋ 備註
             </button>
           )}
+          {showPrices && allowedLineTypes.includes("subtotal") && (
+            <button
+              type="button"
+              onClick={() => addLine("subtotal")}
+              className={ERP_BUTTON_SECONDARY}
+              title="小計／總價款：顯示上一個小計之後的品項＋折扣合計，不重複計入總計"
+            >
+              ＋ 小計
+            </button>
+          )}
         </div>
       )}
 
@@ -534,6 +581,37 @@ function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * 多行文字輸入（品名規格 / 備註）：textarea 依內容行數自動長高（1–8 行，可再手動拉高）。
+ * Enter 為換行（textarea 原生行為），不會送出表單。
+ */
+function MultilineInput({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  "aria-label": ariaLabel,
+}: {
+  value: string;
+  onChange: (text: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+  "aria-label": string;
+}) {
+  const rows = Math.min(Math.max(value.split("\n").length, 1), 8);
+  return (
+    <textarea
+      aria-label={ariaLabel}
+      placeholder={placeholder}
+      rows={rows}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className={`${ERP_AREA} min-h-10 resize-y leading-[1.4]`}
+    />
   );
 }
 

@@ -5,9 +5,14 @@
 import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
-import { roundHalfAwayFromZero } from "../calc";
+import {
+  computeSubtotals,
+  roundHalfAwayFromZero,
+  subtotalLabel,
+} from "../calc";
 import { newDraftDocument, newDraftLine } from "../draft";
 import { erpErrorMessage } from "../errors";
+import { formatMoney } from "../format";
 import type {
   DocStatus,
   DocType,
@@ -49,6 +54,8 @@ function sortedLines(doc: ErpDocumentWithLines) {
  * 複製表頭（客戶、業務、稅別稅率、幣別、備註）與全部明細；source_doc_id = 報價單，
  * item 行 source_line_id = 報價行（過帳時 RPC 驗證品項與客戶一致）。
  * 日期為轉單當天、出庫倉帶預設倉；機號留空（過帳前於銷貨單選取）。
+ * 小計行（#221，僅報價單有）轉為備註行，文字保留標題與報價當時的金額（例「總價款 NT$328,000」），
+ * 不計入銷貨合計；銷貨單之後若增刪品項，備註金額不會自動更新。
  */
 export function quoteToSaleDraft(
   quote: ErpDocumentWithLines,
@@ -64,25 +71,52 @@ export function quoteToSaleDraft(
     currency: quote.currency,
     exchange_rate: Number(quote.exchange_rate),
     note: quote.note,
-    lines: sortedLines(quote).map((l) =>
-      newDraftLine(l.line_type, {
-        item_id: l.line_type === "item" ? l.item_id : null,
-        // 銷貨單無品項文字欄：自由輸入行把品項文字併入品名規格，待選定品項後過帳。
-        description:
-          l.line_type === "item" && !l.item_id
-            ? [l.item_text, l.description]
-                .map((t) => t?.trim())
-                .filter(Boolean)
-                .join(" ")
-            : (l.description ?? ""),
-        qty: l.line_type === "item" ? Number(l.qty) : 0,
-        unit_price: l.line_type === "item" ? Number(l.unit_price) : 0,
-        amount: Number(l.amount),
-        // 自由輸入的報價行（無品項）不連來源行：銷貨單選定品項後與來源行品項不同，過帳會被擋。
-        source_line_id: l.line_type === "item" && l.item_id ? l.id : null,
-      }),
-    ),
+    lines: quoteLinesForSale(sortedLines(quote), quote.currency),
   });
+}
+
+/** 小計行轉成備註時的文字：「標題 金額」（台幣 NT$328,000；外幣 USD 12.50）。 */
+export function subtotalNoteText(
+  title: string | null | undefined,
+  amount: number,
+  currency: string,
+): string {
+  const cur = currency.trim().toUpperCase();
+  const money = formatMoney(amount, { currency: cur });
+  return `${subtotalLabel(title)} ${cur === "TWD" ? "NT$" : `${cur} `}${money}`;
+}
+
+function quoteLinesForSale(
+  lines: ErpDocumentWithLines["lines"],
+  currency: string,
+): DraftLine[] {
+  const subtotals = computeSubtotals(lines);
+  return lines.map((l, i) =>
+    l.line_type === "subtotal"
+      ? newDraftLine("note", {
+          description: subtotalNoteText(
+            l.description,
+            subtotals[i] ?? 0,
+            currency,
+          ),
+        })
+      : newDraftLine(l.line_type, {
+          item_id: l.line_type === "item" ? l.item_id : null,
+          // 銷貨單無品項文字欄：自由輸入行把品項文字併入品名規格，待選定品項後過帳。
+          description:
+            l.line_type === "item" && !l.item_id
+              ? [l.item_text, l.description]
+                  .map((t) => t?.trim())
+                  .filter(Boolean)
+                  .join(" ")
+              : (l.description ?? ""),
+          qty: l.line_type === "item" ? Number(l.qty) : 0,
+          unit_price: l.line_type === "item" ? Number(l.unit_price) : 0,
+          amount: Number(l.amount),
+          // 自由輸入的報價行（無品項）不連來源行：銷貨單選定品項後與來源行品項不同，過帳會被擋。
+          source_line_id: l.line_type === "item" && l.item_id ? l.id : null,
+        }),
+  );
 }
 
 export interface ReturnableLine {

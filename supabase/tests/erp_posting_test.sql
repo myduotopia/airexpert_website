@@ -210,6 +210,46 @@ end $$;
 select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e031')$q$, 'validation');
 select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e032')$q$, 'validation');
 
+-- 0025：報價單小計／總價款行（顯示用，金額存 0、不計入合計稅額；僅報價單）
+insert into erp_documents (id, doc_type, doc_date, customer_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e034', 'Q', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded'),
+  ('00000000-0000-0000-0000-00000000e035', 'S', '2026-09-01', '00000000-0000-0000-0000-00000000d001', 'excluded');
+update erp_documents set warehouse_id = erp_test.main() where id = '00000000-0000-0000-0000-00000000e035';
+insert into erp_document_lines (document_id, line_no, line_type, item_id, item_text, description, qty, unit_price, amount) values
+  ('00000000-0000-0000-0000-00000000e034', 1, 'item',     null, 'AL-010N', E'乾燥機\n含安裝', 1, 320000, 0),
+  ('00000000-0000-0000-0000-00000000e034', 2, 'item',     '00000000-0000-0000-0000-00000000c003', null, null, 2, 4000, 0),
+  ('00000000-0000-0000-0000-00000000e034', 3, 'subtotal', null, null, '總價款', 0, 0, 0),
+  ('00000000-0000-0000-0000-00000000e034', 4, 'item',     '00000000-0000-0000-0000-00000000c004', null, null, 1, 10000, 0),
+  ('00000000-0000-0000-0000-00000000e034', 5, 'discount', null, null, '優惠', 0, 0, -1500),
+  ('00000000-0000-0000-0000-00000000e034', 6, 'subtotal', null, null, null, 0, 0, 0),
+  ('00000000-0000-0000-0000-00000000e035', 1, 'subtotal', null, null, '小計', 0, 0, 0),
+  ('00000000-0000-0000-0000-00000000e035', 2, 'item',     '00000000-0000-0000-0000-00000000c004', null, null, 1, 100, 0);
+-- 形狀約束：小計行不可帶金額 / 數量 / 品項；未知類型仍擋
+select erp_test.expect_error($q$insert into erp_document_lines (document_id, line_no, line_type, amount) values ('00000000-0000-0000-0000-00000000e034', 90, 'subtotal', 328000)$q$, '23514');
+select erp_test.expect_error($q$insert into erp_document_lines (document_id, line_no, line_type, qty) values ('00000000-0000-0000-0000-00000000e034', 91, 'subtotal', 1)$q$, '23514');
+select erp_test.expect_error($q$insert into erp_document_lines (document_id, line_no, line_type, item_id) values ('00000000-0000-0000-0000-00000000e034', 92, 'subtotal', '00000000-0000-0000-0000-00000000c004')$q$, '23514');
+select erp_test.expect_error($q$insert into erp_document_lines (document_id, line_no, line_type) values ('00000000-0000-0000-0000-00000000e034', 93, 'total')$q$, '23514');
+do $$
+declare v jsonb; d erp_documents;
+begin
+  v := erp_post_document('00000000-0000-0000-0000-00000000e034');
+  select * into d from erp_documents where id = '00000000-0000-0000-0000-00000000e034';
+  -- 320000 + 8000 + 10000 − 1500 = 336500；小計行（328000 / 8500）不重複計入
+  assert d.status = 'posted' and d.amount_untaxed = 336500 and d.tax_amount = 16825 and d.total_amount = 353325,
+    format('Q 含小計行 %s', d);
+  assert (select count(*) from erp_document_lines
+           where document_id = d.id and line_type = 'subtotal' and amount = 0) = 2, 'Q 小計行金額維持 0';
+  assert (select description from erp_document_lines where document_id = d.id and line_no = 1) = E'乾燥機\n含安裝',
+    'Q 多行品名規格保留換行';
+  assert (select count(*) from erp_stock_moves where document_id = d.id) = 0, 'Q 不動庫存';
+  raise notice 'ok  Q 小計行：可確認、不計入合計稅額';
+end $$;
+select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e035')$q$, 'validation');
+do $$ begin
+  assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e035') = 'draft', 'S 含小計行不可過帳';
+  raise notice 'ok  小計行只限報價單';
+end $$;
+
 -- I1：部分到貨（ALH-15AI 1 台 + 油 4 桶）
 insert into erp_documents (id, doc_type, doc_date, vendor_id, warehouse_id, source_doc_id) values
   ('00000000-0000-0000-0000-00000000e002', 'I', '2026-09-05', '00000000-0000-0000-0000-00000000b001', erp_test.main(), '00000000-0000-0000-0000-00000000e001');

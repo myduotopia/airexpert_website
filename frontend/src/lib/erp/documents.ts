@@ -198,8 +198,10 @@ export async function saveDraftDocument(
       description: cleanText(l.description),
       qty: isItem ? l.qty : 0,
       unit_price: isItem ? l.unit_price : 0,
+      // 小計行為顯示用（#221）：amount 恆為 0（calcLineAmount），DB check 約束也要求不連來源行。
       amount: calcLineAmount(l),
-      source_line_id: l.source_line_id || null,
+      source_line_id:
+        l.line_type === "subtotal" ? null : l.source_line_id || null,
       serial_nos: serialNos.length ? serialNos : null,
     };
   });
