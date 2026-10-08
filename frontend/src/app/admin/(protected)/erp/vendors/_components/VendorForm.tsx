@@ -17,6 +17,7 @@ const TEXT_FIELDS: {
   required?: boolean;
   wide?: boolean;
   type?: string;
+  inputMode?: "email" | "tel";
   placeholder?: string;
 }[] = [
   { key: "code", label: "廠商代碼", required: true, placeholder: "例：KA405" },
@@ -25,7 +26,14 @@ const TEXT_FIELDS: {
   { key: "contact_person", label: "聯絡人" },
   { key: "phone", label: "電話", type: "tel" },
   { key: "fax", label: "傳真", type: "tel" },
-  { key: "email", label: "Email", type: "email" },
+  // 不用 type="email"：瀏覽器原生驗證不接受多筆、錯誤只以浮動提示呈現（自動化工具與部分使用者
+  // 看起來像「按儲存沒反應」）；改由 server 檢查並在表單下方顯示訊息（#222）。
+  {
+    key: "email",
+    label: "Email",
+    inputMode: "email",
+    placeholder: "多筆以 ; 分隔",
+  },
   { key: "currency", label: "幣別", placeholder: "TWD" },
   { key: "address", label: "地址", wide: true },
   {
@@ -122,6 +130,7 @@ export function VendorForm({
                   : undefined
               }
               type={f.type ?? "text"}
+              inputMode={f.inputMode}
               className={ERP_INPUT}
               value={String(v[f.key] ?? "")}
               placeholder={f.placeholder}

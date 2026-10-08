@@ -1,11 +1,12 @@
 // ERP 列印頁（#178）的補充查詢 — SERVER ONLY。
 // 單據表頭 / 明細由 getDocumentWithLines 讀取；此處補上列印需要、但快照沒有的欄位：
-// 品項編號與單位、倉庫名稱、客戶編號、廠商編號與傳真。讀取走登入者 session（RLS）。
+// 品項編號與單位、倉庫名稱、客戶編號、廠商編號與傳真；已過帳銷貨單另讀沖銷餘額（#222）。
+// 讀取走登入者 session（RLS）。
 import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
 import { erpErrorMessage } from "../errors";
-import type { PrintItemInfo } from "../print";
+import type { PrintDocBalance, PrintItemInfo } from "../print";
 import type { ErpDocumentWithLines, ErpResult } from "../types";
 
 export interface DocumentPrintContext {
@@ -13,6 +14,8 @@ export interface DocumentPrintContext {
   warehouses: Map<string, { code: string; name: string }>;
   customerCode: string | null;
   vendor: { code: string; fax: string | null } | null;
+  /** 已過帳銷貨單的已收款／未收餘額（erp_document_balances）；其他單據為 null。 */
+  balance: PrintDocBalance | null;
 }
 
 export async function getDocumentPrintContext(
@@ -26,7 +29,8 @@ export async function getDocumentPrintContext(
     (v): v is string => !!v,
   );
 
-  const [items, warehouses, customer, vendor] = await Promise.all([
+  const wantBalance = doc.doc_type === "S" && doc.status === "posted";
+  const [items, warehouses, customer, vendor, balance] = await Promise.all([
     itemIds.length
       ? supabase
           .from("erp_items")
@@ -53,8 +57,17 @@ export async function getDocumentPrintContext(
           .eq("id", doc.vendor_id)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    wantBalance
+      ? supabase
+          .from("erp_document_balances")
+          .select("allocated, outstanding")
+          .eq("document_id", doc.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
-  const failed = [items, warehouses, customer, vendor].find((r) => r.error);
+  const failed = [items, warehouses, customer, vendor, balance].find(
+    (r) => r.error,
+  );
   if (failed?.error) return { ok: false, error: erpErrorMessage(failed.error) };
 
   return {
@@ -79,6 +92,16 @@ export async function getDocumentPrintContext(
         (customer.data as { code: string | null } | null)?.code ?? null,
       vendor:
         (vendor.data as { code: string; fax: string | null } | null) ?? null,
+      balance: balance.data
+        ? {
+            allocated: Number(
+              (balance.data as { allocated: number | string }).allocated,
+            ),
+            outstanding: Number(
+              (balance.data as { outstanding: number | string }).outstanding,
+            ),
+          }
+        : null,
     },
   };
 }

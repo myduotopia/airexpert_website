@@ -61,6 +61,26 @@ export function cleanText(v: string | null | undefined): string | null {
   return s ? s : null;
 }
 
+export const EMAIL_FORMAT_MESSAGE = "Email 格式不正確（多筆請以 ; 分隔）。";
+
+const EMAIL_RE = /^[^\s@;,]+@[^\s@;,]+\.[^\s@;,]+$/;
+
+/**
+ * Email 欄位（可多筆）：以 ; , ，、；分隔，逐筆做基本格式檢查（x@y.z），整理為「; 」分隔。
+ * 空白回 value: null（不擋）；任一筆不符回 ok: false。不檢查網域是否存在。
+ */
+export function normalizeEmailList(
+  v: string | null | undefined,
+): { ok: true; value: string | null } | { ok: false } {
+  const parts = (v ?? "")
+    .split(/[;,，；、]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return { ok: true, value: null };
+  if (!parts.every((p) => EMAIL_RE.test(p))) return { ok: false };
+  return { ok: true, value: parts.join("; ") };
+}
+
 /** PostgREST or-filter 的值不可含結構字元；移除以避免語法錯誤。 */
 export function sanitizeSearch(q: string | null | undefined): string {
   return (q ?? "").replace(/[,()"\\%*]/g, " ").trim();
@@ -137,6 +157,8 @@ export function normalizeVendorInput(
   if (!/^[A-Z]{3}$/.test(currency)) {
     return { ok: false, error: "幣別請填 3 碼代號（例：TWD、USD）。" };
   }
+  const email = normalizeEmailList(input.email);
+  if (!email.ok) return { ok: false, error: EMAIL_FORMAT_MESSAGE };
   return {
     ok: true,
     row: {
@@ -146,7 +168,7 @@ export function normalizeVendorInput(
       contact_person: cleanText(input.contact_person),
       phone: cleanText(input.phone),
       fax: cleanText(input.fax),
-      email: cleanText(input.email),
+      email: email.value,
       address: cleanText(input.address),
       currency,
       payment_terms: cleanText(input.payment_terms),
@@ -168,6 +190,12 @@ export interface CustomerInput {
   delivery_address: string;
   payment_terms: string;
   sales_rep: string;
+  /** 傳真（0026）。 */
+  fax: string;
+  /** 收信人（0026）。 */
+  mail_recipient: string;
+  /** Email，可多筆以 ; 分隔（0026）。 */
+  email: string;
   erp_active: boolean;
 }
 
@@ -180,6 +208,8 @@ export function normalizeCustomerInput(
   if (tax_id && !/^\d{8}$/.test(tax_id)) {
     return { ok: false, error: "統一編號應為 8 位數字。" };
   }
+  const email = normalizeEmailList(input.email);
+  if (!email.ok) return { ok: false, error: EMAIL_FORMAT_MESSAGE };
   return {
     ok: true,
     row: {
@@ -194,6 +224,9 @@ export function normalizeCustomerInput(
       delivery_address: cleanText(input.delivery_address),
       payment_terms: cleanText(input.payment_terms),
       sales_rep: cleanText(input.sales_rep),
+      fax: cleanText(input.fax),
+      mail_recipient: cleanText(input.mail_recipient),
+      email: email.value,
       erp_active: input.erp_active !== false,
     },
   };
@@ -376,6 +409,10 @@ export async function getVendor(id: string): Promise<ErpVendor | null> {
 
 // ── 客戶（mx_customers 共用） ────────────────────────────────
 
+/** ErpCustomer 對應的欄位（fax / mail_recipient / email 需 0026）。 */
+export const ERP_CUSTOMER_COLUMNS =
+  "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, fax, mail_recipient, email, erp_active";
+
 export async function listErpCustomers(
   params: ListPartyParams = {},
 ): Promise<Paged<ErpCustomer>> {
@@ -383,10 +420,7 @@ export async function listErpCustomers(
   const supabase = await getServerSupabase();
   let query = supabase
     .from("mx_customers")
-    .select(
-      "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, erp_active",
-      { count: "exact" },
-    );
+    .select(ERP_CUSTOMER_COLUMNS, { count: "exact" });
   if (!params.includeInactive) query = query.eq("erp_active", true);
   const q = sanitizeSearch(params.q);
   if (q) {
@@ -411,9 +445,7 @@ export async function getErpCustomer(id: string): Promise<ErpCustomer | null> {
   const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("mx_customers")
-    .select(
-      "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, erp_active",
-    )
+    .select(ERP_CUSTOMER_COLUMNS)
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`讀取客戶失敗：${error.message}`);

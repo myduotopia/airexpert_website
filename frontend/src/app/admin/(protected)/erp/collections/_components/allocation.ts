@@ -170,7 +170,7 @@ export function validatePaymentForm(input: PaymentFormInput): string | null {
   if (!(Number(input.amount) > 0)) return "金額需大於 0。";
   if (input.method === "check") {
     if (!input.check_no?.trim()) return "支票需填寫票號。";
-    if (!input.check_due_date) return "支票需填寫票期。";
+    if (!input.check_due_date) return "支票需填寫到期日（票期）。";
     if (!input.bank?.trim()) return "支票需填寫銀行。";
   }
   for (const a of input.allocations) {

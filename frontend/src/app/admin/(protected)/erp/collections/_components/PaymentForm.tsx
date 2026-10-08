@@ -7,12 +7,7 @@ import { MoneyText } from "@/components/erp/MoneyText";
 import { NumberInput } from "@/components/erp/NumberInput";
 import { RocDateInput } from "@/components/erp/RocDateInput";
 import { VendorPicker } from "@/components/erp/VendorPicker";
-import {
-  ERP_AREA,
-  ERP_INPUT,
-  ERP_LABEL,
-  ERP_SELECT,
-} from "@/components/erp/styles";
+import { ERP_AREA, ERP_INPUT, ERP_LABEL } from "@/components/erp/styles";
 import { PAYMENT_METHOD_LABEL } from "@/lib/erp/statement";
 import type {
   CustomerOption,
@@ -168,24 +163,39 @@ export function PaymentForm({
             aria-label={`${meta.label}日期`}
           />
         </div>
-        <div className="space-y-1.5">
-          <label htmlFor="pay-method" className={ERP_LABEL}>
-            方式
-          </label>
-          <select
-            id="pay-method"
-            value={method}
-            disabled={pending}
-            onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-            className={ERP_SELECT}
-          >
+        {/* 方式改為並列選項（原為下拉選單）：#217 實測時預設「匯款」，看不出有「支票」可選，
+            也找不到到期日——支票的票號／到期日欄位要選了「支票」才會出現（#222）。 */}
+        <fieldset className="space-y-1.5">
+          <legend className={`${ERP_LABEL} mb-1.5`}>方式</legend>
+          <div className="flex flex-wrap gap-2">
             {PAYMENT_METHODS.map((m) => (
-              <option key={m} value={m}>
+              <label
+                key={m}
+                className={`has-[:focus-visible]:ring-primary inline-flex h-10 cursor-pointer items-center rounded-lg border px-4 text-[14px] font-medium has-[:focus-visible]:ring-2 ${
+                  method === m
+                    ? "border-primary bg-primary/10 text-primary-deep"
+                    : "border-border text-ink hover:bg-surface-muted bg-white"
+                } ${pending ? "cursor-not-allowed opacity-60" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="pay-method"
+                  value={m}
+                  checked={method === m}
+                  disabled={pending}
+                  onChange={() => setMethod(m)}
+                  className="sr-only"
+                />
                 {PAYMENT_METHOD_LABEL[m]}
-              </option>
+              </label>
             ))}
-          </select>
-        </div>
+          </div>
+          <p className="text-text-muted text-[12px]">
+            {method === "check"
+              ? "支票需填寫銀行、票號與到期日（票期）；過帳後可在詳情頁更新兌現／退票。"
+              : `${direction === "in" ? "收" : "開"}支票請選「支票」，再填寫票號與到期日。`}
+          </p>
+        </fieldset>
         <div className="space-y-1.5">
           <label htmlFor="pay-amount" className={ERP_LABEL}>
             金額（TWD）
@@ -225,12 +235,12 @@ export function PaymentForm({
               />
             </div>
             <div className="space-y-1.5">
-              <span className={ERP_LABEL}>票期（必填）</span>
+              <span className={ERP_LABEL}>到期日（票期，必填）</span>
               <RocDateInput
                 value={dueDate}
                 onChange={setDueDate}
                 disabled={pending}
-                aria-label="票期"
+                aria-label="支票到期日"
               />
             </div>
           </>

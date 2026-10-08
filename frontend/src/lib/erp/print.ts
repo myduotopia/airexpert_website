@@ -73,6 +73,37 @@ export function formatUnitPrice(value: number, currency: string): string {
   return formatMoney(Number(value), { decimals: dp });
 }
 
+// ── 銷貨單收款狀態 ─────────────────────────────────────────────
+
+/** erp_document_balances 的沖銷累計（台幣）。 */
+export interface PrintDocBalance {
+  allocated: number;
+  outstanding: number;
+}
+
+export interface PrintPaymentRow {
+  label: string;
+  /** 台幣金額。 */
+  amount: number;
+}
+
+/**
+ * 銷貨單列印的「已收款」「未收餘額」列（#222）：只有已過帳的銷貨單 S 才印（草稿、作廢、
+ * 其他單別回 null）。金額取自 erp_document_balances（以 total_twd 計，皆為台幣），
+ * 外幣單在標題註明（台幣）。版面放在合計表右側，不佔明細列數（DOC_PRINT_ROWS 不變）。
+ */
+export function salePaymentRows(
+  doc: Pick<ErpDocumentWithLines, "doc_type" | "status" | "currency">,
+  balance: PrintDocBalance | null | undefined,
+): PrintPaymentRow[] | null {
+  if (doc.doc_type !== "S" || doc.status !== "posted" || !balance) return null;
+  const suffix = doc.currency === "TWD" ? "" : "（台幣）";
+  return [
+    { label: `已收款${suffix}`, amount: Number(balance.allocated) },
+    { label: `未收餘額${suffix}`, amount: Number(balance.outstanding) },
+  ];
+}
+
 // ── 明細列 ───────────────────────────────────────────────────
 
 export interface PrintItemInfo {
@@ -84,7 +115,7 @@ export interface PrintItemInfo {
 export interface PrintLine {
   key: string;
   kind: "item" | "discount" | "note" | "subtotal";
-  /** 產品編號（品項行）。 */
+  /** 產品編號（品項行；自由輸入行為品項文字）。 */
   code: string;
   /**
    * 品名規格（品項行：明細 description，空則品項名稱；A 單為品項名稱；小計行為標題）。
@@ -143,13 +174,13 @@ export function buildPrintLines(
     const isAdjust = doc.doc_type === "A";
     return {
       ...base,
-      code: item?.code ?? "",
+      // 自由輸入行（報價單，未指定品項）：品項文字印在產品編號欄、品名規格獨立（#222）。
+      code: item?.code ?? (l.item_id ? "" : (l.item_text ?? "").trim()),
       name: isAdjust
         ? (item?.name ?? "")
         : item
           ? description || item.name
-          : // 自由輸入行（報價單）：品項文字 + 品名規格。
-            [(l.item_text ?? "").trim(), description].filter(Boolean).join(" "),
+          : description,
       reason: isAdjust ? description : "",
       qty: Number(l.qty),
       unit: item?.unit ?? "",
@@ -198,22 +229,31 @@ export function estimateTextRows(text: string, unitsPerRow: number): number {
 /** 品名規格欄每列可容納的寬度單位（約 25 個中文字）。 */
 export const NAME_UNITS_PER_ROW = 48;
 
+/**
+ * 產品編號欄每列可容納的寬度單位（28mm）。以 Inter 10pt 實測：英數約 11 字、中文 7 字即滿一列
+ * （「NAD-0402-CKD」12 字會折行），英數比品名欄的估算寬，故取 11（中文 7 字估 2 列，偏保守）。
+ */
+export const CODE_UNITS_PER_ROW = 11;
+
 /** 盤點調整單「調整原因」欄每列可容納的寬度單位（52mm，約 13 個中文字）。 */
 export const REASON_UNITS_PER_ROW = 26;
 
 /**
- * 一行明細佔用的列數：品名（多行規格每行至少一列、過長再折行）與調整原因（A 單）取較多者，
- * 再加每個機號一列。
+ * 一行明細佔用的列數：品名（多行規格每行至少一列、過長再折行）、產品編號（過長折行）
+ * 與調整原因（A 單）取較多者，再加每個機號一列。
  */
 export function printLineRows(
   line: PrintLine,
   unitsPerRow = NAME_UNITS_PER_ROW,
 ): number {
   const nameRows = estimateTextRows(line.name || " ", unitsPerRow);
+  const codeRows = line.code
+    ? estimateTextRows(line.code, CODE_UNITS_PER_ROW)
+    : 1;
   const reasonRows = line.reason
     ? estimateTextRows(line.reason, REASON_UNITS_PER_ROW)
     : 1;
-  return Math.max(nameRows, reasonRows) + line.serials.length;
+  return Math.max(nameRows, codeRows, reasonRows) + line.serials.length;
 }
 
 // ── 分頁 ─────────────────────────────────────────────────────

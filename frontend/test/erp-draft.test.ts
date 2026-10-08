@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   draftDocumentFromRow,
+  linesMissingItem,
   newDraftDocument,
   newDraftLine,
   parseSerialLines,
@@ -183,5 +184,19 @@ describe("formatMoney / formatQty", () => {
     expect(formatQty(2)).toBe("2");
     expect(formatQty(1.5)).toBe("1.5");
     expect(formatQty(1234.125)).toBe("1,234.125");
+  });
+});
+
+describe("linesMissingItem（#222 報價自由輸入轉銷貨草稿的待選品項行）", () => {
+  it("回傳未指定品項、但已有內容的品項行行號（1 起算）", () => {
+    const lines = [
+      newDraftLine("item", { item_id: "i1", description: "已選" }),
+      newDraftLine("item", { description: "AB-37 空壓機" }),
+      newDraftLine("note", { description: "備註不算" }),
+      newDraftLine("item", { item_text: "LS-20" }),
+      newDraftLine("item"), // 全空的新行不提示
+      newDraftLine("discount", { amount: -100 }),
+    ];
+    expect(linesMissingItem(lines)).toEqual([2, 4]);
   });
 });

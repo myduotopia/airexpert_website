@@ -13,6 +13,7 @@ import {
 import { newDraftDocument, newDraftLine } from "../draft";
 import { erpErrorMessage } from "../errors";
 import { formatMoney } from "../format";
+import { ITEM_OPTION_COLUMNS } from "./pickers";
 import type {
   DocStatus,
   DocType,
@@ -20,6 +21,7 @@ import type {
   DraftLine,
   ErpDocumentWithLines,
   ErpResult,
+  ItemOption,
   MxCardType,
 } from "../types";
 
@@ -49,6 +51,40 @@ function sortedLines(doc: ErpDocumentWithLines) {
   return [...doc.lines].sort((a, b) => a.line_no - b.line_no);
 }
 
+/** 品項比對用的正規化：去頭尾空白、不分大小寫（同 erp_items_code_key 的 lower(btrim(code))）。 */
+function matchKey(text: string | null | undefined): string {
+  return (text ?? "").trim().toLowerCase();
+}
+
+/**
+ * 自由輸入的品項文字 → 品項主檔（#222，報價轉銷貨單用）。只在唯一命中時回傳：
+ * 1. 代碼完全相符（不分大小寫、去空白）；代碼唯一，命中即採用；
+ * 2. 代碼無命中時比型號（model），恰好一筆才採用（多筆同型號不猜）。
+ * 不做部分比對；candidates 由呼叫端限定為啟用中品項。
+ */
+export function matchItemByText<T extends Pick<ItemOption, "code" | "model">>(
+  text: string | null | undefined,
+  candidates: readonly T[],
+): T | null {
+  const key = matchKey(text);
+  if (!key) return null;
+  const byCode = candidates.filter((c) => matchKey(c.code) === key);
+  if (byCode.length > 0) return byCode.length === 1 ? byCode[0] : null;
+  const byModel = candidates.filter((c) => matchKey(c.model) === key);
+  return byModel.length === 1 ? byModel[0] : null;
+}
+
+/** 報價單上未指定品項的品項行文字（去空白、不分大小寫去重；保留第一次出現的寫法）。 */
+export function freeTextItemQueries(quote: ErpDocumentWithLines): string[] {
+  const seen = new Map<string, string>();
+  for (const l of quote.lines) {
+    if (l.line_type !== "item" || l.item_id) continue;
+    const text = (l.item_text ?? "").trim();
+    if (text && !seen.has(matchKey(text))) seen.set(matchKey(text), text);
+  }
+  return [...seen.values()];
+}
+
 /**
  * 報價單 → 銷貨單草稿（spec §6「轉銷貨單」）：
  * 複製表頭（客戶、業務、稅別稅率、幣別、備註）與全部明細；source_doc_id = 報價單，
@@ -56,10 +92,18 @@ function sortedLines(doc: ErpDocumentWithLines) {
  * 日期為轉單當天、出庫倉帶預設倉；機號留空（過帳前於銷貨單選取）。
  * 小計行（#221，僅報價單有）轉為備註行，文字保留標題與報價當時的金額（例「總價款 NT$328,000」），
  * 不計入銷貨合計；銷貨單之後若增刪品項，備註金額不會自動更新。
+ * 自由輸入的報價行（#222）：以 matchItemByText 比對 opts.items，唯一命中即帶入該品項
+ * （品名規格、單價保留報價內容——報價為議定價；品名規格空白才用品項名稱，同手動選品項）；
+ * 無法唯一命中則不指定品項，品項文字併入品名規格，待使用者於銷貨草稿選品項。
  */
 export function quoteToSaleDraft(
   quote: ErpDocumentWithLines,
-  opts: { docDate: string; warehouseId: string | null },
+  opts: {
+    docDate: string;
+    warehouseId: string | null;
+    /** 自由輸入行比對用的品項主檔候選（啟用中）；未傳則不比對。 */
+    items?: readonly ItemOption[];
+  },
 ): DraftDocument {
   return newDraftDocument("S", opts.docDate, {
     customer_id: quote.customer_id,
@@ -71,7 +115,11 @@ export function quoteToSaleDraft(
     currency: quote.currency,
     exchange_rate: Number(quote.exchange_rate),
     note: quote.note,
-    lines: quoteLinesForSale(sortedLines(quote), quote.currency),
+    lines: quoteLinesForSale(
+      sortedLines(quote),
+      quote.currency,
+      opts.items ?? [],
+    ),
   });
 }
 
@@ -89,34 +137,51 @@ export function subtotalNoteText(
 function quoteLinesForSale(
   lines: ErpDocumentWithLines["lines"],
   currency: string,
+  items: readonly ItemOption[],
 ): DraftLine[] {
   const subtotals = computeSubtotals(lines);
-  return lines.map((l, i) =>
-    l.line_type === "subtotal"
-      ? newDraftLine("note", {
-          description: subtotalNoteText(
-            l.description,
-            subtotals[i] ?? 0,
-            currency,
-          ),
-        })
-      : newDraftLine(l.line_type, {
-          item_id: l.line_type === "item" ? l.item_id : null,
-          // 銷貨單無品項文字欄：自由輸入行把品項文字併入品名規格，待選定品項後過帳。
-          description:
-            l.line_type === "item" && !l.item_id
-              ? [l.item_text, l.description]
-                  .map((t) => t?.trim())
-                  .filter(Boolean)
-                  .join(" ")
-              : (l.description ?? ""),
-          qty: l.line_type === "item" ? Number(l.qty) : 0,
-          unit_price: l.line_type === "item" ? Number(l.unit_price) : 0,
-          amount: Number(l.amount),
-          // 自由輸入的報價行（無品項）不連來源行：銷貨單選定品項後與來源行品項不同，過帳會被擋。
-          source_line_id: l.line_type === "item" && l.item_id ? l.id : null,
-        }),
-  );
+  return lines.map((l, i) => {
+    if (l.line_type === "subtotal") {
+      return newDraftLine("note", {
+        description: subtotalNoteText(
+          l.description,
+          subtotals[i] ?? 0,
+          currency,
+        ),
+      });
+    }
+    const matched =
+      l.line_type === "item" && !l.item_id
+        ? matchItemByText(l.item_text, items)
+        : null;
+    if (matched) {
+      return newDraftLine("item", {
+        item_id: matched.id,
+        description: l.description?.trim() ? l.description : matched.name,
+        qty: Number(l.qty),
+        unit_price: Number(l.unit_price),
+        amount: Number(l.amount),
+        // 報價行未指定品項，RPC 會擋「品項與來源行不同」，故不連來源行（同手動選品項）。
+        source_line_id: null,
+      });
+    }
+    return newDraftLine(l.line_type, {
+      item_id: l.line_type === "item" ? l.item_id : null,
+      // 銷貨單無品項文字欄：自由輸入行把品項文字併入品名規格，待選定品項後過帳。
+      description:
+        l.line_type === "item" && !l.item_id
+          ? [l.item_text, l.description]
+              .map((t) => t?.trim())
+              .filter(Boolean)
+              .join(" ")
+          : (l.description ?? ""),
+      qty: l.line_type === "item" ? Number(l.qty) : 0,
+      unit_price: l.line_type === "item" ? Number(l.unit_price) : 0,
+      amount: Number(l.amount),
+      // 自由輸入的報價行（無品項）不連來源行：銷貨單選定品項後與來源行品項不同，過帳會被擋。
+      source_line_id: l.line_type === "item" && l.item_id ? l.id : null,
+    });
+  });
 }
 
 export interface ReturnableLine {
@@ -279,6 +344,41 @@ export function calcSaleMargins(doc: ErpDocumentWithLines): SaleMargins {
 }
 
 // ── 查詢 ──────────────────────────────────────────────────────
+
+/** LIKE 樣式跳脫（\ % _），讓 ilike 只做不分大小寫的完全比對。 */
+function escapeLike(text: string): string {
+  return text.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
+ * 報價自由輸入品項文字的比對候選（#222）：啟用中、代碼或型號與任一文字相同（不分大小寫）的品項。
+ * 每段文字各查代碼與型號（ilike 無萬用字元 = 不分大小寫完全相符），結果依 id 去重；
+ * 唯一性判斷交給 matchItemByText。PostgREST 的 * 萬用字元可能放寬結果，但不影響最後的完全比對。
+ */
+export async function listItemMatchCandidates(
+  texts: readonly string[],
+): Promise<ErpResult<ItemOption[]>> {
+  const patterns = [...new Set(texts.map((t) => t.trim()).filter(Boolean))];
+  if (patterns.length === 0) return { ok: true, data: [] };
+  const supabase = await getServerSupabase();
+  const results = await Promise.all(
+    patterns.flatMap((text) =>
+      (["code", "model"] as const).map((col) =>
+        supabase
+          .from("erp_items")
+          .select(ITEM_OPTION_COLUMNS)
+          .eq("active", true)
+          .ilike(col, escapeLike(text)),
+      ),
+    ),
+  );
+  const byId = new Map<string, ItemOption>();
+  for (const { data, error } of results) {
+    if (error) return { ok: false, error: erpErrorMessage(error) };
+    for (const row of (data ?? []) as ItemOption[]) byId.set(row.id, row);
+  }
+  return { ok: true, data: [...byId.values()] };
+}
 
 /**
  * 已過帳銷退單對各銷貨行的累計退貨數量（key = 銷貨行 id）。

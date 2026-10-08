@@ -10,6 +10,7 @@ import { unstable_rethrow } from "next/navigation";
 import { DocumentHeaderFields } from "@/components/erp/DocumentHeaderFields";
 import { DocumentLinesEditor } from "@/components/erp/DocumentLinesEditor";
 import { ERP_BUTTON_SECONDARY } from "@/components/erp/styles";
+import { linesMissingItem } from "@/lib/erp/draft";
 import { formatQty } from "@/lib/erp/format";
 import { quickCreateTargets } from "@/lib/erp/quick-create";
 import type { ReturnableLine, SalesDocType } from "@/lib/erp/queries/sales";
@@ -105,6 +106,7 @@ export function SalesDocForm({
   const confirmOnSave = docType === "Q";
   const cancelHref = initial.id ? `${basePath}/${initial.id}` : basePath;
   const itemCode = new Map(items.map((i) => [i.id, i.code]));
+  const missingItemLines = docType === "S" ? linesMissingItem(lines) : [];
   // 銷退單客戶與品項行固定來自來源銷貨單，不提供新增客戶／品項。
   const quickCreate = quickCreateTargets(docType);
 
@@ -201,6 +203,15 @@ export function SalesDocForm({
           itemLabel={docType === "Q" ? "產品編號" : undefined}
           allowCreateItem={quickCreate.item}
         />
+        {docType === "S" && missingItemLines.length > 0 && (
+          <p
+            role="status"
+            className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
+          >
+            第 {missingItemLines.join("、")}{" "}
+            行尚未選擇品項（報價單為自由輸入，未能自動對應品項主檔），過帳前請選定品項。
+          </p>
+        )}
         {docType === "S" && !header.warehouse_id && (
           <p className="mt-2 text-[13px] text-amber-700">
             請先選擇出庫倉，才能選取該倉的在庫機號。

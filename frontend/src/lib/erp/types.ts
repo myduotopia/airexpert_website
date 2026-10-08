@@ -115,6 +115,12 @@ export interface ErpCustomer {
   delivery_address: string | null;
   payment_terms: string | null;
   sales_rep: string | null;
+  /** 傳真（0026）。 */
+  fax: string | null;
+  /** 收信人（0026）。 */
+  mail_recipient: string | null;
+  /** Email，可多筆以「; 」分隔（0026）。 */
+  email: string | null;
   erp_active: boolean;
 }
 
