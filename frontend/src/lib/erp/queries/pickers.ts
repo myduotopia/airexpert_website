@@ -13,16 +13,22 @@ import type {
   WarehouseOption,
 } from "../types";
 
+// Picker 選項欄位（與 types.ts 的 *Option 對應）。建立主檔的 action 也用同一組欄位讀回新列，
+// 讓建單時就地新增（#218）回傳的 option 與 server 讀出的選項完全同型。
+export const ITEM_OPTION_COLUMNS =
+  "id, code, name, kind, unit, track_serial, track_stock, sale_price, purchase_price, avg_cost, model";
+export const CUSTOMER_OPTION_COLUMNS =
+  "id, code, name, tax_id, contact_person, phone, address, delivery_address, payment_terms, sales_rep";
+export const VENDOR_OPTION_COLUMNS =
+  "id, code, name, tax_id, contact_person, phone, address, currency, payment_terms";
+export const WAREHOUSE_OPTION_COLUMNS = "id, code, name, is_default";
+
 /** 品項選項（預設只列啟用中）。 */
 export async function listItemOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<ItemOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase
-    .from("erp_items")
-    .select(
-      "id, code, name, kind, unit, track_serial, track_stock, sale_price, purchase_price, avg_cost, model",
-    );
+  let query = supabase.from("erp_items").select(ITEM_OPTION_COLUMNS);
   if (!opts.includeInactive) query = query.eq("active", true);
   const { data, error } = await query.order("code");
   if (error) throw new Error(`讀取品項失敗：${error.message}`);
@@ -74,11 +80,7 @@ export async function listCustomerOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<CustomerOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase
-    .from("mx_customers")
-    .select(
-      "id, code, name, tax_id, contact_person, phone, address, delivery_address, payment_terms, sales_rep",
-    );
+  let query = supabase.from("mx_customers").select(CUSTOMER_OPTION_COLUMNS);
   if (!opts.includeInactive) query = query.eq("erp_active", true);
   const { data, error } = await query.order("name");
   if (error) throw new Error(`讀取客戶失敗：${error.message}`);
@@ -90,11 +92,7 @@ export async function listVendorOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<VendorOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase
-    .from("erp_vendors")
-    .select(
-      "id, code, name, tax_id, contact_person, phone, address, currency, payment_terms",
-    );
+  let query = supabase.from("erp_vendors").select(VENDOR_OPTION_COLUMNS);
   if (!opts.includeInactive) query = query.eq("active", true);
   const { data, error } = await query.order("code");
   if (error) throw new Error(`讀取廠商失敗：${error.message}`);
@@ -106,9 +104,7 @@ export async function listWarehouseOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<WarehouseOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase
-    .from("erp_warehouses")
-    .select("id, code, name, is_default");
+  let query = supabase.from("erp_warehouses").select(WAREHOUSE_OPTION_COLUMNS);
   if (!opts.includeInactive) query = query.eq("active", true);
   const { data, error } = await query
     .order("is_default", { ascending: false })

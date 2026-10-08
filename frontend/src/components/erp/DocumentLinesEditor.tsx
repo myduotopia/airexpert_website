@@ -3,6 +3,7 @@
 // 選品項自動帶入品名規格與單價；序號品項可選既有機號（serialMode="existing"）
 // 或逐行輸入新機號（serialMode="new"）；下方以 calc.ts 即時試算合計 / 稅額 / 總計。
 // 純呈現元件：不讀 DB、不送出；傳 name 時輸出 hidden input（JSON）供 <form> 送出。
+// allowCreateItem：品項欄找不到時可就地新增品項主檔（#218）；新品項收在本元件，同張單每一行都搜得到。
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { calcDocumentTotals, calcLineAmount } from "@/lib/erp/calc";
 import { newDraftLine, parseSerialLines } from "@/lib/erp/draft";
@@ -19,6 +20,7 @@ import { MoneyText } from "./MoneyText";
 import { NumberInput } from "./NumberInput";
 import { SerialPicker } from "./SerialPicker";
 import { ERP_AREA, ERP_BUTTON_SECONDARY, ERP_INPUT } from "./styles";
+import { useAddedOptions } from "./useAddedOptions";
 
 /** signed：依數量正負逐行決定（盤點調整單 A：盤盈輸入新機號、盤虧選既有機號）。 */
 export type SerialMode = "none" | "existing" | "new" | "signed";
@@ -54,6 +56,8 @@ export interface DocumentLinesEditorProps {
    * 或直接輸入文字（不指定品項，文字寫入品名規格）。
    */
   freeText?: { models: string[] };
+  /** 品項欄允許就地新增品項主檔（#218）。 */
+  allowCreateItem?: boolean;
 }
 
 const TAX_LABEL: Record<TaxType, string> = {
@@ -81,8 +85,15 @@ export function DocumentLinesEditor({
   descriptionLabel = "品名規格",
   name,
   freeText,
+  allowCreateItem = false,
 }: DocumentLinesEditorProps) {
-  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  // server 傳入的品項 + 本張單就地新增的品項：提升到這層，讓每一行（含之後新增的行）共用；
+  // 父層重傳 items 時新增項也不會被洗掉。
+  const [allItems, addItem] = useAddedOptions(items);
+  const itemById = useMemo(
+    () => new Map(allItems.map((i) => [i.id, i])),
+    [allItems],
+  );
   const serialsByItem = useMemo(() => {
     const m = new Map<string, SerialOption[]>();
     for (const s of serials) {
@@ -236,19 +247,23 @@ export function DocumentLinesEditor({
                           {freeText ? (
                             <ItemOrTextPicker
                               aria-label={itemLabel}
-                              items={items}
+                              items={allItems}
                               models={freeText.models}
                               itemId={line.item_id}
                               text={line.item_text ?? ""}
                               disabled={disabled}
+                              allowCreate={allowCreateItem}
+                              onItemCreated={addItem}
                               onPickItem={(it) => pickItem(line, it)}
                               onText={(text) => setFreeText(line, text)}
                             />
                           ) : (
                             <ItemPicker
-                              options={items}
+                              options={allItems}
                               value={line.item_id}
                               disabled={disabled}
+                              allowCreate={allowCreateItem}
+                              onOptionCreated={addItem}
                               onChange={(_, it) => pickItem(line, it)}
                             />
                           )}

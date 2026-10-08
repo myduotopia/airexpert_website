@@ -142,6 +142,7 @@ export function StockDocForm({
           onChange={onHeaderChange}
           warehouses={warehouses}
           disabled={pending}
+          allowCreate={{ warehouse: true }}
         />
       </section>
       <DocumentLinesEditor
@@ -158,6 +159,7 @@ export function StockDocForm({
         allowedLineTypes={["item", "note"]}
         descriptionLabel={docType === "A" ? "調整原因（必填）" : "品名規格"}
         disabled={pending}
+        allowCreateItem
       />
       {error && (
         <p

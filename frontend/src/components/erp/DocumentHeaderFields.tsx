@@ -1,6 +1,7 @@
 "use client";
 // 單據表頭欄位（受控）：依單別顯示客戶 / 廠商、日期、倉庫、稅別、幣別匯率、發票號碼、業務、備註。
 // 選客戶自動帶入業務（若尚未填）；選廠商自動帶入幣別。純呈現元件，不讀 DB、不送出。
+// allowCreate：客戶／廠商／倉庫找不到時可就地新增（#218），新對象自動選取並走同一個 onChange。
 import type { ReactNode } from "react";
 import type {
   CustomerOption,
@@ -15,6 +16,7 @@ import { NumberInput } from "./NumberInput";
 import { RocDateInput } from "./RocDateInput";
 import { VendorPicker } from "./VendorPicker";
 import { WarehousePicker } from "./WarehousePicker";
+import { useAddedOptions } from "./useAddedOptions";
 import { ERP_AREA, ERP_INPUT, ERP_LABEL, ERP_SELECT } from "./styles";
 
 const CUSTOMER_DOCS: DocType[] = ["Q", "S", "SR"];
@@ -47,17 +49,25 @@ export interface DocumentHeaderFieldsProps {
   vendors?: VendorOption[];
   warehouses?: WarehouseOption[];
   disabled?: boolean;
+  /** 允許就地新增的欄位（#218）；未列出者維持只能選既有項目。 */
+  allowCreate?: { customer?: boolean; vendor?: boolean; warehouse?: boolean };
 }
+
+const NO_CREATE: NonNullable<DocumentHeaderFieldsProps["allowCreate"]> = {};
+const NO_WAREHOUSES: WarehouseOption[] = [];
 
 export function DocumentHeaderFields({
   value,
   onChange,
   customers = [],
   vendors = [],
-  warehouses = [],
+  warehouses = NO_WAREHOUSES,
   disabled,
+  allowCreate = NO_CREATE,
 }: DocumentHeaderFieldsProps) {
   const t = value.doc_type;
+  // 調撥單來源倉與目的倉共用就地新增的倉庫。
+  const [allWarehouses, addWarehouse] = useAddedOptions(warehouses);
   const set = (patch: Partial<DraftDocumentHeader>) =>
     onChange({ ...value, ...patch });
 
@@ -70,6 +80,7 @@ export function DocumentHeaderFields({
             options={customers}
             value={value.customer_id ?? null}
             disabled={disabled}
+            allowCreate={!!allowCreate.customer}
             onChange={(id, c) =>
               set({
                 customer_id: id,
@@ -86,6 +97,7 @@ export function DocumentHeaderFields({
             options={vendors}
             value={value.vendor_id ?? null}
             disabled={disabled}
+            allowCreate={!!allowCreate.vendor}
             onChange={(id, v) => {
               const currency = v?.currency || value.currency;
               set({
@@ -127,9 +139,11 @@ export function DocumentHeaderFields({
         >
           <WarehousePicker
             id="erp-warehouse"
-            options={warehouses}
+            options={allWarehouses}
             value={value.warehouse_id ?? null}
             disabled={disabled}
+            allowCreate={!!allowCreate.warehouse}
+            onOptionCreated={addWarehouse}
             onChange={(id) => set({ warehouse_id: id })}
           />
         </Field>
@@ -138,10 +152,12 @@ export function DocumentHeaderFields({
         <Field label="目的倉" required htmlFor="erp-to-warehouse">
           <WarehousePicker
             id="erp-to-warehouse"
-            options={warehouses}
+            options={allWarehouses}
             value={value.to_warehouse_id ?? null}
             excludeId={value.warehouse_id}
             disabled={disabled}
+            allowCreate={!!allowCreate.warehouse}
+            onOptionCreated={addWarehouse}
             onChange={(id) => set({ to_warehouse_id: id })}
           />
         </Field>

@@ -160,6 +160,8 @@ export function SalesDocForm({
           customers={customers}
           warehouses={warehouses}
           disabled={pending}
+          // 銷退單客戶固定為來源銷貨單客戶，不提供新增客戶。
+          allowCreate={{ customer: docType !== "SR", warehouse: true }}
         />
         {docType === "SR" && (
           <p className="text-text-muted mt-2 text-[12px]">
@@ -189,6 +191,7 @@ export function SalesDocForm({
           disabled={pending}
           freeText={docType === "Q" ? { models: machineModels } : undefined}
           itemLabel={docType === "Q" ? "產品編號" : undefined}
+          allowCreateItem
         />
         {docType === "S" && !header.warehouse_id && (
           <p className="mt-2 text-[13px] text-amber-700">

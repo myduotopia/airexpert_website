@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   3. 品項 kind 規則：service / expense 強制 track_stock=false、track_serial=false
 //   4. 倉庫：有庫存或異動只能停用；設為預設倉會先取消其他倉的預設
 //   5. 客戶：統編格式驗證、寫入 mx_customers 的 ERP 欄位
+//   6. 建立後回傳 Picker 選項（#218 建單時就地新增，用與 pickers.ts 相同的欄位）
 
 type Kind = "select" | "insert" | "update" | "delete";
 interface Recorded {
@@ -13,6 +14,7 @@ interface Recorded {
   kind: Kind;
   payload: unknown;
   filters: { fn: string; args: unknown[] }[];
+  select: unknown[];
 }
 type Res = {
   data: unknown;
@@ -28,10 +30,12 @@ class Query implements PromiseLike<Res> {
   kind: Kind = "select";
   payload: unknown = null;
   filters: { fn: string; args: unknown[] }[] = [];
+  selectArgs: unknown[] = [];
 
   constructor(public table: string) {}
 
-  select(): this {
+  select(...args: unknown[]): this {
+    this.selectArgs = args;
     return this;
   }
   insert(payload: unknown): this {
@@ -71,6 +75,7 @@ class Query implements PromiseLike<Res> {
       kind: this.kind,
       payload: this.payload,
       filters: this.filters,
+      select: this.selectArgs,
     });
     const r = responses[`${this.table}:${this.kind}`];
     if (r) return r(this);
@@ -120,6 +125,12 @@ import {
   updateCustomerAction,
 } from "@/app/admin/(protected)/erp/customers/actions";
 import type { CustomerInput, VendorInput } from "@/lib/erp/queries/master-data";
+import {
+  CUSTOMER_OPTION_COLUMNS,
+  ITEM_OPTION_COLUMNS,
+  VENDOR_OPTION_COLUMNS,
+  WAREHOUSE_OPTION_COLUMNS,
+} from "@/lib/erp/queries/pickers";
 
 beforeEach(() => {
   recorded = [];
@@ -261,7 +272,7 @@ describe("品項 kind 規則", () => {
           mx_card_type: "compressor",
         }),
       );
-      expect(res).toEqual({ ok: true, id: "erp_items-new" });
+      expect(res).toMatchObject({ ok: true, id: "erp_items-new" });
       const insert = recorded.find((r) => r.kind === "insert");
       expect(insert?.payload).toMatchObject({
         kind,
@@ -407,7 +418,7 @@ describe("廠商／客戶", () => {
 
   it("建立客戶 KC360：寫入 ERP 欄位，空字串轉 null", async () => {
     const res = await createCustomerAction(customer());
-    expect(res).toEqual({ ok: true, id: "mx_customers-new" });
+    expect(res).toMatchObject({ ok: true, id: "mx_customers-new" });
     expect(recorded[0].payload).toMatchObject({
       code: "KC360",
       name: "喬申廚具專賣店",
@@ -416,5 +427,84 @@ describe("廠商／客戶", () => {
       invoice_title: null,
       erp_active: true,
     });
+  });
+});
+
+describe("建立後回傳 Picker 選項（#218 就地新增）", () => {
+  it("客戶：以 CUSTOMER_OPTION_COLUMNS 讀回新列並回傳 option", async () => {
+    const row = {
+      id: "c-new",
+      code: "KC360",
+      name: "喬申廚具專賣店",
+      tax_id: "29484412",
+      contact_person: null,
+      phone: null,
+      address: null,
+      delivery_address: null,
+      payment_terms: "月結30天",
+      sales_rep: "謝億興",
+    };
+    responses["mx_customers:insert"] = () => ({ data: row, error: null });
+    const res = await createCustomerAction(customer());
+    expect(res).toEqual({ ok: true, id: "c-new", option: row });
+    expect(recorded[0].select).toEqual([CUSTOMER_OPTION_COLUMNS]);
+  });
+
+  it("廠商", async () => {
+    const row = {
+      id: "v-new",
+      code: "KA405",
+      name: "漢鐘精機",
+      tax_id: null,
+      contact_person: null,
+      phone: null,
+      address: null,
+      currency: "TWD",
+      payment_terms: null,
+    };
+    responses["erp_vendors:insert"] = () => ({ data: row, error: null });
+    const res = await createVendorAction(vendor());
+    expect(res).toEqual({ ok: true, id: "v-new", option: row });
+    expect(recorded[0].select).toEqual([VENDOR_OPTION_COLUMNS]);
+  });
+
+  it("品項（avg_cost 由 DB 預設值帶回）", async () => {
+    const row = {
+      id: "i-new",
+      code: "LM-F-0020-P",
+      name: "濾心",
+      kind: "part",
+      unit: "個",
+      track_serial: false,
+      track_stock: true,
+      sale_price: null,
+      purchase_price: null,
+      avg_cost: 0,
+      model: null,
+    };
+    responses["erp_items:insert"] = () => ({ data: row, error: null });
+    const res = await createItemAction(item());
+    expect(res).toEqual({ ok: true, id: "i-new", option: row });
+    expect(recorded[0].select).toEqual([ITEM_OPTION_COLUMNS]);
+  });
+
+  it("倉庫", async () => {
+    const row = { id: "w-new", code: "W2", name: "二倉", is_default: false };
+    responses["erp_warehouses:insert"] = () => ({ data: row, error: null });
+    const res = await createWarehouseAction({
+      code: "W2",
+      name: "二倉",
+      is_default: false,
+      active: true,
+      note: "",
+    });
+    expect(res).toEqual({ ok: true, id: "w-new", option: row });
+    const insert = recorded.find((r) => r.kind === "insert");
+    expect(insert?.select).toEqual([WAREHOUSE_OPTION_COLUMNS]);
+  });
+
+  it("更新不回傳 option（維持原本回傳）", async () => {
+    const res = await updateCustomerAction("c1", customer());
+    expect(res).toEqual({ ok: true, id: "c1" });
   });
 });

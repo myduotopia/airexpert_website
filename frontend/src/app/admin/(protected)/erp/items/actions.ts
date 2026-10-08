@@ -4,6 +4,8 @@
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { ensureErp } from "@/lib/erp/guard";
+import { ITEM_OPTION_COLUMNS } from "@/lib/erp/queries/pickers";
+import type { ItemOption } from "@/lib/erp/types";
 import {
   itemHasStockActivity,
   masterWriteError,
@@ -14,6 +16,11 @@ export type ItemActionResult =
   | { ok: true; id: string }
   | { ok: false; error: string };
 
+/** 建立結果另帶 Picker 選項（建單時就地新增 #218：存檔後直接選取並加入選單）。 */
+export type CreateItemResult =
+  | { ok: true; id: string; option: ItemOption }
+  | { ok: false; error: string };
+
 function revalidateItems(id?: string) {
   revalidatePath("/admin/erp/items");
   if (id) revalidatePath(`/admin/erp/items/${id}`);
@@ -21,7 +28,7 @@ function revalidateItems(id?: string) {
 
 export async function createItemAction(
   input: ItemInput,
-): Promise<ItemActionResult> {
+): Promise<CreateItemResult> {
   const denied = await ensureErp();
   if (denied) return denied;
   const norm = normalizeItemInput(input);
@@ -31,12 +38,12 @@ export async function createItemAction(
     const { data, error } = await supabase
       .from("erp_items")
       .insert(norm.row)
-      .select("id")
+      .select(ITEM_OPTION_COLUMNS)
       .single();
     if (error) return { ok: false, error: masterWriteError(error) };
-    const id = (data as { id: string }).id;
-    revalidateItems(id);
-    return { ok: true, id };
+    const option = data as ItemOption;
+    revalidateItems(option.id);
+    return { ok: true, id: option.id, option };
   } catch (e) {
     return { ok: false, error: (e as Error).message || "儲存失敗。" };
   }

@@ -114,6 +114,7 @@ export function DocumentForm({
           vendors={vendors}
           warehouses={warehouses}
           disabled={pending}
+          allowCreate={{ vendor: true, warehouse: true }}
         />
       </section>
       <section>
@@ -130,6 +131,7 @@ export function DocumentForm({
           currency={doc.currency}
           exchangeRate={doc.exchange_rate}
           disabled={pending}
+          allowCreateItem
         />
       </section>
       {error && (
