@@ -192,6 +192,12 @@ export function SalesDocForm({
           exchangeRate={header.exchange_rate}
           disabled={pending}
           freeText={docType === "Q" ? { models: machineModels } : undefined}
+          allowedLineTypes={
+            // 小計／總價款行只開放報價單（#221）；轉銷貨單時改為備註行。
+            docType === "Q"
+              ? ["item", "discount", "note", "subtotal"]
+              : undefined
+          }
           itemLabel={docType === "Q" ? "產品編號" : undefined}
           allowCreateItem={quickCreate.item}
         />

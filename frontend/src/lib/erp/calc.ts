@@ -25,6 +25,7 @@ export function currencyDecimals(currency: string): number {
  * - item：round(qty × unit_price, 2)
  * - discount：使用者輸入的折扣金額，一律轉為負數（輸入 38000 或 -38000 皆為 -38000）
  * - note：0
+ * - subtotal：0（小計行為顯示用，不計入合計 / 稅額；顯示金額見 computeSubtotals）
  */
 export function calcLineAmount(line: {
   line_type: LineType;
@@ -40,9 +41,47 @@ export function calcLineAmount(line: {
       );
     case "discount":
       return roundHalfAwayFromZero(-Math.abs(Number(line.amount) || 0), 2);
+    case "subtotal":
+    case "note":
     default:
       return 0;
   }
+}
+
+/** 小計行標題的預設文字。 */
+export const SUBTOTAL_DEFAULT_LABEL = "小計";
+
+/** 小計行標題：description 空白時用預設「小計」。 */
+export function subtotalLabel(description: string | null | undefined): string {
+  return description?.trim() || SUBTOTAL_DEFAULT_LABEL;
+}
+
+/**
+ * 各小計行的顯示金額（#221）：從上一個小計行（或單據開頭）之後、到本行之前的
+ * 品項 + 折扣行金額合計（依 calcLineAmount：品項 = 數量 × 單價、折扣一律負數）。
+ * 回傳與 lines 同長度的陣列，非小計行為 null。lines 需已依顯示順序（line_no）排序。
+ * 小計行不計入單據合計 / 稅額（calcLineAmount 對小計回 0），本函式只供顯示。
+ */
+export function computeSubtotals(
+  lines: readonly {
+    line_type: LineType;
+    qty?: number | null;
+    unit_price?: number | null;
+    amount?: number | null;
+  }[],
+): (number | null)[] {
+  let running = 0;
+  return lines.map((l) => {
+    if (l.line_type === "subtotal") {
+      const value = roundHalfAwayFromZero(running, 2);
+      running = 0;
+      return value;
+    }
+    if (l.line_type === "item" || l.line_type === "discount") {
+      running += calcLineAmount(l);
+    }
+    return null;
+  });
 }
 
 export interface DocumentTotalsInput {

@@ -1,4 +1,5 @@
 // 草稿（編輯中單據）的建構 / 轉換純函式。client 表單與 server 共用。
+import { SUBTOTAL_DEFAULT_LABEL } from "./calc";
 import type {
   DocType,
   DraftDocument,
@@ -16,7 +17,7 @@ export function newLineKey(): string {
   return `l${Date.now().toString(36)}${keySeq.toString(36)}`;
 }
 
-/** 新的一行空白明細。 */
+/** 新的一行空白明細（小計行的標題預設「小計」）。 */
 export function newDraftLine(
   lineType: LineType = "item",
   patch: Partial<DraftLine> = {},
@@ -26,7 +27,7 @@ export function newDraftLine(
     id: null,
     line_type: lineType,
     item_id: null,
-    description: "",
+    description: lineType === "subtotal" ? SUBTOTAL_DEFAULT_LABEL : "",
     qty: lineType === "item" ? 1 : 0,
     unit_price: 0,
     amount: 0,

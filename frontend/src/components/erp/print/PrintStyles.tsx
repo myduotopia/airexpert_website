@@ -28,6 +28,8 @@ const CSS = `
 .erp-lines tr.erp-serial td { height: 5mm; font-size: 9pt; color: #333; }
 .erp-lines .erp-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .erp-lines .erp-note { color: #333; font-style: italic; }
+.erp-lines .erp-pre { white-space: pre-line; }
+.erp-lines tr.erp-subtotal td { font-weight: 600; }
 .erp-continued { text-align: right; font-size: 9pt; color: #555; margin: 1.5mm 0 0; }
 .erp-sheet-bottom { margin-top: auto; padding-top: 3mm; display: flex; flex-direction: column; gap: 3mm; }
 .erp-summary { display: flex; gap: 4mm; align-items: stretch; }

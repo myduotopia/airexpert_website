@@ -22,8 +22,11 @@ export const DOC_STATUSES: readonly DocStatus[] = ["draft", "posted", "voided"];
 export type TaxType = "excluded" | "included" | "exempt";
 export const TAX_TYPES: readonly TaxType[] = ["excluded", "included", "exempt"];
 
-/** 明細行類型：品項 / 折扣（負數金額）/ 純文字備註。 */
-export type LineType = "item" | "discount" | "note";
+/**
+ * 明細行類型：品項 / 折扣（負數金額）/ 純文字備註 / 小計（#221，僅報價單）。
+ * 小計行為顯示用：DB 金額存 0、不計入合計與稅額；顯示金額由 computeSubtotals 即時計算。
+ */
+export type LineType = "item" | "discount" | "note" | "subtotal";
 
 /** 品項類別：整機 / 零件耗材 / 服務 / 費用。 */
 export type ItemKind = "machine" | "part" | "service" | "expense";
@@ -329,6 +332,7 @@ export interface PostPaymentResult {
  * - item：amount 由 qty × unit_price 算出（calcLineAmount），不需自行維護。
  * - discount：amount 為使用者輸入的折扣金額（一律視為負數）。
  * - note：只用 description，其餘忽略。
+ * - subtotal：description 為標題（預設「小計」，可改「總價款」）；金額由 computeSubtotals 計算，存檔一律 0。
  */
 export interface DraftLine {
   /** client 端穩定 key（React list key / 排序用）；存檔時不寫入 DB。 */

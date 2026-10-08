@@ -66,6 +66,9 @@ export function validateDraftDocument(doc: DraftDocument): string | null {
       }
     } else if (line.line_type === "discount") {
       if (!Number.isFinite(line.amount)) return `第 ${n} 行折扣金額不正確。`;
+    } else if (line.line_type === "subtotal") {
+      // 小計行只開放報價單（轉銷貨單時改為備註行，見 quoteToSaleDraft）。
+      if (doc.doc_type !== "Q") return `第 ${n} 行「小計」只能用於報價單。`;
     } else if (line.line_type !== "note") {
       return `第 ${n} 行類型不正確。`;
     }

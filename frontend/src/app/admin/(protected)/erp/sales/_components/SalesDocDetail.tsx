@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { DocStatusBadge } from "@/components/erp/DocStatusBadge";
 import { MoneyText } from "@/components/erp/MoneyText";
 import { rocDate, rocDateTime } from "@/lib/admin/minguo";
+import { computeSubtotals, subtotalLabel } from "@/lib/erp/calc";
 import { getDocumentWithLines } from "@/lib/erp/documents";
 import { formatQty } from "@/lib/erp/format";
 import {
@@ -115,6 +116,7 @@ export async function SalesDocDetail({
   if (doc.posted_at) info.push(["過帳時間", rocDateTime(doc.posted_at)]);
 
   const colCount = showCost ? 8 : 6;
+  const subtotals = computeSubtotals(doc.lines);
 
   return (
     <div className="mx-auto max-w-[1040px]">
@@ -205,6 +207,34 @@ export async function SalesDocDetail({
               )}
               {doc.lines.map((l, index) => {
                 const item = l.item_id ? itemById.get(l.item_id) : null;
+                if (l.line_type === "subtotal") {
+                  // 小計／總價款（#221）：金額即時計算，不計入合計。
+                  return (
+                    <tr
+                      key={l.id}
+                      className="border-border bg-surface-muted/50 border-t"
+                    >
+                      <td className="text-text-muted px-2 py-2 text-center tabular-nums">
+                        {index + 1}
+                      </td>
+                      <td className="text-text-muted px-2 py-2 text-[13px]">
+                        小計
+                      </td>
+                      <td className="text-ink px-2 py-2 font-semibold">
+                        {subtotalLabel(l.description)}
+                      </td>
+                      <td colSpan={2} />
+                      <td className="text-ink px-2 py-2 text-right font-semibold">
+                        <MoneyText
+                          value={subtotals[index] ?? 0}
+                          currency={doc.currency}
+                          negativeRed
+                        />
+                      </td>
+                      {showCost && <td colSpan={2} />}
+                    </tr>
+                  );
+                }
                 if (l.line_type === "note") {
                   return (
                     <tr key={l.id} className="border-border border-t">
@@ -233,7 +263,7 @@ export async function SalesDocDetail({
                         ? "折扣"
                         : (item?.code ?? (l.item_text?.trim() || "—"))}
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-2 whitespace-pre-line">
                       {l.description}
                       {l.serials.length > 0 && (
                         <ul className="text-text-muted mt-1 text-[12px]">

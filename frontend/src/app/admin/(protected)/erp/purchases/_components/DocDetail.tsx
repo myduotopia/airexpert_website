@@ -208,7 +208,7 @@ export function DocLinesTable({
                         ? "折扣"
                         : ""}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 whitespace-pre-line">
                     {l.description ?? ""}
                     {serialNos.length > 0 && (
                       <ul className="text-text-muted mt-1 font-mono text-[12px]">

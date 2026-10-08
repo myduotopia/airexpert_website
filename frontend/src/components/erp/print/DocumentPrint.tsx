@@ -1,5 +1,7 @@
 // 單據 A4 列印（spec §7）：報價 / 銷貨 / 銷退、採購 / 進貨 / 進退、調撥 / 盤點調整。server component。
 // 分頁由 paginateLines 決定：每頁重複公司抬頭、單據資料與明細表頭；合計 / 總計只在最後一頁。
+// 品名規格 / 備註 / 調整原因以 erp-pre（white-space: pre-line）保留換行；列數估算見 printLineRows。
+// 小計行（#221，報價單）：標題 + 即時計算的小計金額，不影響下方合計。
 import { Fragment } from "react";
 import { rocDate } from "@/lib/admin/minguo";
 import { formatMoney, formatQty } from "@/lib/erp/format";
@@ -285,9 +287,23 @@ function LineRows({
     return (
       <tr className="erp-row-start">
         <td />
-        <td colSpan={colCount - 1} className="erp-note">
+        <td colSpan={colCount - 1} className="erp-note erp-pre">
           {line.name}
         </td>
+      </tr>
+    );
+  }
+  if (line.kind === "subtotal") {
+    return (
+      <tr className="erp-row-start erp-subtotal">
+        <td />
+        <td className="erp-pre">{line.name}</td>
+        <td />
+        {hasPrice && <td />}
+        {hasPrice && (
+          <td className="erp-num">{formatMoney(line.amount, { currency })}</td>
+        )}
+        {isAdjust && <td />}
       </tr>
     );
   }
@@ -310,7 +326,7 @@ function LineRows({
     <Fragment>
       <tr className="erp-row-start">
         <td>{line.code}</td>
-        <td>{line.name}</td>
+        <td className="erp-pre">{line.name}</td>
         <td className="erp-num">
           {isAdjust && qty > 0 ? "+" : ""}
           {formatQty(qty)}
@@ -324,7 +340,7 @@ function LineRows({
         {hasPrice && (
           <td className="erp-num">{formatMoney(line.amount, { currency })}</td>
         )}
-        {isAdjust && <td>{line.reason}</td>}
+        {isAdjust && <td className="erp-pre">{line.reason}</td>}
       </tr>
       {line.serials.map((sn, i) => (
         <tr key={`${sn}-${i}`} className="erp-serial">
