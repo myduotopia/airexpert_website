@@ -2,15 +2,20 @@
 // 報價單用品項欄：可搜尋品項（代碼 / 名稱 / 型號）、保養卡機型，或直接自由輸入。
 // - 選品項 → onPickItem(item)；選機型或自由輸入 → onText(text)（item_id 清空，文字存於品項文字，不動品名規格）。
 // - 打字即時以 onText 回寫，失焦不需另外確認；鍵盤 ↑↓ Enter Esc 同 Combobox。
-import { useId, useMemo, useState } from "react";
+// - allowCreate：清單最後多一個「＋ 新增品項『xxx』」，開 Dialog 建立品項主檔後帶入（#218）。
+import { useId, useMemo, useRef, useState } from "react";
+import { isImeComposing, quickCreateLabel } from "@/lib/erp/quick-create";
 import type { ItemOption } from "@/lib/erp/types";
+import { QuickCreateItemDialog } from "./QuickCreateItemDialog";
+import { useAddedOptions } from "./useAddedOptions";
 import { ERP_INPUT } from "./styles";
 
 const MAX_RESULTS = 50;
 
 type Option =
   | { kind: "item"; key: string; item: ItemOption }
-  | { kind: "model"; key: string; model: string };
+  | { kind: "model"; key: string; model: string }
+  | { kind: "create"; key: string; query: string };
 
 export function ItemOrTextPicker({
   items,
@@ -20,6 +25,8 @@ export function ItemOrTextPicker({
   onPickItem,
   onText,
   disabled,
+  allowCreate = false,
+  onItemCreated,
   "aria-label": ariaLabel = "品項",
 }: {
   items: ItemOption[];
@@ -32,21 +39,29 @@ export function ItemOrTextPicker({
   onText: (text: string) => void;
   disabled?: boolean;
   "aria-label"?: string;
+  /** 允許就地新增品項主檔（#218）。 */
+  allowCreate?: boolean;
+  /** 就地新增成功後通知父層（同張單其他明細行共用）；帶入仍走 onPickItem。 */
+  onItemCreated?: (item: ItemOption) => void;
 }) {
   const autoId = useId();
   const listId = `${autoId}-list`;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  const [allItems, addItem] = useAddedOptions(items);
+  const [createQuery, setCreateQuery] = useState<string | null>(null);
+  // 選了「新增」後 Dialog 關閉時焦點會回到輸入框；那次聚焦不要再展開清單。
+  const skipFocusOpen = useRef(false);
 
   const selected = useMemo(
-    () => (itemId ? (items.find((i) => i.id === itemId) ?? null) : null),
-    [items, itemId],
+    () => (itemId ? (allItems.find((i) => i.id === itemId) ?? null) : null),
+    [allItems, itemId],
   );
 
   const results = useMemo<Option[]>(() => {
     const q = query.trim().toLowerCase();
-    const matchedItems = items
+    const matchedItems = allItems
       .filter(
         (i) =>
           !q ||
@@ -56,16 +71,32 @@ export function ItemOrTextPicker({
     const matchedModels = models
       .filter((m) => !q || m.toLowerCase().includes(q))
       .map((model) => ({ kind: "model" as const, key: `m:${model}`, model }));
-    return [...matchedItems, ...matchedModels].slice(0, MAX_RESULTS);
-  }, [items, models, query]);
+    const matched: Option[] = [...matchedItems, ...matchedModels].slice(
+      0,
+      MAX_RESULTS,
+    );
+    if (allowCreate) {
+      matched.push({ kind: "create", key: "__create__", query: query.trim() });
+    }
+    return matched;
+  }, [allItems, models, query, allowCreate]);
+  const matchCount = results.filter((o) => o.kind !== "create").length;
 
   function pick(option: Option) {
     if (option.kind === "item") onPickItem(option.item);
-    else onText(option.model);
+    else if (option.kind === "model") onText(option.model);
+    else {
+      skipFocusOpen.current = true;
+      setCreateQuery(option.query);
+    }
     setOpen(false);
   }
 
   function onFocus() {
+    if (skipFocusOpen.current) {
+      skipFocusOpen.current = false;
+      return;
+    }
     // 自由輸入中 → 接著編輯原文字；已選品項 → 清空以便重新搜尋。
     setQuery(selected ? "" : text);
     setHighlight(-1);
@@ -73,6 +104,8 @@ export function ItemOrTextPicker({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // 輸入法選字中的 Enter／方向鍵交給輸入法。
+    if (isImeComposing(e.nativeEvent)) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);
@@ -109,9 +142,13 @@ export function ItemOrTextPicker({
           selected && open ? selected.code : "搜尋品項 / 機型，或直接輸入"
         }
         disabled={disabled}
+        onMouseDown={() => {
+          skipFocusOpen.current = false;
+        }}
         onFocus={onFocus}
         onBlur={() => setOpen(false)}
         onChange={(e) => {
+          skipFocusOpen.current = false;
           setQuery(e.target.value);
           setHighlight(-1);
           setOpen(true);
@@ -126,14 +163,31 @@ export function ItemOrTextPicker({
           role="listbox"
           className="border-border absolute z-30 mt-1 max-h-72 w-full min-w-[260px] overflow-y-auto rounded-lg border bg-white py-1 shadow-lg"
         >
-          {results.length === 0 ? (
+          {matchCount === 0 && (
             <li className="text-text-muted px-3 py-2 text-[13px]">
               {query.trim()
                 ? `查無符合項目，將以「${query.trim()}」自由輸入`
                 : "可直接輸入品名"}
             </li>
-          ) : (
-            results.map((o, i) => (
+          )}
+          {results.map((o, i) =>
+            o.kind === "create" ? (
+              <li
+                key={o.key}
+                role="option"
+                aria-selected={false}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(o);
+                }}
+                onMouseEnter={() => setHighlight(i)}
+                className={`text-primary-deep border-border cursor-pointer border-t px-3 py-2 text-[14px] font-semibold ${
+                  i === highlight ? "bg-surface-muted" : ""
+                }`}
+              >
+                {quickCreateLabel(o.query, "品項")}
+              </li>
+            ) : (
               <li
                 key={o.key}
                 role="option"
@@ -169,9 +223,22 @@ export function ItemOrTextPicker({
                   </span>
                 )}
               </li>
-            ))
+            ),
           )}
         </ul>
+      )}
+      {allowCreate && (
+        <QuickCreateItemDialog
+          query={createQuery}
+          onClose={() => setCreateQuery(null)}
+          onCreated={(item) => {
+            setCreateQuery(null);
+            addItem(item);
+            onItemCreated?.(item);
+            // 與手動選品項相同：帶入品名規格與單價、清掉品項文字。
+            onPickItem(item);
+          }}
+        />
       )}
     </div>
   );

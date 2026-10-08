@@ -146,6 +146,7 @@ export function PaymentForm({
               onChange={(id) => selectParty(id)}
               disabled={pending}
               required
+              allowCreate
             />
           ) : (
             <VendorPicker
@@ -154,6 +155,7 @@ export function PaymentForm({
               onChange={(id) => selectParty(id)}
               disabled={pending}
               required
+              allowCreate
             />
           )}
         </div>

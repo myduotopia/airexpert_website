@@ -11,6 +11,7 @@ import { DocumentHeaderFields } from "@/components/erp/DocumentHeaderFields";
 import { DocumentLinesEditor } from "@/components/erp/DocumentLinesEditor";
 import { ERP_BUTTON_SECONDARY } from "@/components/erp/styles";
 import { formatQty } from "@/lib/erp/format";
+import { quickCreateTargets } from "@/lib/erp/quick-create";
 import type { ReturnableLine, SalesDocType } from "@/lib/erp/queries/sales";
 import type {
   CustomerOption,
@@ -104,6 +105,8 @@ export function SalesDocForm({
   const confirmOnSave = docType === "Q";
   const cancelHref = initial.id ? `${basePath}/${initial.id}` : basePath;
   const itemCode = new Map(items.map((i) => [i.id, i.code]));
+  // 銷退單客戶與品項行固定來自來源銷貨單，不提供新增客戶／品項。
+  const quickCreate = quickCreateTargets(docType);
 
   return (
     <div className="flex flex-col gap-6">
@@ -160,6 +163,7 @@ export function SalesDocForm({
           customers={customers}
           warehouses={warehouses}
           disabled={pending}
+          allowCreate={quickCreate}
         />
         {docType === "SR" && (
           <p className="text-text-muted mt-2 text-[12px]">
@@ -189,6 +193,7 @@ export function SalesDocForm({
           disabled={pending}
           freeText={docType === "Q" ? { models: machineModels } : undefined}
           itemLabel={docType === "Q" ? "產品編號" : undefined}
+          allowCreateItem={quickCreate.item}
         />
         {docType === "S" && !header.warehouse_id && (
           <p className="mt-2 text-[13px] text-amber-700">

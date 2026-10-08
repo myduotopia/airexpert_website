@@ -1,9 +1,12 @@
 "use client";
 // 客戶新增／編輯表單（mx_customers，含 ERP 欄位；受控，錯誤時保留輸入）。
-import { useState } from "react";
+// 傳 onSaved 時為「就地新增」模式（建單頁 Dialog 內，#218）：只新增、不導頁不 refresh，
+// 存檔後以新客戶的 Picker 選項回呼；取消改呼叫 onCancel；隱藏 ERP 啟用勾選（一律啟用）。
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CustomerInput } from "@/lib/erp/queries/master-data";
+import type { CustomerOption } from "@/lib/erp/types";
 import { ERP_AREA, ERP_INPUT } from "@/components/erp/styles";
 import { Field } from "../../items/_components/master-ui";
 import { createCustomerAction, updateCustomerAction } from "../actions";
@@ -33,11 +36,21 @@ const TEXT_FIELDS: {
 export function CustomerForm({
   customerId,
   initial,
+  onSaved,
+  onCancel,
 }: {
   customerId?: string;
   initial: CustomerInput;
+  /** 就地新增：存檔成功後回呼（不導頁）。 */
+  onSaved?: (id: string, option: CustomerOption) => void;
+  /** 就地新增：取消鈕改呼叫此回呼。 */
+  onCancel?: () => void;
 }) {
   const router = useRouter();
+  const embedded = !!onSaved;
+  const uid = useId();
+  // Dialog 內欄位 id 加前綴，避免與單據頁其他欄位撞 id。
+  const fid = (key: string) => (embedded ? `${uid}-${key}` : key);
   const [v, setV] = useState<CustomerInput>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,9 +64,20 @@ export function CustomerForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    e.stopPropagation();
     setBusy(true);
     setError(null);
     try {
+      if (onSaved) {
+        const created = await createCustomerAction(v);
+        if (!created.ok) {
+          setError(created.error);
+          setBusy(false);
+          return;
+        }
+        onSaved(created.id, created.option);
+        return;
+      }
       const res = customerId
         ? await updateCustomerAction(customerId, v)
         : await createCustomerAction(v);
@@ -72,17 +96,28 @@ export function CustomerForm({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-6">
-      <div className="border-border grid grid-cols-1 gap-4 rounded-xl border bg-white p-5 sm:grid-cols-2">
+      <div
+        className={
+          embedded
+            ? "grid grid-cols-1 gap-4 sm:grid-cols-2"
+            : "border-border grid grid-cols-1 gap-4 rounded-xl border bg-white p-5 sm:grid-cols-2"
+        }
+      >
         {TEXT_FIELDS.map((f) => (
           <Field
             key={f.key}
             label={f.label}
-            htmlFor={f.key}
+            htmlFor={fid(f.key)}
             required={f.required}
             wide={f.wide}
           >
             <input
-              id={f.key}
+              id={fid(f.key)}
+              data-autofocus={
+                embedded && f.key === (v.code ? "name" : "code")
+                  ? true
+                  : undefined
+              }
               type={f.type ?? "text"}
               className={ERP_INPUT}
               value={v[f.key]}
@@ -92,23 +127,25 @@ export function CustomerForm({
             />
           </Field>
         ))}
-        <Field label="備註" htmlFor="note" wide>
+        <Field label="備註" htmlFor={fid("note")} wide>
           <textarea
-            id="note"
+            id={fid("note")}
             rows={3}
             className={ERP_AREA}
             value={v.note}
             onChange={(e) => set("note", e.target.value)}
           />
         </Field>
-        <label className="flex items-center gap-2 text-[14px]">
-          <input
-            type="checkbox"
-            checked={v.erp_active}
-            onChange={(e) => set("erp_active", e.target.checked)}
-          />
-          ERP 啟用（停用後不出現在單據客戶選單；保養卡不受影響）
-        </label>
+        {!embedded && (
+          <label className="flex items-center gap-2 text-[14px]">
+            <input
+              type="checkbox"
+              checked={v.erp_active}
+              onChange={(e) => set("erp_active", e.target.checked)}
+            />
+            ERP 啟用（停用後不出現在單據客戶選單；保養卡不受影響）
+          </label>
+        )}
       </div>
 
       {error && (
@@ -125,12 +162,23 @@ export function CustomerForm({
         >
           {busy ? "儲存中…" : "儲存"}
         </button>
-        <Link
-          href={cancelHref}
-          className="border-border hover:bg-surface-muted inline-flex h-11 items-center rounded-lg border px-6 text-[15px] font-semibold"
-        >
-          取消
-        </Link>
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="border-border hover:bg-surface-muted inline-flex h-11 items-center rounded-lg border px-6 text-[15px] font-semibold disabled:opacity-50"
+          >
+            取消
+          </button>
+        ) : (
+          <Link
+            href={cancelHref}
+            className="border-border hover:bg-surface-muted inline-flex h-11 items-center rounded-lg border px-6 text-[15px] font-semibold"
+          >
+            取消
+          </Link>
+        )}
       </div>
     </form>
   );

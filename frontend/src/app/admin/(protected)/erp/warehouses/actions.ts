@@ -6,6 +6,8 @@
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { ensureErp } from "@/lib/erp/guard";
+import { WAREHOUSE_OPTION_COLUMNS } from "@/lib/erp/queries/pickers";
+import type { WarehouseOption } from "@/lib/erp/types";
 import {
   masterWriteError,
   normalizeWarehouseInput,
@@ -15,6 +17,11 @@ import {
 
 export type WarehouseActionResult =
   | { ok: true; id: string }
+  | { ok: false; error: string };
+
+/** 建立結果另帶 Picker 選項（建單時就地新增 #218：存檔後直接選取並加入選單）。 */
+export type CreateWarehouseResult =
+  | { ok: true; id: string; option: WarehouseOption }
   | { ok: false; error: string };
 
 type Supabase = Awaited<ReturnType<typeof getServerSupabase>>;
@@ -39,7 +46,7 @@ async function clearOtherDefaults(
 
 export async function createWarehouseAction(
   input: WarehouseInput,
-): Promise<WarehouseActionResult> {
+): Promise<CreateWarehouseResult> {
   const denied = await ensureErp();
   if (denied) return denied;
   const norm = normalizeWarehouseInput(input);
@@ -53,11 +60,12 @@ export async function createWarehouseAction(
     const { data, error } = await supabase
       .from("erp_warehouses")
       .insert(norm.row)
-      .select("id")
+      .select(WAREHOUSE_OPTION_COLUMNS)
       .single();
     if (error) return { ok: false, error: masterWriteError(error) };
+    const option = data as WarehouseOption;
     revalidateWarehouses();
-    return { ok: true, id: (data as { id: string }).id };
+    return { ok: true, id: option.id, option };
   } catch (e) {
     return { ok: false, error: (e as Error).message || "儲存失敗。" };
   }

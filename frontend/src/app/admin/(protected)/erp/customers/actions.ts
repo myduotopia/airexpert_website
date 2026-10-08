@@ -5,6 +5,8 @@
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { ensureErp } from "@/lib/erp/guard";
+import { CUSTOMER_OPTION_COLUMNS } from "@/lib/erp/queries/pickers";
+import type { CustomerOption } from "@/lib/erp/types";
 import {
   masterWriteError,
   normalizeCustomerInput,
@@ -13,6 +15,11 @@ import {
 
 export type CustomerActionResult =
   | { ok: true; id: string }
+  | { ok: false; error: string };
+
+/** 建立結果另帶 Picker 選項（建單時就地新增 #218：存檔後直接選取並加入選單）。 */
+export type CreateCustomerResult =
+  | { ok: true; id: string; option: CustomerOption }
   | { ok: false; error: string };
 
 function revalidateCustomers(id?: string) {
@@ -24,7 +31,7 @@ function revalidateCustomers(id?: string) {
 
 export async function createCustomerAction(
   input: CustomerInput,
-): Promise<CustomerActionResult> {
+): Promise<CreateCustomerResult> {
   const denied = await ensureErp();
   if (denied) return denied;
   const norm = normalizeCustomerInput(input);
@@ -34,12 +41,12 @@ export async function createCustomerAction(
     const { data, error } = await supabase
       .from("mx_customers")
       .insert(norm.row)
-      .select("id")
+      .select(CUSTOMER_OPTION_COLUMNS)
       .single();
     if (error) return { ok: false, error: masterWriteError(error) };
-    const id = (data as { id: string }).id;
-    revalidateCustomers(id);
-    return { ok: true, id };
+    const option = data as CustomerOption;
+    revalidateCustomers(option.id);
+    return { ok: true, id: option.id, option };
   } catch (e) {
     return { ok: false, error: (e as Error).message || "儲存失敗。" };
   }
