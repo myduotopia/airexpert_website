@@ -3,9 +3,11 @@
 // - 選品項 → onPickItem(item)；選機型或自由輸入 → onText(text)（item_id 清空，文字存於品項文字，不動品名規格）。
 // - 打字即時以 onText 回寫，失焦不需另外確認；鍵盤 ↑↓ Enter Esc 同 Combobox。
 // - allowCreate：清單最後多一個「＋ 新增品項『xxx』」，開 Dialog 建立品項主檔後帶入（#218）。
+// - 下拉清單以 FloatingList 浮層顯示，不會被明細表的 overflow-x-auto 裁切（#219）。
 import { useId, useMemo, useRef, useState } from "react";
 import { isImeComposing, quickCreateLabel } from "@/lib/erp/quick-create";
 import type { ItemOption } from "@/lib/erp/types";
+import { FloatingList, scrollOptionIntoView } from "./FloatingList";
 import { QuickCreateItemDialog } from "./QuickCreateItemDialog";
 import { useAddedOptions } from "./useAddedOptions";
 import { ERP_INPUT } from "./styles";
@@ -49,6 +51,8 @@ export function ItemOrTextPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  // 輸入框元素（FloatingList 的定位基準）；用 callback ref 存 state，render 時可安全讀取。
+  const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   const [allItems, addItem] = useAddedOptions(items);
   const [createQuery, setCreateQuery] = useState<string | null>(null);
   // 選了「新增」後 Dialog 關閉時焦點會回到輸入框；那次聚焦不要再展開清單。
@@ -103,16 +107,24 @@ export function ItemOrTextPicker({
     setOpen(true);
   }
 
+  const optionId = (i: number) => `${listId}-opt-${i}`;
+
+  // 鍵盤移動 highlight：同時把該選項捲進清單可視範圍（-1 = 未選任何項，清單未開時找不到選項即略過）。
+  function moveHighlight(next: number) {
+    setHighlight(next);
+    if (open && next >= 0) scrollOptionIntoView(optionId(next));
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     // 輸入法選字中的 Enter／方向鍵交給輸入法。
     if (isImeComposing(e.nativeEvent)) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);
-      setHighlight((h) => Math.min(h + 1, results.length - 1));
+      moveHighlight(Math.min(highlight + 1, results.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setHighlight((h) => Math.max(h - 1, -1));
+      moveHighlight(Math.max(highlight - 1, -1));
     } else if (e.key === "Enter") {
       if (open) {
         e.preventDefault();
@@ -126,15 +138,19 @@ export function ItemOrTextPicker({
 
   // 已選品項只顯示產品編號（與單據明細頁的「產品編號」欄一致；品名在品名規格欄）。
   const display = open ? query : selected ? selected.code : text;
+  const activeId =
+    open && !disabled && results[highlight] ? optionId(highlight) : undefined;
 
   return (
     <div className="relative">
       <input
+        ref={setAnchor}
         type="text"
         role="combobox"
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-controls={listId}
+        aria-activedescendant={activeId}
         aria-autocomplete="list"
         autoComplete="off"
         value={display}
@@ -158,10 +174,12 @@ export function ItemOrTextPicker({
         className={ERP_INPUT}
       />
       {open && !disabled && (
-        <ul
+        <FloatingList
+          anchor={anchor}
+          minWidth={260}
           id={listId}
           role="listbox"
-          className="border-border absolute z-30 mt-1 max-h-72 w-full min-w-[260px] overflow-y-auto rounded-lg border bg-white py-1 shadow-lg"
+          className="border-border rounded-lg border bg-white py-1 shadow-lg"
         >
           {matchCount === 0 && (
             <li className="text-text-muted px-3 py-2 text-[13px]">
@@ -174,6 +192,7 @@ export function ItemOrTextPicker({
             o.kind === "create" ? (
               <li
                 key={o.key}
+                id={optionId(i)}
                 role="option"
                 aria-selected={false}
                 onMouseDown={(e) => {
@@ -190,6 +209,7 @@ export function ItemOrTextPicker({
             ) : (
               <li
                 key={o.key}
+                id={optionId(i)}
                 role="option"
                 aria-selected={o.kind === "item" && o.item.id === itemId}
                 // mousedown 先於 input blur，才點得到選項。
@@ -225,7 +245,7 @@ export function ItemOrTextPicker({
               </li>
             ),
           )}
-        </ul>
+        </FloatingList>
       )}
       {allowCreate && (
         <QuickCreateItemDialog
