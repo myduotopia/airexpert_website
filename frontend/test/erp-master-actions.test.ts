@@ -124,7 +124,11 @@ import {
   createCustomerAction,
   updateCustomerAction,
 } from "@/app/admin/(protected)/erp/customers/actions";
-import type { CustomerInput, VendorInput } from "@/lib/erp/queries/master-data";
+import {
+  normalizeEmailList,
+  type CustomerInput,
+  type VendorInput,
+} from "@/lib/erp/queries/master-data";
 import {
   CUSTOMER_OPTION_COLUMNS,
   ITEM_OPTION_COLUMNS,
@@ -187,6 +191,9 @@ function customer(patch: Partial<CustomerInput> = {}): CustomerInput {
     delivery_address: "",
     payment_terms: "月結30天",
     sales_rep: "",
+    fax: "",
+    mail_recipient: "",
+    email: "",
     erp_active: true,
     ...patch,
   };
@@ -427,6 +434,83 @@ describe("廠商／客戶", () => {
       invoice_title: null,
       erp_active: true,
     });
+  });
+});
+
+describe("客戶傳真／收信人／Email（#222）", () => {
+  it("寫入三欄（去頭尾空白），空白轉 null", async () => {
+    const res = await createCustomerAction(
+      customer({
+        fax: " 02-2675-9955 ",
+        mail_recipient: " 會計 王小姐 ",
+        email: " ap@example.com ",
+      }),
+    );
+    expect(res.ok).toBe(true);
+    expect(recorded[0].payload).toMatchObject({
+      fax: "02-2675-9955",
+      mail_recipient: "會計 王小姐",
+      email: "ap@example.com",
+    });
+    await createCustomerAction(customer());
+    expect(recorded[1].payload).toMatchObject({
+      fax: null,
+      mail_recipient: null,
+      email: null,
+    });
+  });
+
+  it("更新客戶也寫入三欄", async () => {
+    await updateCustomerAction("c1", customer({ email: "a@b.com.tw" }));
+    expect(recorded[0]).toMatchObject({ kind: "update" });
+    expect(recorded[0].payload).toMatchObject({ email: "a@b.com.tw" });
+  });
+
+  it("Email 格式不符 → 驗證錯誤，不碰 DB", async () => {
+    const res = await createCustomerAction(customer({ email: "abc@" }));
+    expect(res).toEqual({
+      ok: false,
+      error: "Email 格式不正確（多筆請以 ; 分隔）。",
+    });
+    expect(recorded).toHaveLength(0);
+  });
+
+  it("多筆 Email 以 ; 或 , 分隔可接受，整理為「; 」分隔", async () => {
+    const res = await createCustomerAction(
+      customer({ email: "a@x.com;b@y.com.tw , c@z.org" }),
+    );
+    expect(res.ok).toBe(true);
+    expect(recorded[0].payload).toMatchObject({
+      email: "a@x.com; b@y.com.tw; c@z.org",
+    });
+  });
+
+  it("廠商 Email 同樣檢查格式（表單不再用瀏覽器原生 email 驗證）", async () => {
+    const bad = await createVendorAction(vendor({ email: "王小姐" }));
+    expect(bad).toEqual({
+      ok: false,
+      error: "Email 格式不正確（多筆請以 ; 分隔）。",
+    });
+    expect(recorded).toHaveLength(0);
+    const ok = await createVendorAction(vendor({ email: "" }));
+    expect(ok.ok).toBe(true);
+  });
+});
+
+describe("normalizeEmailList", () => {
+  it.each([
+    ["", { ok: true, value: null }],
+    ["   ", { ok: true, value: null }],
+    ["a@b.co", { ok: true, value: "a@b.co" }],
+    ["A@B.CO; c@d.com", { ok: true, value: "A@B.CO; c@d.com" }],
+    ["a@b.co，c@d.com", { ok: true, value: "a@b.co; c@d.com" }],
+    ["a@b.co;;", { ok: true, value: "a@b.co" }],
+    ["a@b", { ok: false }],
+    ["a b@c.com", { ok: false }],
+    ["@c.com", { ok: false }],
+    ["a@b.co d@e.com", { ok: false }],
+  ] as const)("%j", (input, expected) => {
+    expect(normalizeEmailList(input)).toEqual(expected);
   });
 });
 

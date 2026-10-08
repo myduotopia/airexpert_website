@@ -12,6 +12,8 @@ import { calcDocumentTotals } from "@/lib/erp/calc";
 import { newDraftLine } from "@/lib/erp/draft";
 import {
   calcSaleMargins,
+  freeTextItemQueries,
+  matchItemByText,
   quoteToSaleDraft,
   returnableLines,
   saleToReturnDraft,
@@ -21,6 +23,7 @@ import {
 import type {
   DocType,
   ErpDocumentWithLines,
+  ItemOption,
   LineType,
   TaxType,
 } from "@/lib/erp/types";
@@ -225,6 +228,126 @@ describe("quoteToSaleDraft", () => {
       description: "LS-20 機型保養",
       source_line_id: null,
     });
+  });
+});
+
+describe("報價自由輸入品項 → 轉銷貨單時比對品項主檔（#222）", () => {
+  function opt(patch: Partial<ItemOption>): ItemOption {
+    return {
+      id: "x",
+      code: "X",
+      name: "X",
+      kind: "part",
+      unit: "個",
+      track_serial: false,
+      track_stock: true,
+      sale_price: 999,
+      purchase_price: null,
+      avg_cost: 0,
+      model: null,
+      ...patch,
+    };
+  }
+  const items = [
+    opt({ id: "i-al", code: "LM-AL010N", name: "冷凍式乾燥機", unit: "台" }),
+    opt({ id: "i-tok", code: "TOK-0360", name: "儲氣桶 360L", model: "360L" }),
+    opt({ id: "i-ab1", code: "AB-37-A", name: "空壓機 A", model: "AB-37" }),
+    opt({ id: "i-ab2", code: "AB-37-B", name: "空壓機 B", model: "ab-37 " }),
+    opt({ id: "i-dup", code: "360L", name: "代碼剛好是 360L" }),
+  ];
+
+  describe("matchItemByText", () => {
+    it("代碼完全相符（不分大小寫、去空白）", () => {
+      expect(matchItemByText(" lm-al010n ", items)?.id).toBe("i-al");
+    });
+    it("代碼優先於型號：360L 同時是某品項代碼與另一品項型號 → 取代碼", () => {
+      expect(matchItemByText("360l", items)?.id).toBe("i-dup");
+    });
+    it("代碼無命中時比型號，唯一命中才帶入", () => {
+      const noDup = items.filter((i) => i.id !== "i-dup");
+      expect(matchItemByText("360L", noDup)?.id).toBe("i-tok");
+    });
+    it("型號多筆命中 → 不帶入", () => {
+      expect(matchItemByText("AB-37", items)).toBeNull();
+    });
+    it("部分相符、空白 → 不帶入", () => {
+      expect(matchItemByText("AL010N", items)).toBeNull();
+      expect(matchItemByText("LM-AL010", items)).toBeNull();
+      expect(matchItemByText("  ", items)).toBeNull();
+      expect(matchItemByText(null, items)).toBeNull();
+    });
+  });
+
+  it("freeTextItemQueries：只取未指定品項的品項行文字（去重、去空白）", () => {
+    const q = doc("Q", [
+      line("a", 1, "item", { item_text: " LM-AL010N " }),
+      line("b", 2, "item", { item_text: "lm-al010n" }),
+      line("c", 3, "item", { item_id: "i-tok", item_text: "殘留" }),
+      line("d", 4, "item", { item_text: "  " }),
+      line("e", 5, "note", { item_text: "不該出現" }),
+      line("f", 6, "item", { item_text: "AB-37" }),
+    ]);
+    expect(freeTextItemQueries(q)).toEqual(["LM-AL010N", "AB-37"]);
+  });
+
+  it("唯一命中：帶入品項，保留報價的品名規格、數量、單價；不連來源行", () => {
+    const q = doc("Q", [
+      line("ql-1", 1, "item", {
+        item_text: "lm-al010n",
+        description: "冷凍式乾燥機 10HP\n含安裝",
+        qty: 2,
+        unit_price: 45000,
+        amount: 90000,
+      }),
+      line("ql-2", 2, "item", {
+        item_text: "AB-37",
+        description: "空壓機",
+        qty: 1,
+        unit_price: 100,
+        amount: 100,
+      }),
+      line("ql-3", 3, "item", {
+        item_text: "TOK-0360",
+        description: "",
+        qty: 1,
+        unit_price: 3000,
+        amount: 3000,
+      }),
+    ]);
+    const draft = quoteToSaleDraft(q, {
+      docDate: "2026-10-08",
+      warehouseId: "w",
+      items,
+    });
+    expect(draft.lines[0]).toMatchObject({
+      item_id: "i-al",
+      description: "冷凍式乾燥機 10HP\n含安裝",
+      qty: 2,
+      unit_price: 45000,
+      amount: 90000,
+      source_line_id: null,
+    });
+    // 型號多筆命中 → 維持未指定品項，品項文字併入品名規格，待使用者選品項
+    expect(draft.lines[1]).toMatchObject({
+      item_id: null,
+      description: "AB-37 空壓機",
+      unit_price: 100,
+      source_line_id: null,
+    });
+    // 報價品名規格空白 → 同手動選品項，帶品項名稱；單價仍用報價（不用主檔 sale_price）
+    expect(draft.lines[2]).toMatchObject({
+      item_id: "i-tok",
+      description: "儲氣桶 360L",
+      unit_price: 3000,
+    });
+  });
+
+  it("未傳 items（或空）→ 行為同前：不比對", () => {
+    const q = doc("Q", [line("ql-1", 1, "item", { item_text: "LM-AL010N" })]);
+    expect(
+      quoteToSaleDraft(q, { docDate: "2026-10-08", warehouseId: null }).lines[0]
+        .item_id,
+    ).toBeNull();
   });
 });
 

@@ -13,7 +13,11 @@ import {
   computeSubtotals,
   SUBTOTAL_DEFAULT_LABEL,
 } from "@/lib/erp/calc";
-import { newDraftLine, parseSerialLines } from "@/lib/erp/draft";
+import {
+  lineMissingItem,
+  newDraftLine,
+  parseSerialLines,
+} from "@/lib/erp/draft";
 import type {
   DraftLine,
   ItemOption,
@@ -266,14 +270,22 @@ export function DocumentLinesEditor({
                               onText={(text) => setFreeText(line, text)}
                             />
                           ) : (
-                            <ItemPicker
-                              options={allItems}
-                              value={line.item_id}
-                              disabled={disabled}
-                              allowCreate={allowCreateItem}
-                              onOptionCreated={addItem}
-                              onChange={(_, it) => pickItem(line, it)}
-                            />
+                            <>
+                              <ItemPicker
+                                options={allItems}
+                                value={line.item_id}
+                                disabled={disabled}
+                                allowCreate={allowCreateItem}
+                                onOptionCreated={addItem}
+                                onChange={(_, it) => pickItem(line, it)}
+                              />
+                              {lineMissingItem(line) && (
+                                // 報價自由輸入轉入、未能自動對應主檔的行（#222）
+                                <p className="mt-1 text-[12px] text-amber-700">
+                                  尚未選擇品項，過帳前需選定
+                                </p>
+                              )}
+                            </>
                           )}
                         </td>
                         <td className="px-2 py-2">

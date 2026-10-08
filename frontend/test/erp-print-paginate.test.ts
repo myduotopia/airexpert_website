@@ -4,6 +4,7 @@ import {
   estimateTextRows,
   paginateLines,
   printLineRows,
+  CODE_UNITS_PER_ROW,
   textUnits,
   type PrintLine,
 } from "@/lib/erp/print";
@@ -148,5 +149,33 @@ describe("列高估算", () => {
       serials: ["S1", "S2"],
     };
     expect(printLineRows(line, 48)).toBe(2 + 2);
+  });
+
+  it("printLineRows：產品編號過長（自由輸入文字）折行時以較多列數計", () => {
+    const base: PrintLine = {
+      key: "x",
+      kind: "item",
+      code: "",
+      name: "乾燥機",
+      reason: "",
+      qty: 1,
+      unit: "",
+      unitPrice: 1,
+      amount: 1,
+      serials: [],
+    };
+    // 產品編號欄約 11 個半形字一列（Inter 10pt 實測）
+    expect(CODE_UNITS_PER_ROW).toBe(11);
+    expect(printLineRows({ ...base, code: "LM-AL010N" })).toBe(1);
+    expect(printLineRows({ ...base, code: "TOK-0360-01" })).toBe(1);
+    expect(printLineRows({ ...base, code: "NAD-0402-CKD" })).toBe(2);
+    expect(printLineRows({ ...base, code: "冷凍式乾燥機含安裝工程" })).toBe(2);
+    expect(
+      printLineRows({
+        ...base,
+        code: "冷凍式乾燥機含安裝工程",
+        serials: ["S1"],
+      }),
+    ).toBe(3);
   });
 });

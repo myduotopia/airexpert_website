@@ -111,7 +111,8 @@ export async function PaymentDetailView({
           )}
           {field("建立時間", rocDateTime(p.created_at))}
           {p.method === "check" && field("票號", p.check_no ?? "—")}
-          {p.method === "check" && field("票期", rocDate(p.check_due_date))}
+          {p.method === "check" &&
+            field("到期日（票期）", rocDate(p.check_due_date))}
           {p.note && (
             <div className="sm:col-span-2 md:col-span-4">
               <dt className="text-text-muted text-[12px]">備註</dt>

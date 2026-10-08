@@ -34,6 +34,9 @@ export default async function EditErpCustomerPage({
           delivery_address: c.delivery_address ?? "",
           payment_terms: c.payment_terms ?? "",
           sales_rep: c.sales_rep ?? "",
+          fax: c.fax ?? "",
+          mail_recipient: c.mail_recipient ?? "",
+          email: c.email ?? "",
           erp_active: c.erp_active,
         }}
       />

@@ -16,9 +16,11 @@ import { postDocument, voidDocument } from "@/lib/erp/rpc";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { erpErrorMessage } from "@/lib/erp/errors";
 import {
+  freeTextItemQueries,
   getDocumentType,
   getReturnedQtyBySourceLine,
   isSalesDocType,
+  listItemMatchCandidates,
   listMachinesByIds,
   quoteToSaleDraft,
   returnableLines,
@@ -203,9 +205,16 @@ export async function convertQuoteToSaleAction(
   } catch (e) {
     return { ok: false, error: erpErrorMessage(e as { message?: string }) };
   }
+  // 自由輸入的報價行：依品項文字比對主檔（代碼／型號唯一命中才帶入，#222）。
+  // 比對只是省去重選，讀取失敗時照舊轉單（該行留待使用者選品項）。
+  const queries = freeTextItemQueries(quote.data);
+  const candidates = queries.length
+    ? await listItemMatchCandidates(queries)
+    : null;
   const draft = quoteToSaleDraft(quote.data, {
     docDate: todayTaipei(),
     warehouseId,
+    items: candidates?.ok ? candidates.data : [],
   });
   const res = await saveDraftDocument(draft);
   if (res.ok) revalidateSales();

@@ -133,6 +133,9 @@ export default async function ErpCustomerDetailPage({
         <Info label="發票抬頭">{customer.invoice_title ?? "—"}</Info>
         <Info label="聯絡人">{customer.contact_person ?? "—"}</Info>
         <Info label="電話">{customer.phone ?? "—"}</Info>
+        <Info label="傳真">{customer.fax ?? "—"}</Info>
+        <Info label="Email">{customer.email ?? "—"}</Info>
+        <Info label="收信人">{customer.mail_recipient ?? "—"}</Info>
         <Info label="業務">{customer.sales_rep ?? "—"}</Info>
         <Info label="付款條件">{customer.payment_terms ?? "—"}</Info>
         <Info label="聯絡地址" wide>

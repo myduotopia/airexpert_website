@@ -2,6 +2,7 @@
 // 分頁由 paginateLines 決定：每頁重複公司抬頭、單據資料與明細表頭；合計 / 總計只在最後一頁。
 // 品名規格 / 備註 / 調整原因以 erp-pre（white-space: pre-line）保留換行；列數估算見 printLineRows。
 // 小計行（#221，報價單）：標題 + 即時計算的小計金額，不影響下方合計。
+// 已過帳銷貨單（#222）：合計表右側加印「已收款」「未收餘額」（台幣），與合計表並排、不增加高度。
 import { Fragment } from "react";
 import { rocDate } from "@/lib/admin/minguo";
 import { formatMoney, formatQty } from "@/lib/erp/format";
@@ -13,6 +14,7 @@ import {
   PRINT_DOC_TITLE,
   printDocKind,
   printLineRows,
+  salePaymentRows,
   watermarkText,
   type PrintDocKind,
   type PrintLine,
@@ -145,6 +147,7 @@ export function DocumentPrint({
     rowsOf: (l) => printLineRows(l),
   });
   const party = partyFields(doc, ctx, kind);
+  const paymentRows = salePaymentRows(doc, ctx.balance);
   const money = (v: number) => formatMoney(v, { currency: doc.currency });
 
   return (
@@ -241,6 +244,18 @@ export function DocumentPrint({
                     )}
                   </tbody>
                 </table>
+                {paymentRows && (
+                  <table className="erp-totals erp-paid">
+                    <tbody>
+                      {paymentRows.map((r) => (
+                        <tr key={r.label}>
+                          <th>{r.label}</th>
+                          <td>{formatMoney(r.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
 

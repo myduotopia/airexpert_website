@@ -40,6 +40,7 @@ const CSS = `
 .erp-totals th { background: #f3f4f6; font-weight: 600; text-align: left; white-space: nowrap; }
 .erp-totals td { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .erp-totals tr.erp-grand td, .erp-totals tr.erp-grand th { font-weight: 700; font-size: 11pt; }
+.erp-totals.erp-paid { min-width: 0; align-self: flex-start; }
 .erp-ownership { font-weight: 700; text-align: center; font-size: 10.5pt; }
 .erp-signs { display: flex; border: 0.3mm solid #333; }
 .erp-signs > div { flex: 1; min-height: 18mm; padding: 1mm 1.5mm; border-left: 0.3mm solid #333; box-sizing: border-box; }

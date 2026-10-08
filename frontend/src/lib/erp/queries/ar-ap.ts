@@ -378,7 +378,7 @@ export async function getStatementData(params: {
     const { data, error } = await supabase
       .from("mx_customers")
       .select(
-        "id, code, name, invoice_title, tax_id, contact_person, phone, address, delivery_address",
+        "id, code, name, invoice_title, tax_id, contact_person, phone, fax, address, delivery_address",
       )
       .eq("id", party.id)
       .maybeSingle();
@@ -392,6 +392,7 @@ export async function getStatementData(params: {
         tax_id: string | null;
         contact_person: string | null;
         phone: string | null;
+        fax: string | null;
         address: string | null;
         delivery_address: string | null;
       };
@@ -404,7 +405,7 @@ export async function getStatementData(params: {
         tax_id: c.tax_id,
         contact_person: c.contact_person,
         phone: c.phone,
-        fax: null,
+        fax: c.fax,
         address: c.address ?? c.delivery_address,
       };
     }

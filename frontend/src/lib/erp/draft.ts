@@ -122,3 +122,17 @@ export function parseSerialLines(text: string): string[] {
   }
   return out;
 }
+
+/** 品項行是否「有內容但未指定品項」（報價自由輸入轉入、待選品項；全空的新行不算）。 */
+export function lineMissingItem(line: DraftLine): boolean {
+  return (
+    line.line_type === "item" &&
+    !line.item_id &&
+    !!(line.description?.trim() || line.item_text?.trim())
+  );
+}
+
+/** 有內容但未指定品項的品項行行號（1 起算），供銷貨草稿提示「過帳前需選品項」（#222）。 */
+export function linesMissingItem(lines: readonly DraftLine[]): number[] {
+  return lines.flatMap((l, i) => (lineMissingItem(l) ? [i + 1] : []));
+}

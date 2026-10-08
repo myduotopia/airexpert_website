@@ -67,6 +67,9 @@ class Query implements PromiseLike<Res> {
   not(...args: unknown[]): this {
     return this.filter("not", args);
   }
+  ilike(...args: unknown[]): this {
+    return this.filter("ilike", args);
+  }
   order(): this {
     return this;
   }
@@ -387,6 +390,99 @@ describe("convertQuoteToSaleAction", () => {
         ["discount", null, -38000],
       ],
     );
+  });
+});
+
+describe("convertQuoteToSaleAction：自由輸入品項比對主檔（#222）", () => {
+  const ITEM = {
+    id: "item-al",
+    code: "LM-AL010N",
+    name: "冷凍式乾燥機",
+    kind: "machine",
+    unit: "台",
+    track_serial: true,
+    track_stock: true,
+    sale_price: 1,
+    purchase_price: null,
+    avg_cost: 0,
+    model: null,
+  };
+  const freeLines = [
+    lineRow("ql-1", 1, {
+      item_text: "lm-al010n",
+      description: "乾燥機 10HP",
+      qty: 1,
+      unit_price: 45000,
+      amount: 45000,
+    }),
+    lineRow("ql-2", 2, {
+      item_text: "查無此品",
+      description: "",
+      qty: 1,
+      unit_price: 100,
+      amount: 100,
+    }),
+  ];
+
+  function setup(items: (q: Query) => Res) {
+    documentsSelect(
+      docRow({ id: "q-1", doc_type: "Q", status: "posted", lines: freeLines }),
+      "Q",
+    );
+    responses["erp_warehouses:select"] = () => ({
+      data: { id: "wh-main" },
+      error: null,
+    });
+    responses["mx_customers:select"] = () => ({ data: CUSTOMER, error: null });
+    responses["erp_items:select"] = items;
+  }
+
+  function insertedLines() {
+    return recorded.find(
+      (r) => r.table === "erp_document_lines" && r.kind === "insert",
+    )!.payload as Record<string, unknown>[];
+  }
+
+  it("代碼唯一命中 → 帶入品項、保留報價品名與單價；查無者維持未指定", async () => {
+    setup((q) => {
+      const pattern = String(
+        q.filters.find((f) => f.fn === "ilike")?.args[1] ?? "",
+      ).toLowerCase();
+      const col = q.filters.find((f) => f.fn === "ilike")?.args[0];
+      return {
+        data: col === "code" && pattern === "lm-al010n" ? [ITEM] : [],
+        error: null,
+      };
+    });
+    const res = await convertQuoteToSaleAction("q-1");
+    expect(res.ok).toBe(true);
+    const itemQueries = recorded.filter((r) => r.table === "erp_items");
+    // 每段文字各查代碼與型號，只查啟用中品項
+    expect(itemQueries).toHaveLength(4);
+    expect(
+      itemQueries.every((r) =>
+        r.filters.some((f) => f.fn === "eq" && f.args[0] === "active"),
+      ),
+    ).toBe(true);
+    expect(
+      insertedLines().map((l) => [
+        l.item_id,
+        l.item_text,
+        l.description,
+        l.unit_price,
+        l.source_line_id,
+      ]),
+    ).toEqual([
+      ["item-al", null, "乾燥機 10HP", 45000, null],
+      [null, null, "查無此品", 100, null],
+    ]);
+  });
+
+  it("品項讀取失敗 → 照舊轉單（不比對）", async () => {
+    setup(() => ({ data: null, error: { message: "boom" } }));
+    const res = await convertQuoteToSaleAction("q-1");
+    expect(res.ok).toBe(true);
+    expect(insertedLines().map((l) => l.item_id)).toEqual([null, null]);
   });
 });
 

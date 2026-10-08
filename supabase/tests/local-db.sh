@@ -90,6 +90,8 @@ psql_run -1 < "$ROOT/migrations/0024_quote_line_item_text.sql"
 # 0025 以 0024 為底 create or replace erp_post_document，需在 0024 之後重跑。
 echo "==> 重跑 0025（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0025_quote_subtotal_lines.sql"
+echo "==> 重跑 0026（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0026_customer_fax_recipient_email.sql"
 
 echo "==> 執行 erp_posting_test.sql"
 psql_run < "$ROOT/tests/erp_posting_test.sql"

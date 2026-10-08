@@ -871,6 +871,13 @@ begin
   get diagnostics n = row_count;
   assert n = 1, 'erp 可改 mx_customers';
   insert into mx_customers (id, name) values ('00000000-0000-0000-0000-00000000d00a', 'ERP 新客戶');
+  -- 0026：erp 可寫客戶傳真／收信人／Email（#222）
+  update mx_customers set fax = '02-1234-5678', mail_recipient = '會計 王小姐', email = 'ap@example.com'
+   where id = '00000000-0000-0000-0000-00000000d00a';
+  get diagnostics n = row_count;
+  assert n = 1, 'erp 可改 mx_customers 傳真／收信人／Email';
+  assert (select email from mx_customers where id = '00000000-0000-0000-0000-00000000d00a') = 'ap@example.com',
+    'mx_customers.email 已寫入';
   raise notice 'ok  繞過防護：帳務表 / 已過帳單據 / mx_* 刪除皆被擋';
 end $$;
 

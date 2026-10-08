@@ -5,6 +5,7 @@ import {
   PRINT_DOC_TITLE,
   printDocKind,
   rocShort,
+  salePaymentRows,
   watermarkText,
   type PrintItemInfo,
 } from "@/lib/erp/print";
@@ -41,7 +42,7 @@ const items = new Map<string, PrintItemInfo>([
 ]);
 
 describe("buildPrintLines", () => {
-  it("報價單自由輸入行：品項文字 + 品名規格，無產品編號", () => {
+  it("報價單自由輸入行：品項文字印在產品編號欄，品名規格獨立（#222）", () => {
     const [a, b] = buildPrintLines(
       {
         doc_type: "Q",
@@ -59,8 +60,34 @@ describe("buildPrintLines", () => {
       },
       items,
     );
-    expect([a.code, a.name]).toEqual(["", "LS-20 含安裝"]);
-    expect(b.name).toBe("LS-30");
+    expect([a.code, a.name]).toEqual(["LS-20", "含安裝"]);
+    expect([b.code, b.name]).toEqual(["LS-30", ""]);
+  });
+
+  it("自由輸入行品項文字去頭尾空白；只有品名規格時產品編號空白", () => {
+    const [a, b] = buildPrintLines(
+      {
+        doc_type: "Q",
+        lines: [
+          line({ id: "a", item_text: "  AL-010N ", description: "乾燥機" }),
+          line({ id: "b", item_text: null, description: "現場配管" }),
+        ],
+      },
+      items,
+    );
+    expect([a.code, a.name]).toEqual(["AL-010N", "乾燥機"]);
+    expect([b.code, b.name]).toEqual(["", "現場配管"]);
+  });
+
+  it("已選品項時忽略殘留的 item_text", () => {
+    const [a] = buildPrintLines(
+      {
+        doc_type: "Q",
+        lines: [line({ item_id: "i2", item_text: "舊文字", description: "" })],
+      },
+      items,
+    );
+    expect([a.code, a.name]).toEqual(["F-01", "油過濾器"]);
   });
   it("銷貨單：品項 / 機號 / 折扣 / 備註", () => {
     const lines = buildPrintLines(
@@ -192,5 +219,49 @@ describe("列印輔助", () => {
     expect(formatUnitPrice(224070, "TWD")).toBe("224,070");
     expect(formatUnitPrice(12.5, "TWD")).toBe("12.50");
     expect(formatUnitPrice(1200, "USD")).toBe("1,200.00");
+  });
+});
+
+describe("銷貨單列印收款列（#222）", () => {
+  const balance = { allocated: 30000, outstanding: 70000 };
+
+  it("已過帳銷貨單：已收款 / 未收餘額（台幣）", () => {
+    expect(
+      salePaymentRows(
+        { doc_type: "S", status: "posted", currency: "TWD" },
+        balance,
+      ),
+    ).toEqual([
+      { label: "已收款", amount: 30000 },
+      { label: "未收餘額", amount: 70000 },
+    ]);
+  });
+
+  it("外幣單：金額為台幣，標示（台幣）", () => {
+    expect(
+      salePaymentRows(
+        { doc_type: "S", status: "posted", currency: "USD" },
+        balance,
+      )?.map((r) => r.label),
+    ).toEqual(["已收款（台幣）", "未收餘額（台幣）"]);
+  });
+
+  it.each([
+    ["草稿", { doc_type: "S", status: "draft", currency: "TWD" }],
+    ["作廢", { doc_type: "S", status: "voided", currency: "TWD" }],
+    ["報價單", { doc_type: "Q", status: "posted", currency: "TWD" }],
+    ["銷退單", { doc_type: "SR", status: "posted", currency: "TWD" }],
+    ["進貨單", { doc_type: "I", status: "posted", currency: "TWD" }],
+  ] as const)("%s → 不印", (_name, doc) => {
+    expect(salePaymentRows(doc, balance)).toBeNull();
+  });
+
+  it("讀不到餘額 → 不印", () => {
+    expect(
+      salePaymentRows(
+        { doc_type: "S", status: "posted", currency: "TWD" },
+        null,
+      ),
+    ).toBeNull();
   });
 });

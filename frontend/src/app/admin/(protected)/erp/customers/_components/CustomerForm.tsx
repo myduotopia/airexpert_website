@@ -19,7 +19,10 @@ const TEXT_FIELDS: {
   required?: boolean;
   wide?: boolean;
   type?: string;
+  inputMode?: "email" | "tel";
   placeholder?: string;
+  /** 只在客戶主檔頁顯示（建單時就地新增的 Dialog 只放常用欄位）。 */
+  fullOnly?: boolean;
 }[] = [
   { key: "code", label: "客戶編號", placeholder: "例：KC360" },
   { key: "name", label: "客戶名稱", required: true },
@@ -27,6 +30,20 @@ const TEXT_FIELDS: {
   { key: "invoice_title", label: "發票抬頭" },
   { key: "contact_person", label: "聯絡人" },
   { key: "phone", label: "電話", type: "tel" },
+  { key: "fax", label: "傳真", type: "tel", fullOnly: true },
+  {
+    // 不用 type="email"：瀏覽器原生驗證不接受多筆，且錯誤只以浮動提示呈現；改由 server 檢查並顯示訊息。
+    key: "email",
+    label: "Email",
+    inputMode: "email",
+    placeholder: "多筆以 ; 分隔",
+  },
+  {
+    key: "mail_recipient",
+    label: "收信人",
+    placeholder: "郵寄對帳單／發票的收件人",
+    fullOnly: true,
+  },
   { key: "sales_rep", label: "業務" },
   { key: "payment_terms", label: "付款條件", placeholder: "例：月結30天" },
   { key: "address", label: "聯絡地址", wide: true },
@@ -103,7 +120,7 @@ export function CustomerForm({
             : "border-border grid grid-cols-1 gap-4 rounded-xl border bg-white p-5 sm:grid-cols-2"
         }
       >
-        {TEXT_FIELDS.map((f) => (
+        {TEXT_FIELDS.filter((f) => !(embedded && f.fullOnly)).map((f) => (
           <Field
             key={f.key}
             label={f.label}
@@ -119,6 +136,7 @@ export function CustomerForm({
                   : undefined
               }
               type={f.type ?? "text"}
+              inputMode={f.inputMode}
               className={ERP_INPUT}
               value={v[f.key]}
               placeholder={f.placeholder}

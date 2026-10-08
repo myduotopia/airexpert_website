@@ -203,7 +203,7 @@ describe("validatePaymentForm", () => {
     );
     expect(
       validatePaymentForm(form({ method: "check", check_no: "CK1" })),
-    ).toBe("支票需填寫票期。");
+    ).toBe("支票需填寫到期日（票期）。");
     expect(
       validatePaymentForm(
         form({
