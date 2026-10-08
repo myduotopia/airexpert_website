@@ -98,7 +98,7 @@ export default async function EditServiceReportPage({
           role="alert"
           className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-[14px] text-red-800"
         >
-          讀取客戶／機台／員工清單失敗：{loadError}（仍可手動填寫）
+          讀取客戶／機台／員工清單失敗：{loadError}（請重新整理頁面後再試）
         </div>
       )}
       <ReportForm
