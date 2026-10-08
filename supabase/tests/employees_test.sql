@@ -5,7 +5,7 @@
 -- 涵蓋：姓名正規化函式、回填（建員工＋回填外鍵、可重跑不重複、作廢報告單略過、多人／佔位值不建）、
 --       RLS（erp-only、service_report-only 可讀寫；無模組的 office／admin、anon 不可）、
 --       約束（姓名／代號唯一、角色）、外鍵 on delete restrict、過帳／作廢 RPC 保留 sales_rep_id、
---       已過帳單據與作廢報告單的外鍵不可由用戶端變更。
+--       已過帳單據與作廢報告單的外鍵不可由用戶端變更、回填不改動 updated_at。
 -- 模擬方式：set local role authenticated + request.jwt.claims（sub = 測試使用者 id）。
 
 \set ON_ERROR_STOP 1
@@ -77,18 +77,19 @@ insert into mx_customers (id, name, sales_rep) values
   ('00000000-0000-0000-0000-00000000c705', '戊客戶', '-'),              -- 佔位：不建
   ('00000000-0000-0000-0000-00000000c706', '己客戶', null);
 
-insert into erp_documents (id, doc_type, status, doc_no, customer_id, sales_rep, void_reason) values
-  ('00000000-0000-0000-0000-00000000d701', 'Q', 'draft',  null,          '00000000-0000-0000-0000-00000000c701', 'amy  wu', null),   -- 同 Amy Wu
-  ('00000000-0000-0000-0000-00000000d702', 'Q', 'posted', 'QT11510901',  '00000000-0000-0000-0000-00000000c701', '王小明',  null),
-  ('00000000-0000-0000-0000-00000000d703', 'Q', 'voided', 'QT11510902',  '00000000-0000-0000-0000-00000000c701', '王小明',  '測試'), -- 作廢：仍可回填 id
-  ('00000000-0000-0000-0000-00000000d704', 'Q', 'voided', 'QT11510903',  '00000000-0000-0000-0000-00000000c701', '只在作廢單', '測試'); -- 只在作廢單：不建
+-- updated_at 一律設為過去時間：驗證回填不改動「最後更新」。
+insert into erp_documents (id, doc_type, status, doc_no, customer_id, sales_rep, void_reason, updated_at) values
+  ('00000000-0000-0000-0000-00000000d701', 'Q', 'draft',  null,          '00000000-0000-0000-0000-00000000c701', 'amy  wu', null,   '2020-01-01 00:00:00+00'),   -- 同 Amy Wu
+  ('00000000-0000-0000-0000-00000000d702', 'Q', 'posted', 'QT11510901',  '00000000-0000-0000-0000-00000000c701', '王小明',  null,   '2020-01-01 00:00:00+00'),
+  ('00000000-0000-0000-0000-00000000d703', 'Q', 'voided', 'QT11510902',  '00000000-0000-0000-0000-00000000c701', '王小明',  '測試', '2020-01-01 00:00:00+00'), -- 作廢：仍可回填 id
+  ('00000000-0000-0000-0000-00000000d704', 'Q', 'voided', 'QT11510903',  '00000000-0000-0000-0000-00000000c701', '只在作廢單', '測試', '2020-01-01 00:00:00+00'); -- 只在作廢單：不建
 
-insert into sr_reports (id, report_no, status, technician, void_reason) values
-  ('00000000-0000-0000-0000-00000000e701', 'X11510901', 'draft',     '李師傅', null),
-  ('00000000-0000-0000-0000-00000000e702', 'X11510902', 'printed',   '王小明', null),   -- 王小明兼師傅
-  ('00000000-0000-0000-0000-00000000e703', 'X11510903', 'voided',    '李師傅', '測試'), -- 作廢報告單：不回填
-  ('00000000-0000-0000-0000-00000000e704', 'X11510904', 'voided',    '陳大華', '測試'), -- 只在作廢報告單：不建
-  ('00000000-0000-0000-0000-00000000e705', 'X11510905', 'completed', '林一／林二', null);
+insert into sr_reports (id, report_no, status, technician, void_reason, updated_at) values
+  ('00000000-0000-0000-0000-00000000e701', 'X11510901', 'draft',     '李師傅', null,   '2020-01-01 00:00:00+00'),
+  ('00000000-0000-0000-0000-00000000e702', 'X11510902', 'printed',   '王小明', null,   '2020-01-01 00:00:00+00'),   -- 王小明兼師傅
+  ('00000000-0000-0000-0000-00000000e703', 'X11510903', 'voided',    '李師傅', '測試', '2020-01-01 00:00:00+00'), -- 作廢報告單：不回填
+  ('00000000-0000-0000-0000-00000000e704', 'X11510904', 'voided',    '陳大華', '測試', '2020-01-01 00:00:00+00'), -- 只在作廢報告單：不建
+  ('00000000-0000-0000-0000-00000000e705', 'X11510905', 'completed', '林一／林二', null, '2020-01-01 00:00:00+00');
 
 do $$
 declare v jsonb;
@@ -126,6 +127,20 @@ begin
   assert (select technician_id from sr_reports where id = '00000000-0000-0000-0000-00000000e703') is null,
     '作廢報告單不回填';
 
+  -- 回填不改動「最後更新」（updated_at 觸發器於回填期間暫停），回填後觸發器恢復
+  assert (select updated_at from erp_documents where id = '00000000-0000-0000-0000-00000000d702')
+         = '2020-01-01 00:00:00+00', '回填不改已過帳單據的 updated_at';
+  assert (select updated_at from sr_reports where id = '00000000-0000-0000-0000-00000000e702')
+         = '2020-01-01 00:00:00+00', '回填不改報告單的 updated_at（詳情頁「最後更新」）';
+  assert not exists (
+    select 1 from erp_documents where updated_at <> '2020-01-01 00:00:00+00'
+  ) and not exists (
+    select 1 from sr_reports where updated_at <> '2020-01-01 00:00:00+00'
+  ), '所有單據／報告單的 updated_at 皆不變';
+  assert (select tgenabled from pg_trigger where tgname = 'erp_documents_updated_at') = 'O'
+     and (select tgenabled from pg_trigger where tgname = 'sr_reports_updated_at') = 'O',
+    '回填後 updated_at 觸發器已恢復';
+
   -- 重跑：不重複建立、不重複更新
   v := employees_backfill();
   assert v = '{"employees_created":0,"customers_linked":0,"documents_linked":0,"reports_linked":0}'::jsonb,
@@ -141,6 +156,14 @@ begin
   assert (select roles from employees where id = emp_test.emp('李師傅')) = array['technician'],
     '重跑不更動既有員工的角色';
   raise notice 'ok  回填（建員工、回填外鍵、可重跑）';
+end $$;
+
+-- 回填後一般更新仍會刷新 updated_at（觸發器確實恢復）
+update sr_reports set note = '回填後編輯' where id = '00000000-0000-0000-0000-00000000e702';
+do $$ begin
+  assert (select updated_at from sr_reports where id = '00000000-0000-0000-0000-00000000e702')
+         > '2020-01-01 00:00:00+00', '回填後編輯報告單會刷新 updated_at';
+  raise notice 'ok  回填保留 updated_at、觸發器恢復';
 end $$;
 
 -- ============================================================
@@ -280,6 +303,9 @@ select emp_test.expect_error($q$select employees_backfill()$q$, '42501');
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000f1","role":"authenticated"}';
+select emp_test.expect_error($q$select employees_backfill()$q$, '42501');
+
+set local role service_role;
 select emp_test.expect_error($q$select employees_backfill()$q$, '42501');
 
 reset role;

@@ -126,6 +126,7 @@ import {
 } from "@/app/admin/(protected)/erp/customers/actions";
 import {
   normalizeEmailList,
+  SALES_REP_MISSING_MESSAGE,
   type CustomerInput,
   type VendorInput,
 } from "@/lib/erp/queries/master-data";
@@ -264,6 +265,23 @@ describe("代碼重複（23505）→ 代碼已存在", () => {
       note: "",
     });
     expect(!res.ok && res.error).toContain("預設倉");
+  });
+});
+
+describe("客戶業務指向已刪除的員工（23503，#223）", () => {
+  it("提示重新選擇業務，而不是「已被引用無法刪除」", async () => {
+    responses["mx_customers:update"] = () => ({
+      data: null,
+      error: {
+        code: "23503",
+        message:
+          'insert or update on table "mx_customers" violates foreign key constraint "mx_customers_sales_rep_id_fkey"',
+        details:
+          'Key (sales_rep_id)=(00000000-0000-0000-0000-000000000001) is not present in table "employees".',
+      },
+    });
+    const res = await updateCustomerAction("c1", customer());
+    expect(res).toEqual({ ok: false, error: SALES_REP_MISSING_MESSAGE });
   });
 });
 

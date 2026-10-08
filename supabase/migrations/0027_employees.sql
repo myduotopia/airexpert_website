@@ -11,7 +11,8 @@
 --       sr_reports.technician_id    → 維護報告單「維護人員」
 --     sr_reports.customer_signer（客戶簽名人）是客戶方人員，不是我方員工，不關聯。
 --     mx_records.technician（保養卡技師，office 角色資料）本檔不處理（見 issue #223 回報）。
---   * 回填 employees_backfill()：把既有不重複的人名文字（正規化後）建成員工並回填外鍵，可重複執行。
+--   * 回填 employees_backfill()：把既有不重複的人名文字（正規化後）建成員工並回填外鍵，可重複執行；
+--     回填期間暫停 erp_documents／sr_reports 的 updated_at 觸發器，不改動既有單據的「最後更新」。
 --
 -- 依賴 0001（set_updated_at()）、0011（mx_customers）、0020（has_module、erp_documents、erp_guard_document）、
 --      0021／0022（sr_reports、sr_guard_report）。
@@ -206,6 +207,12 @@ begin
      and employee_name_key(c.sales_rep) = employee_name_key(e.name);
   get diagnostics v_customers = row_count;
 
+  -- 回填只補關聯，不算「修改單據／報告單」：暫停 updated_at 觸發器，保留原本的最後更新時間
+  -- （報告單詳情頁顯示「最後更新」；否則所有舊單都會變成 migration 執行時間）。
+  -- disable / enable trigger 需資料表擁有者（postgres）；兩者在同一交易內，失敗時一併 rollback。
+  alter table erp_documents disable trigger erp_documents_updated_at;
+  alter table sr_reports    disable trigger sr_reports_updated_at;
+
   -- 含已過帳／作廢單（postgres 身分不受 erp_guard_document 草稿限制）
   update erp_documents d
      set sales_rep_id = e.id
@@ -225,6 +232,9 @@ begin
      and employee_name_key(r.technician) = employee_name_key(e.name);
   get diagnostics v_reports = row_count;
 
+  alter table erp_documents enable trigger erp_documents_updated_at;
+  alter table sr_reports    enable trigger sr_reports_updated_at;
+
   return jsonb_build_object(
     'employees_created', v_created,
     'customers_linked',  v_customers,
@@ -233,7 +243,7 @@ begin
   );
 end;
 $$;
--- 只供維運身分（postgres／service_role）執行
-revoke execute on function employees_backfill() from public, anon, authenticated;
+-- 只供維運身分（postgres，資料表擁有者；暫停 updated_at 觸發器需擁有者）執行
+revoke execute on function employees_backfill() from public, anon, authenticated, service_role;
 
 select employees_backfill();

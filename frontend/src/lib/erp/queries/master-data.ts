@@ -24,6 +24,8 @@ type Supabase = Awaited<ReturnType<typeof getServerSupabase>>;
 export const MASTER_PAGE_SIZE = 50;
 
 export const CODE_TAKEN_MESSAGE = "代碼已存在，請改用其他代碼。";
+export const SALES_REP_MISSING_MESSAGE =
+  "所選業務已不存在（可能已被刪除），請重新選擇。";
 
 // ── 共用：錯誤對應 / 文字清理 ────────────────────────────────
 
@@ -36,7 +38,7 @@ type DbError = {
 /**
  * 基本資料寫入錯誤 → 中文訊息：
  * - 23505 unique（代碼 lower(btrim(code)) 唯一索引）→「代碼已存在」；預設倉索引另給訊息
- * - 23503 FK（被單據／品項引用）→ 請改為停用
+ * - 23503 FK（被單據／品項引用）→ 請改為停用；客戶業務指向已刪除的員工 → 請重新選擇
  * - 23514 check（品項追蹤設定）→ 設定不符規則
  */
 export function masterWriteError(err: DbError | null | undefined): string {
@@ -48,6 +50,8 @@ export function masterWriteError(err: DbError | null | undefined): string {
     return CODE_TAKEN_MESSAGE;
   }
   if (code === "23503") {
+    // 客戶的業務（sales_rep_id → employees，0027）：所選員工在存檔前已被刪除。
+    if (text.includes("sales_rep_id")) return SALES_REP_MISSING_MESSAGE;
     return "此資料已被單據或其他資料引用，無法刪除，請改為停用。";
   }
   if (code === "23514") {
