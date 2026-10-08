@@ -1,7 +1,8 @@
 "use client";
-// 二次確認後呼叫刪除 action；失敗時顯示中文錯誤（例：有庫存只能停用），成功導回列表。
+// 二次確認（頁內確認框）後呼叫刪除 action；失敗時顯示中文錯誤（例：有庫存只能停用），成功導回列表。
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 
 export function ConfirmDeleteButton({
   id,
@@ -19,9 +20,15 @@ export function ConfirmDeleteButton({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [askConfirm, confirmDialog] = useConfirm();
 
-  function onClick() {
-    if (!window.confirm(confirmText)) return;
+  async function onClick() {
+    const ok = await askConfirm({
+      title: confirmText,
+      confirmLabel: label,
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -49,6 +56,7 @@ export function ConfirmDeleteButton({
         {pending ? "刪除中…" : label}
       </button>
       {error && <p className="text-[14px] text-red-600">{error}</p>}
+      {confirmDialog}
     </div>
   );
 }

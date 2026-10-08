@@ -5,6 +5,7 @@ import { unstable_rethrow, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { DocStatus } from "@/lib/erp/types";
 import { ERP_AREA } from "@/components/erp/styles";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import { PRIMARY_LINK, SECONDARY_LINK } from "./InventoryShell";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -31,6 +32,7 @@ export function StockDocActions({
   const [error, setError] = useState<string | null>(null);
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
+  const [askConfirm, confirmDialog] = useConfirm();
 
   function run(fn: () => Promise<Result>, onOk: () => void) {
     setError(null);
@@ -60,8 +62,13 @@ export function StockDocActions({
               type="button"
               disabled={pending}
               className={`${PRIMARY_LINK} disabled:opacity-60`}
-              onClick={() => {
-                if (!window.confirm("確定過帳？過帳後將異動庫存。")) return;
+              onClick={async () => {
+                const ok = await askConfirm({
+                  title: "確定過帳？",
+                  message: "過帳後將異動庫存。",
+                  confirmLabel: "過帳",
+                });
+                if (!ok) return;
                 run(
                   () => postAction(id),
                   () => router.refresh(),
@@ -74,8 +81,14 @@ export function StockDocActions({
               type="button"
               disabled={pending}
               className="h-10 rounded-lg px-3 text-[14px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
-              onClick={() => {
-                if (!window.confirm("確定刪除此草稿？此動作無法復原。")) return;
+              onClick={async () => {
+                const ok = await askConfirm({
+                  title: "確定刪除此草稿？",
+                  message: "此動作無法復原。",
+                  confirmLabel: "刪除",
+                  tone: "danger",
+                });
+                if (!ok) return;
                 run(
                   () => deleteAction(id),
                   () => router.push(listHref),
@@ -117,8 +130,14 @@ export function StockDocActions({
               type="button"
               disabled={pending || !reason.trim()}
               className="h-9 rounded-lg bg-red-600 px-4 text-[14px] font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-              onClick={() => {
-                if (!window.confirm("確定作廢？將反向沖回庫存與機號。")) return;
+              onClick={async () => {
+                const ok = await askConfirm({
+                  title: "確定作廢？",
+                  message: "將反向沖回庫存與機號。",
+                  confirmLabel: "作廢",
+                  tone: "danger",
+                });
+                if (!ok) return;
                 run(
                   () => voidAction(id, reason),
                   () => {
@@ -146,6 +165,7 @@ export function StockDocActions({
           {error}
         </p>
       )}
+      {confirmDialog}
     </div>
   );
 }

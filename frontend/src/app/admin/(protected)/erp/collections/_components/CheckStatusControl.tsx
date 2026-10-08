@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { unstable_rethrow, useRouter } from "next/navigation";
 import { ERP_BUTTON_SECONDARY } from "@/components/erp/styles";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import type { CheckStatus, PaymentDirection } from "@/lib/erp/types";
 import { updateCheckStatusAction } from "./actions";
 import {
@@ -27,12 +28,18 @@ export function CheckStatusControl({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [askConfirm, confirmDialog] = useConfirm();
 
-  function change(next: CheckStatus) {
+  async function change(next: CheckStatus) {
     setError(null);
     if (
       next === "bounced" &&
-      !window.confirm("確定標記為退票？退票不會自動沖回沖銷。")
+      !(await askConfirm({
+        title: "確定標記為退票？",
+        message: "退票不會自動沖回沖銷。",
+        confirmLabel: "標記退票",
+        tone: "danger",
+      }))
     ) {
       return;
     }
@@ -87,6 +94,7 @@ export function CheckStatusControl({
           {error}
         </p>
       )}
+      {confirmDialog}
     </div>
   );
 }

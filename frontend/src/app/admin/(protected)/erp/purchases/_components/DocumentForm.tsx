@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { quickCreateTargets } from "@/lib/erp/quick-create";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import { DocumentHeaderFields } from "@/components/erp/DocumentHeaderFields";
 import {
   DocumentLinesEditor,
@@ -54,6 +55,7 @@ export function DocumentForm({
   const [doc, setDoc] = useState<DraftDocument>(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [askConfirm, confirmDialog] = useConfirm();
 
   const { lines, ...header } = doc;
   // 進退單廠商、品項、出庫倉皆來自來源進貨單，不提供就地新增。
@@ -68,13 +70,15 @@ export function DocumentForm({
     [serials, doc.warehouse_id],
   );
 
-  function submit(andPost: boolean) {
+  async function submit(andPost: boolean) {
     setError(null);
     if (
       andPost &&
-      !window.confirm(
-        "確定儲存並過帳？過帳後將取號並異動庫存，只能以作廢撤銷。",
-      )
+      !(await askConfirm({
+        title: "確定儲存並過帳？",
+        message: "過帳後將取號並異動庫存，只能以作廢撤銷。",
+        confirmLabel: "過帳",
+      }))
     ) {
       return;
     }
@@ -169,6 +173,7 @@ export function DocumentForm({
           儲存並過帳
         </button>
       </div>
+      {confirmDialog}
     </div>
   );
 }

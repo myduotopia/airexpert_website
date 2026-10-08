@@ -5,6 +5,10 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, unstable_rethrow } from "next/navigation";
 import { ERP_BUTTON_SECONDARY, ERP_INPUT } from "@/components/erp/styles";
+import {
+  useConfirm,
+  type ConfirmOptions,
+} from "@/components/erp/ConfirmDialog";
 import type { SalesDocType } from "@/lib/erp/queries/sales";
 import type { DocStatus, ErpResult } from "@/lib/erp/types";
 import {
@@ -45,14 +49,15 @@ export function SalesDocActions({
   const [voidWarnings, setVoidWarnings] = useState<string[] | null>(null);
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
+  const [askConfirm, confirmDialog] = useConfirm();
 
-  function run<T>(
+  async function run<T>(
     action: () => Promise<ErpResult<T>>,
     onOk: (data: T) => void,
-    confirmText?: string,
+    confirm?: ConfirmOptions,
   ) {
     setError(null);
-    if (confirmText && !window.confirm(confirmText)) return;
+    if (confirm && !(await askConfirm(confirm))) return;
     startTransition(async () => {
       try {
         const res = await action();
@@ -90,8 +95,17 @@ export function SalesDocActions({
                     router.refresh();
                   },
                   docType === "Q"
-                    ? "確認此報價單？確認後將取號並定稿，不可再修改。"
-                    : `確定過帳此${label}？過帳後將取號並異動庫存，不可再修改（需作廢）。`,
+                    ? {
+                        title: "確認此報價單？",
+                        message: "確認後將取號並定稿，不可再修改。",
+                        confirmLabel: "確認報價",
+                      }
+                    : {
+                        title: `確定過帳此${label}？`,
+                        message:
+                          "過帳後將取號並異動庫存，不可再修改（需作廢）。",
+                        confirmLabel: "過帳",
+                      },
                 )
               }
             >
@@ -105,7 +119,11 @@ export function SalesDocActions({
                 run(
                   () => deleteSalesDraftAction(docId),
                   () => router.push(basePath),
-                  `確定刪除此${label}草稿？`,
+                  {
+                    title: `確定刪除此${label}草稿？`,
+                    confirmLabel: "刪除",
+                    tone: "danger",
+                  },
                 )
               }
             >
@@ -122,7 +140,10 @@ export function SalesDocActions({
               run(
                 () => convertQuoteToSaleAction(docId),
                 (data) => router.push(`${SALES_BASE_PATH.S}/${data.id}/edit`),
-                "將此報價單複製為銷貨單草稿？",
+                {
+                  title: "將此報價單複製為銷貨單草稿？",
+                  confirmLabel: "轉銷貨單",
+                },
               )
             }
           >
@@ -138,7 +159,10 @@ export function SalesDocActions({
               run(
                 () => createSalesReturnAction(docId),
                 (data) => router.push(`${SALES_BASE_PATH.SR}/${data.id}/edit`),
-                "從此銷貨單建立銷退單草稿？",
+                {
+                  title: "從此銷貨單建立銷退單草稿？",
+                  confirmLabel: "建立銷退單",
+                },
               )
             }
           >
@@ -194,8 +218,18 @@ export function SalesDocActions({
                   router.refresh();
                 },
                 docType === "S"
-                  ? "確定作廢此銷貨單？機號將回庫，由本單建立且無保養紀錄的保養卡機台會被刪除。"
-                  : `確定作廢此${label}？`,
+                  ? {
+                      title: "確定作廢此銷貨單？",
+                      message:
+                        "機號將回庫，由本單建立且無保養紀錄的保養卡機台會被刪除。",
+                      confirmLabel: "作廢",
+                      tone: "danger",
+                    }
+                  : {
+                      title: `確定作廢此${label}？`,
+                      confirmLabel: "作廢",
+                      tone: "danger",
+                    },
               )
             }
           >
@@ -262,6 +296,7 @@ export function SalesDocActions({
           <WarningList warnings={voidWarnings} />
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

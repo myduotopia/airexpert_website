@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, unstable_rethrow } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ERP_AREA } from "@/components/erp/styles";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import type { DocStatus } from "@/lib/erp/types";
 
 type DocActionResult =
@@ -50,6 +51,7 @@ export function DocActionBar({
   const [message, setMessage] = useState<string | null>(null);
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
+  const [askConfirm, confirmDialog] = useConfirm();
 
   function run(fn: () => Promise<void>) {
     setError(null);
@@ -89,8 +91,14 @@ export function DocActionBar({
               type="button"
               disabled={pending}
               className={BTN_DANGER}
-              onClick={() => {
-                if (!window.confirm("確定刪除此草稿？此動作無法復原。")) return;
+              onClick={async () => {
+                const ok = await askConfirm({
+                  title: "確定刪除此草稿？",
+                  message: "此動作無法復原。",
+                  confirmLabel: "刪除",
+                  tone: "danger",
+                });
+                if (!ok) return;
                 run(async () => {
                   if (handle(await deleteAction())) router.push(listPath);
                 });
@@ -105,14 +113,13 @@ export function DocActionBar({
               type="button"
               disabled={pending}
               className={BTN_PRIMARY}
-              onClick={() => {
-                if (
-                  !window.confirm(
-                    "確定過帳？過帳後將取號並異動庫存，只能以作廢撤銷。",
-                  )
-                ) {
-                  return;
-                }
+              onClick={async () => {
+                const ok = await askConfirm({
+                  title: "確定過帳？",
+                  message: "過帳後將取號並異動庫存，只能以作廢撤銷。",
+                  confirmLabel: "過帳",
+                });
+                if (!ok) return;
                 run(async () => {
                   if (handle(await postAction())) router.refresh();
                 });
@@ -186,12 +193,14 @@ export function DocActionBar({
               type="button"
               className={BTN_DANGER}
               disabled={pending || !reason.trim()}
-              onClick={() => {
-                if (
-                  !window.confirm("確定作廢此單據？庫存將回沖，單號不再使用。")
-                ) {
-                  return;
-                }
+              onClick={async () => {
+                const ok = await askConfirm({
+                  title: "確定作廢此單據？",
+                  message: "庫存將回沖，單號不再使用。",
+                  confirmLabel: "作廢",
+                  tone: "danger",
+                });
+                if (!ok) return;
                 run(async () => {
                   if (handle(await voidAction(reason))) {
                     setVoiding(false);
@@ -223,6 +232,7 @@ export function DocActionBar({
           {message}
         </p>
       )}
+      {confirmDialog}
     </div>
   );
 }

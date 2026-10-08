@@ -66,6 +66,9 @@ function OpenDialog({
   const descId = useId();
   // 已由我們主動關閉（卸載）時，忽略原生 close 事件，避免重複呼叫 onClose。
   const closingRef = useRef(false);
+  // 確認框只有標題、說明與按鈕列，沒有內容區：不渲染空白的內容區（避免多一段留白與雙重分隔線）。
+  const hasBody =
+    children !== undefined && children !== null && children !== false;
 
   useLayoutEffect(() => {
     const dialog = ref.current;
@@ -131,9 +134,15 @@ function OpenDialog({
           </button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+      {hasBody && (
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
+      )}
       {footer && (
-        <div className="border-border flex shrink-0 flex-wrap justify-end gap-2 border-t px-5 py-3">
+        <div
+          className={`border-border flex shrink-0 flex-wrap justify-end gap-2 px-5 py-3 ${hasBody ? "border-t" : ""}`}
+        >
           {footer}
         </div>
       )}
