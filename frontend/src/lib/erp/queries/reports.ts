@@ -5,6 +5,7 @@
 import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
+import { employeeNameKey } from "@/lib/employees/normalize";
 import { erpErrorMessage } from "../errors";
 import { ensureErp } from "../guard";
 import {
@@ -15,6 +16,8 @@ import {
   currentMonthRange,
   addDays,
   filterChecksDue,
+  SALES_REP_EMPLOYEE_PREFIX,
+  salesRepTextLabels,
   type AgingDocInput,
   type AgingPartyInput,
   type AgingReport,
@@ -133,7 +136,7 @@ async function loadSalesMargin(
     supabase
       .from("erp_documents")
       .select(
-        "id, doc_type, status, doc_date, customer_id, sales_rep, tax_type, tax_rate, currency, exchange_rate",
+        "id, doc_type, status, doc_date, customer_id, sales_rep, sales_rep_id, tax_type, tax_rate, currency, exchange_rate",
       )
       .eq("status", "posted")
       .in("doc_type", ["S", "SR"])
@@ -175,7 +178,25 @@ async function loadSalesMargin(
     })),
     { from, to },
   );
-  const report = aggregateSalesMargin(facts, groupBy);
+  // 依業務：讀員工主檔（含停用）做「姓名 key → id」與「id → 代號／姓名」對照（#223）。
+  const employees =
+    groupBy === "sales_rep"
+      ? await fetchAll<{ id: string; code: string | null; name: string }>(
+          (a, b) =>
+            supabase
+              .from("employees")
+              .select("id, code, name")
+              .order("id")
+              .range(a, b),
+        )
+      : [];
+  const employeeById = new Map(employees.map((e) => [e.id, e]));
+  const employeeIdByNameKey = new Map(
+    employees.map((e) => [employeeNameKey(e.name), e.id]),
+  );
+  const report = aggregateSalesMargin(facts, groupBy, { employeeIdByNameKey });
+  const textLabels =
+    groupBy === "sales_rep" ? salesRepTextLabels(facts) : new Map();
 
   const keys = report.rows.map((r) => r.key).filter((k): k is string => !!k);
   const labels =
@@ -190,7 +211,17 @@ async function loadSalesMargin(
     let label: string;
     let unit: string | null = null;
     if (groupBy === "sales_rep") {
-      label = r.key ?? "（未指定業務）";
+      if (r.key === null) {
+        label = "（未指定業務）";
+      } else if (r.key.startsWith(SALES_REP_EMPLOYEE_PREFIX)) {
+        const e = employeeById.get(
+          r.key.slice(SALES_REP_EMPLOYEE_PREFIX.length),
+        );
+        code = e?.code ?? null;
+        label = e?.name ?? "（查無此員工）";
+      } else {
+        label = `${textLabels.get(r.key) ?? r.key}（未建檔）`;
+      }
     } else if (r.key === null) {
       label = groupBy === "item" ? "（未分攤折扣）" : "（未指定客戶）";
     } else {

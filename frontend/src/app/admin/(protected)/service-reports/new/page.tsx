@@ -1,6 +1,7 @@
 import { requireModule } from "@/lib/admin/auth";
 import { taipeiTodayYmd } from "@/lib/analytics/ranges";
 import { getBranding } from "@/lib/data/site";
+import { tryListEmployeeOptions } from "@/lib/employees/queries";
 import { listStagesForMachine } from "@/lib/service-report/plan/queries";
 import type { PlanPart } from "@/lib/service-report/plan/types";
 import {
@@ -55,17 +56,21 @@ export default async function NewServiceReportPage({
   const stageId = uuidParam(sp.stageId);
   const milestone = numberParam(sp.milestone);
 
-  const [customers, machines, branding, stagesRes] = await Promise.all([
-    listCustomerOptions(),
-    listMachineOptions(),
-    getBranding(),
-    machineId ? listStagesForMachine(machineId) : Promise.resolve(null),
-  ]);
+  const [customers, machines, branding, stagesRes, employees] =
+    await Promise.all([
+      listCustomerOptions(),
+      listMachineOptions(),
+      getBranding(),
+      machineId ? listStagesForMachine(machineId) : Promise.resolve(null),
+      tryListEmployeeOptions(),
+    ]);
   const loadError = !customers.ok
     ? customers.error
     : !machines.ok
       ? machines.error
-      : null;
+      : !employees.ok
+        ? employees.error
+        : null;
   const stageError = stagesRes && !stagesRes.ok ? stagesRes.error : null;
   const stages = stagesRes?.ok ? stagesRes.data : null;
 
@@ -107,7 +112,7 @@ export default async function NewServiceReportPage({
           role="alert"
           className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-[14px] text-red-800"
         >
-          讀取客戶／機台清單失敗：{loadError}（仍可手動填寫）
+          讀取客戶／機台／員工清單失敗：{loadError}（仍可手動填寫）
         </div>
       )}
       {stageError && (
@@ -122,6 +127,7 @@ export default async function NewServiceReportPage({
         initial={initial}
         customers={customers.ok ? customers.data : []}
         machines={machines.ok ? machines.data : []}
+        employees={employees.ok ? employees.data : []}
         logoUrl={branding.logo_url}
         onSave={saveReportAction}
         onReserveNo={nextReportNoAction}

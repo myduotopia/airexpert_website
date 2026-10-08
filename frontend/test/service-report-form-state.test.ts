@@ -223,6 +223,19 @@ describe("表單狀態 → 預覽 / 儲存", () => {
 
     expect(sheetDataFromReport(report).customer_name).toBe("鼎佑電子");
   });
+
+  it("維護人員 id（#223）：DB → 表單 → 送出保留；不進預覽資料；清空姓名時不送 id", () => {
+    const techId = "66666666-6666-4666-8666-666666666666";
+    const report = { ...makeReport(), technician_id: techId };
+    const state = formStateFromReport(report);
+    expect(state.technician_id).toBe(techId);
+    expect(formStateToInput(state, report.id).technician_id).toBe(techId);
+    expect("technician_id" in formStateToSheetData(state)).toBe(false);
+    expect(
+      formStateToInput({ ...state, technician: " " }, report.id).technician_id,
+    ).toBeNull();
+    expect(emptyFormState("2026-10-08").technician_id).toBeNull();
+  });
 });
 
 describe("欄位編輯", () => {
@@ -292,6 +305,7 @@ function makeReport(): ServiceReport {
     parts: defaultParts(),
     suggestions: ["motor"],
     technician: "陳技師",
+    technician_id: null,
     customer_signer: null,
     note: null,
     print_count: 1,

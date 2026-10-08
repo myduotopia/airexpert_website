@@ -18,7 +18,7 @@ import type {
 export const ITEM_OPTION_COLUMNS =
   "id, code, name, kind, unit, track_serial, track_stock, sale_price, purchase_price, avg_cost, model";
 export const CUSTOMER_OPTION_COLUMNS =
-  "id, code, name, tax_id, contact_person, phone, address, delivery_address, payment_terms, sales_rep";
+  "id, code, name, tax_id, contact_person, phone, address, delivery_address, payment_terms, sales_rep, sales_rep_id";
 export const VENDOR_OPTION_COLUMNS =
   "id, code, name, tax_id, contact_person, phone, address, currency, payment_terms";
 export const WAREHOUSE_OPTION_COLUMNS = "id, code, name, is_default";

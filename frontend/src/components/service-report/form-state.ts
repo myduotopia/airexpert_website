@@ -55,6 +55,8 @@ export interface ReportFormState {
   parts: ServiceReportPart[];
   suggestions: Suggestion[];
   technician: string;
+  /** 維護人員（employees，#223）；null＝未關聯（舊資料只有文字或未填）。 */
+  technician_id: string | null;
   customer_signer: string;
   note: string;
   /** 本單對應的保養方案階段（null＝無）；顯示用快照，見 PlanStageSnapshot。 */
@@ -200,6 +202,7 @@ export function emptyFormState(todayIso: string): ReportFormState {
     parts: defaultParts(),
     suggestions: [],
     technician: "",
+    technician_id: null,
     customer_signer: "",
     note: "",
     plan_stage: null,
@@ -218,6 +221,7 @@ export function formStateFromReport(report: ServiceReport): ReportFormState {
     time_slot: report.time_slot ?? null,
     customer_id: report.customer_id ?? null,
     machine_id: report.machine_id ?? null,
+    technician_id: report.technician_id ?? null,
     machine_state: report.machine_state ?? null,
     service_items: [...(report.service_items ?? [])],
     suggestions: [...(report.suggestions ?? [])],
@@ -299,6 +303,7 @@ export function formStateToInput(
     ...formStateToSheetData(state),
     customer_id: state.customer_id,
     machine_id: state.machine_id,
+    technician_id: state.technician.trim() ? state.technician_id : null,
     note: orNull(state.note),
   };
   if (id) input.id = id;

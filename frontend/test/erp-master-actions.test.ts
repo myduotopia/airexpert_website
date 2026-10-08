@@ -191,6 +191,7 @@ function customer(patch: Partial<CustomerInput> = {}): CustomerInput {
     delivery_address: "",
     payment_terms: "月結30天",
     sales_rep: "",
+    sales_rep_id: null,
     fax: "",
     mail_recipient: "",
     email: "",
@@ -434,6 +435,44 @@ describe("廠商／客戶", () => {
       invoice_title: null,
       erp_active: true,
     });
+  });
+});
+
+describe("客戶業務（員工主檔，#223）", () => {
+  const REP = "11111111-1111-4111-8111-111111111111";
+
+  it("選員工 → 寫入姓名快照與 sales_rep_id", async () => {
+    const res = await createCustomerAction(
+      customer({ sales_rep: " 王小明 ", sales_rep_id: REP }),
+    );
+    expect(res.ok).toBe(true);
+    expect(recorded[0].payload).toMatchObject({
+      sales_rep: "王小明",
+      sales_rep_id: REP,
+    });
+  });
+
+  it("舊資料只有文字 → 文字保留、id 為 null", async () => {
+    await updateCustomerAction("c1", customer({ sales_rep: "謝億興" }));
+    expect(recorded[0].payload).toMatchObject({
+      sales_rep: "謝億興",
+      sales_rep_id: null,
+    });
+  });
+
+  it("清除業務 → 兩者皆 null（不留孤立的 id）", async () => {
+    await updateCustomerAction(
+      "c1",
+      customer({ sales_rep: "  ", sales_rep_id: REP }),
+    );
+    expect(recorded[0].payload).toMatchObject({
+      sales_rep: null,
+      sales_rep_id: null,
+    });
+  });
+
+  it("建立客戶回傳的選項含 sales_rep_id（選客戶時帶入單據業務）", () => {
+    expect(CUSTOMER_OPTION_COLUMNS).toContain("sales_rep_id");
   });
 });
 

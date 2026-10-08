@@ -77,6 +77,7 @@ function quote(
     party_phone: null,
     party_address: null,
     sales_rep: "謝億興",
+    sales_rep_id: null,
     tax_type: "excluded",
     tax_rate: 0.05,
     currency: "TWD",

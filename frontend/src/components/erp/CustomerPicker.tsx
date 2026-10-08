@@ -3,9 +3,12 @@
 // allowCreate：找不到時可就地新增客戶（#218）。
 import { useState } from "react";
 import type { CustomerOption } from "@/lib/erp/types";
+import type { EmployeeOption } from "@/lib/employees/types";
 import { Combobox } from "./Combobox";
 import { QuickCreateCustomerDialog } from "./QuickCreateCustomerDialog";
 import { useAddedOptions } from "./useAddedOptions";
+
+const NO_EMPLOYEES: EmployeeOption[] = [];
 
 export function CustomerPicker({
   options,
@@ -18,6 +21,8 @@ export function CustomerPicker({
   required,
   allowCreate = false,
   onOptionCreated,
+  employees = NO_EMPLOYEES,
+  onEmployeeCreated,
   "aria-label": ariaLabel = "客戶",
 }: {
   options: CustomerOption[];
@@ -33,6 +38,10 @@ export function CustomerPicker({
   allowCreate?: boolean;
   /** 就地新增成功後通知父層（多個選取器需共用新項目時用）；選取仍走 onChange。 */
   onOptionCreated?: (customer: CustomerOption) => void;
+  /** 就地新增客戶 Dialog 內「業務」選取器的選項（員工主檔，#223）。 */
+  employees?: EmployeeOption[];
+  /** 就地新增客戶時，業務欄又就地新增了員工 → 通知父層（單據業務欄共用）。 */
+  onEmployeeCreated?: (employee: EmployeeOption) => void;
 }) {
   // server 傳入的選項 + 本頁就地新增的項目（父層重傳 options 不會洗掉新增項）。
   const [allOptions, addOption] = useAddedOptions(options);
@@ -71,6 +80,8 @@ export function CustomerPicker({
       {allowCreate && (
         <QuickCreateCustomerDialog
           query={createQuery}
+          employees={employees}
+          onEmployeeCreated={onEmployeeCreated}
           onClose={() => setCreateQuery(null)}
           onCreated={(customer) => {
             setCreateQuery(null);

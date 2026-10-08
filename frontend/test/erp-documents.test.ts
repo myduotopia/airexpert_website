@@ -286,6 +286,65 @@ describe("saveDraftDocument — 新增草稿", () => {
     ]);
   });
 
+  describe("業務（姓名快照 + 員工 id，#223）", () => {
+    const REP = "11111111-1111-4111-8111-111111111111";
+    const OTHER = "22222222-2222-4222-8222-222222222222";
+    const headerOf = () =>
+      recorded.find((r) => r.table === "erp_documents" && r.kind === "insert")!
+        .payload as Record<string, unknown>;
+
+    it("單據未填業務 → 帶客戶預設業務（姓名與 id 成對）", async () => {
+      responses["mx_customers:select"] = () => ({
+        data: { name: "兆利科技", sales_rep: "阿宏", sales_rep_id: REP },
+        error: null,
+      });
+      await saveDraftDocument(salesDraft({ sales_rep: null }));
+      expect(headerOf()).toMatchObject({
+        sales_rep: "阿宏",
+        sales_rep_id: REP,
+      });
+    });
+
+    it("單據有填業務 → 用單據的（不被客戶預設蓋掉）", async () => {
+      responses["mx_customers:select"] = () => ({
+        data: { name: "兆利科技", sales_rep: "阿宏", sales_rep_id: REP },
+        error: null,
+      });
+      await saveDraftDocument(
+        salesDraft({ sales_rep: " 小美 ", sales_rep_id: OTHER }),
+      );
+      expect(headerOf()).toMatchObject({
+        sales_rep: "小美",
+        sales_rep_id: OTHER,
+      });
+    });
+
+    it("舊資料只有文字 → 文字照存、id 為 null（不會被客戶預設的 id 混入）", async () => {
+      responses["mx_customers:select"] = () => ({
+        data: { name: "兆利科技", sales_rep: "阿宏", sales_rep_id: REP },
+        error: null,
+      });
+      await saveDraftDocument(
+        salesDraft({ sales_rep: "舊業務", sales_rep_id: null }),
+      );
+      expect(headerOf()).toMatchObject({
+        sales_rep: "舊業務",
+        sales_rep_id: null,
+      });
+    });
+
+    it("只有 id 沒有文字 → 視為未填，改帶客戶預設", async () => {
+      responses["mx_customers:select"] = () => ({
+        data: { name: "兆利科技", sales_rep: null, sales_rep_id: null },
+        error: null,
+      });
+      await saveDraftDocument(
+        salesDraft({ sales_rep: "", sales_rep_id: OTHER }),
+      );
+      expect(headerOf()).toMatchObject({ sales_rep: null, sales_rep_id: null });
+    });
+  });
+
   it("找不到客戶 → 回錯誤，不寫單據", async () => {
     responses["mx_customers:select"] = () => ({ data: null, error: null });
     const res = await saveDraftDocument(salesDraft());

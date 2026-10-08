@@ -6,6 +6,8 @@ import {
   allocateCents,
   buildSalesFacts,
   documentUntaxed,
+  salesRepGroupKey,
+  salesRepTextLabels,
   type SalesDocInput,
   type SalesLineInput,
 } from "@/lib/erp/reports";
@@ -167,7 +169,7 @@ describe("buildSalesFacts / aggregateSalesMargin", () => {
     const byRep = aggregateSalesMargin(facts, "sales_rep");
     expect(
       Object.fromEntries(byRep.rows.map((r) => [r.key, r.revenue])),
-    ).toEqual({ 王小明: 3600, null: 2000 });
+    ).toEqual({ "text:王小明": 3600, null: 2000 });
 
     const byItem = aggregateSalesMargin(facts, "item");
     // s1 折扣 −400 依 3000:1000 → a −300、b −100
@@ -214,5 +216,71 @@ describe("buildSalesFacts / aggregateSalesMargin", () => {
     const r = aggregateSalesMargin([], "customer");
     expect(r.rows).toEqual([]);
     expect(r.totals.marginRate).toBeNull();
+  });
+});
+
+describe("依業務彙總：員工主檔（#223）", () => {
+  const WANG = "11111111-1111-4111-8111-111111111111";
+  const LEE = "22222222-2222-4222-8222-222222222222";
+  // 員工姓名 key（employeeNameKey）→ id
+  const idByName = new Map([
+    ["王小明", WANG],
+    ["amy wu", LEE],
+  ]);
+
+  it("salesRepGroupKey：有 id 用 id；無 id 以正規化姓名對回員工；對不到用正規化文字", () => {
+    const f = (sales_rep: string | null, sales_rep_id: string | null = null) =>
+      ({ sales_rep, sales_rep_id }) as Parameters<typeof salesRepGroupKey>[0];
+    expect(salesRepGroupKey(f("改名前的寫法", WANG), idByName)).toBe(
+      `emp:${WANG}`,
+    );
+    expect(salesRepGroupKey(f(" 王小明 "), idByName)).toBe(`emp:${WANG}`);
+    expect(salesRepGroupKey(f("AMY  WU"), idByName)).toBe(`emp:${LEE}`);
+    expect(salesRepGroupKey(f("謝億興 "), idByName)).toBe("text:謝億興");
+    expect(salesRepGroupKey(f("謝億興"), idByName)).toBe("text:謝億興");
+    expect(salesRepGroupKey(f("  "), idByName)).toBeNull();
+    expect(salesRepGroupKey(f(null), idByName)).toBeNull();
+  });
+
+  it("同一人的不同寫法（空白、改名、舊資料無 id）合併為一筆；未建檔的文字依正規化合併", () => {
+    const docs = [
+      doc("s1", { sales_rep: "王小明", sales_rep_id: WANG }),
+      doc("s2", { sales_rep: " 王小明 ", sales_rep_id: null }),
+      doc("s3", { sales_rep: "王曉明（改名前）", sales_rep_id: WANG }),
+      doc("s4", { sales_rep: "謝億興", sales_rep_id: null }),
+      doc("s5", { sales_rep: "謝億興  ", sales_rep_id: null }),
+      doc("s6", { sales_rep: null, sales_rep_id: null }),
+    ];
+    const lines = docs.map((d) => item(d.id, "a", 1, 1000, 400));
+    const facts = buildSalesFacts(docs, lines);
+    const byRep = aggregateSalesMargin(facts, "sales_rep", {
+      employeeIdByNameKey: idByName,
+    });
+    expect(
+      Object.fromEntries(byRep.rows.map((r) => [r.key, r.revenue])),
+    ).toEqual({
+      [`emp:${WANG}`]: 3000,
+      "text:謝億興": 2000,
+      null: 1000,
+    });
+    expect(byRep.totals.revenue).toBe(6000);
+
+    // 未建檔文字的顯示：正規化後的原寫法（不轉小寫）
+    expect(salesRepTextLabels(facts).get("text:謝億興")).toBe("謝億興");
+  });
+
+  it("未傳員工對照時仍依正規化文字合併（不分空白大小寫）", () => {
+    const docs = [
+      doc("s1", { sales_rep: "Amy Wu" }),
+      doc("s2", { sales_rep: "amy  wu" }),
+    ];
+    const facts = buildSalesFacts(
+      docs,
+      docs.map((d) => item(d.id, "a", 1, 500, 0)),
+    );
+    const byRep = aggregateSalesMargin(facts, "sales_rep");
+    expect(byRep.rows).toHaveLength(1);
+    expect(byRep.rows[0]).toMatchObject({ key: "text:amy wu", revenue: 1000 });
+    expect(salesRepTextLabels(facts).get("text:amy wu")).toBe("Amy Wu");
   });
 });

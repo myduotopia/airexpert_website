@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getDocumentWithLines } from "@/lib/erp/documents";
+import { listEmployeeOptions } from "@/lib/employees/queries";
 import { draftDocumentFromRow, newDraftDocument } from "@/lib/erp/draft";
 import {
   listAvailableSerials,
@@ -57,12 +58,14 @@ export async function SalesDocNewPage({
 }: {
   docType: Exclude<SalesDocType, "SR">;
 }) {
-  const [customers, warehouses, items, machineModels] = await Promise.all([
-    listCustomerOptions(),
-    listWarehouseOptions(),
-    listItemOptions(),
-    docType === "Q" ? listMachineModelOptions() : Promise.resolve([]),
-  ]);
+  const [customers, warehouses, items, machineModels, employees] =
+    await Promise.all([
+      listCustomerOptions(),
+      listWarehouseOptions(),
+      listItemOptions(),
+      docType === "Q" ? listMachineModelOptions() : Promise.resolve([]),
+      listEmployeeOptions(),
+    ]);
   const serials =
     docType === "S"
       ? await listAvailableSerials({
@@ -86,6 +89,7 @@ export async function SalesDocNewPage({
         initial={initial}
         customers={customers}
         warehouses={warehouses}
+        employees={employees}
         items={items}
         serials={serials}
         machineModels={machineModels}
@@ -108,12 +112,14 @@ export async function SalesDocEditPage({
   const basePath = SALES_BASE_PATH[docType];
   if (doc.status !== "draft") redirect(`${basePath}/${doc.id}`);
 
-  const [customers, warehouses, items, machineModels] = await Promise.all([
-    listCustomerOptions({ includeInactive: true }),
-    listWarehouseOptions(),
-    listItemOptions(),
-    docType === "Q" ? listMachineModelOptions() : Promise.resolve([]),
-  ]);
+  const [customers, warehouses, items, machineModels, employees] =
+    await Promise.all([
+      listCustomerOptions({ includeInactive: true }),
+      listWarehouseOptions(),
+      listItemOptions(),
+      docType === "Q" ? listMachineModelOptions() : Promise.resolve([]),
+      listEmployeeOptions(),
+    ]);
   const trackIds = items.filter((i) => i.track_serial).map((i) => i.id);
   const initial: DraftDocument = draftDocumentFromRow(doc);
 
@@ -180,6 +186,7 @@ export async function SalesDocEditPage({
         initial={initial}
         customers={customers}
         warehouses={warehouses}
+        employees={employees}
         items={items}
         serials={serials}
         returnSource={returnSource}

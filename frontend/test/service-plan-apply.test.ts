@@ -301,6 +301,7 @@ function makeReport(patch: Partial<ServiceReport> = {}): ServiceReport {
     parts: defaultParts(),
     suggestions: [],
     technician: null,
+    technician_id: null,
     customer_signer: null,
     note: null,
     print_count: 0,

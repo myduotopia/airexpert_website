@@ -5,7 +5,9 @@ import {
   newDraftDocument,
   newDraftLine,
   parseSerialLines,
+  salesRepFromCustomer,
 } from "@/lib/erp/draft";
+import { quoteToSaleDraft, saleToReturnDraft } from "@/lib/erp/queries/sales";
 import { formatMoney, formatQty } from "@/lib/erp/format";
 import { validateDraftDocument } from "@/lib/erp/validate";
 import type { ErpDocumentWithLines } from "@/lib/erp/types";
@@ -198,5 +200,78 @@ describe("linesMissingItem（#222 報價自由輸入轉銷貨草稿的待選品�
       newDraftLine("discount", { amount: -100 }),
     ];
     expect(linesMissingItem(lines)).toEqual([2, 4]);
+  });
+});
+
+describe("業務（員工主檔，#223）", () => {
+  const REP = "11111111-1111-4111-8111-111111111111";
+
+  it("新草稿業務兩欄皆空；從 DB 列帶出 sales_rep_id", () => {
+    const d = newDraftDocument("Q", "2026-10-08");
+    expect(d.sales_rep).toBeNull();
+    expect(d.sales_rep_id).toBeNull();
+    const row = {
+      ...d,
+      id: "doc-1",
+      doc_no: null,
+      status: "draft",
+      sales_rep: "王小明",
+      sales_rep_id: REP,
+      lines: [],
+    } as unknown as ErpDocumentWithLines;
+    expect(draftDocumentFromRow(row)).toMatchObject({
+      sales_rep: "王小明",
+      sales_rep_id: REP,
+    });
+  });
+
+  it("選客戶：單據未填業務 → 帶客戶預設業務（姓名 + id）", () => {
+    expect(
+      salesRepFromCustomer(
+        { sales_rep: null, sales_rep_id: null },
+        { sales_rep: "王小明", sales_rep_id: REP },
+      ),
+    ).toEqual({ sales_rep: "王小明", sales_rep_id: REP });
+  });
+
+  it("選客戶：單據已填業務（含舊資料文字）→ 不動", () => {
+    expect(
+      salesRepFromCustomer(
+        { sales_rep: "舊業務", sales_rep_id: null },
+        { sales_rep: "王小明", sales_rep_id: REP },
+      ),
+    ).toEqual({});
+  });
+
+  it("選客戶：客戶沒有預設業務 → 清空（不留孤立 id）", () => {
+    expect(
+      salesRepFromCustomer(
+        { sales_rep: "  ", sales_rep_id: REP },
+        { sales_rep: null, sales_rep_id: null },
+      ),
+    ).toEqual({ sales_rep: null, sales_rep_id: null });
+    expect(
+      salesRepFromCustomer({ sales_rep: null, sales_rep_id: null }, null),
+    ).toEqual({ sales_rep: null, sales_rep_id: null });
+  });
+
+  it("報價轉銷貨、銷貨轉銷退：業務姓名與 id 一起帶過去", () => {
+    const quote = {
+      ...newDraftDocument("Q", "2026-10-08"),
+      id: "q1",
+      doc_no: "QT1",
+      status: "posted",
+      customer_id: "c1",
+      sales_rep: "王小明",
+      sales_rep_id: REP,
+      lines: [],
+    } as unknown as ErpDocumentWithLines;
+    expect(
+      quoteToSaleDraft(quote, { docDate: "2026-10-08", warehouseId: null }),
+    ).toMatchObject({ sales_rep: "王小明", sales_rep_id: REP });
+    const sale = { ...quote, doc_type: "S", id: "s1" } as ErpDocumentWithLines;
+    expect(
+      saleToReturnDraft(sale, { docDate: "2026-10-08", returnedQtyByLine: {} }),
+    ).toMatchObject({ sales_rep: "王小明", sales_rep_id: REP });
   });
 });

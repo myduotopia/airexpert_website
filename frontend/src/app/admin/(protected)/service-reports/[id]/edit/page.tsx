@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requireModule } from "@/lib/admin/auth";
 import { getBranding } from "@/lib/data/site";
+import { tryListEmployeeOptions } from "@/lib/employees/queries";
 import { listStagesForMachine } from "@/lib/service-report/plan/queries";
 import {
   getReport,
@@ -62,19 +63,23 @@ export default async function EditServiceReportPage({
     );
   }
 
-  const [customers, machines, branding, stagesRes] = await Promise.all([
-    listCustomerOptions(),
-    listMachineOptions(),
-    getBranding(),
-    report.machine_id
-      ? listStagesForMachine(report.machine_id)
-      : Promise.resolve(null),
-  ]);
+  const [customers, machines, branding, stagesRes, employees] =
+    await Promise.all([
+      listCustomerOptions(),
+      listMachineOptions(),
+      getBranding(),
+      report.machine_id
+        ? listStagesForMachine(report.machine_id)
+        : Promise.resolve(null),
+      tryListEmployeeOptions(),
+    ]);
   const loadError = !customers.ok
     ? customers.error
     : !machines.ok
       ? machines.error
-      : null;
+      : !employees.ok
+        ? employees.error
+        : null;
   const stages = stagesRes?.ok ? stagesRes.data : null;
 
   return (
@@ -93,7 +98,7 @@ export default async function EditServiceReportPage({
           role="alert"
           className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-[14px] text-red-800"
         >
-          讀取客戶／機台清單失敗：{loadError}（仍可手動填寫）
+          讀取客戶／機台／員工清單失敗：{loadError}（仍可手動填寫）
         </div>
       )}
       <ReportForm
@@ -101,6 +106,7 @@ export default async function EditServiceReportPage({
         initial={formStateFromReport(report)}
         customers={customers.ok ? customers.data : []}
         machines={machines.ok ? machines.data : []}
+        employees={employees.ok ? employees.data : []}
         status={report.status}
         printed={report.print_count > 0}
         logoUrl={branding.logo_url}

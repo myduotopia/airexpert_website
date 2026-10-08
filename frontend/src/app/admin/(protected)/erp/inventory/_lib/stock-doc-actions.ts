@@ -74,6 +74,7 @@ export async function saveStockDoc(
     to_warehouse_id: docType === "T" ? input.to_warehouse_id : null,
     source_doc_id: null,
     sales_rep: null,
+    sales_rep_id: null,
     tax_type: "exempt",
     tax_rate: 0.05,
     currency: "TWD",

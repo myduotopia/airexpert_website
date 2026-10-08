@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/admin/auth";
 import { getErpCustomer } from "@/lib/erp/queries/master-data";
+import { listEmployeeOptions } from "@/lib/employees/queries";
 import { MasterTabs } from "../../../items/_components/master-ui";
 import { CustomerForm } from "../../_components/CustomerForm";
 
@@ -13,7 +14,10 @@ export default async function EditErpCustomerPage({
 }) {
   await requireModule("erp");
   const { customerId } = await params;
-  const c = await getErpCustomer(customerId);
+  const [c, employees] = await Promise.all([
+    getErpCustomer(customerId),
+    listEmployeeOptions(),
+  ]);
   if (!c) notFound();
 
   return (
@@ -22,6 +26,7 @@ export default async function EditErpCustomerPage({
       <h1 className="text-ink mb-6 text-[24px] font-bold">編輯客戶</h1>
       <CustomerForm
         customerId={customerId}
+        employees={employees}
         initial={{
           code: c.code ?? "",
           name: c.name,
@@ -34,6 +39,7 @@ export default async function EditErpCustomerPage({
           delivery_address: c.delivery_address ?? "",
           payment_terms: c.payment_terms ?? "",
           sales_rep: c.sales_rep ?? "",
+          sales_rep_id: c.sales_rep_id ?? null,
           fax: c.fax ?? "",
           mail_recipient: c.mail_recipient ?? "",
           email: c.email ?? "",

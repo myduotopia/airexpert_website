@@ -274,18 +274,20 @@ describe("機台維護報告單（service_report 模組 gating）", () => {
     });
   });
 
-  it("位於保養卡兩項之後、ERP 分組之前", () => {
+  it("位於保養卡兩項之後、員工與 ERP 分組之前", () => {
     const keys = ADMIN_NAV.map((i) => i.key);
     const idx = keys.indexOf("service-reports");
     expect(keys[idx - 1]).toBe("maintenance-customers");
-    expect(keys[idx + 1]).toBe("erp");
+    expect(keys[idx + 1]).toBe("employees");
+    expect(keys[idx + 2]).toBe("erp");
   });
 
-  it("office 有 service_report 授權：保養卡兩項 + 報告單", () => {
+  it("office 有 service_report 授權：保養卡兩項 + 報告單 + 員工", () => {
     expect(navForUser("office", ["service_report"]).map((i) => i.key)).toEqual([
       "maintenance",
       "maintenance-customers",
       "service-reports",
+      "employees",
     ]);
   });
 
@@ -296,6 +298,7 @@ describe("機台維護報告單（service_report 模組 gating）", () => {
       "maintenance",
       "maintenance-customers",
       "service-reports",
+      "employees",
       ...erpKeys,
     ]);
   });
@@ -325,5 +328,46 @@ describe("機台維護報告單（service_report 模組 gating）", () => {
     expect(activeNavHref("/admin/service-reports/abc/edit", hrefs)).toBe(
       "/admin/service-reports",
     );
+  });
+});
+
+describe("員工主檔（#223，ERP 與維護報告單共用）", () => {
+  it("項目設定：/admin/employees、service_report 模組、group 維護", () => {
+    expect(ADMIN_NAV.find((i) => i.key === "employees")).toEqual({
+      key: "employees",
+      label: "員工",
+      href: "/admin/employees",
+      enabled: true,
+      modules: ["service_report"],
+      group: "維護",
+    });
+  });
+
+  it("ERP-only 使用者側欄沒有「維護 › 員工」，停在員工頁時亮「基本資料」", () => {
+    const nav = navForUser("erp", ["erp"]);
+    expect(nav.some((i) => i.key === "employees")).toBe(false);
+    expect(
+      activeNavHref(
+        "/admin/employees/abc/edit",
+        nav.map((i) => i.href),
+      ),
+    ).toBe("/admin/erp/items");
+  });
+
+  it("有 service_report（含兩者皆有）：停在員工頁時亮「員工」", () => {
+    for (const mods of [
+      ["service_report"],
+      ["service_report", "erp"],
+    ] as const) {
+      const hrefs = navForUser("office", [...mods]).map((i) => i.href);
+      expect(activeNavHref("/admin/employees", hrefs)).toBe("/admin/employees");
+    }
+  });
+
+  it("無模組：看不到員工", () => {
+    expect(navForUser("office", []).some((i) => i.key === "employees")).toBe(
+      false,
+    );
+    expect(navForRole("admin").some((i) => i.key === "employees")).toBe(false);
   });
 });

@@ -186,6 +186,17 @@ describe("validateReportInput", () => {
   });
 });
 
+describe("validateReportInput — 維護人員 id（#223）", () => {
+  it("非 UUID 擋下；null / 空字串 / 未帶皆可", () => {
+    expect(validateReportInput(valid({ technician_id: "abc" }))).toBe(
+      "維護人員選擇不正確",
+    );
+    expect(validateReportInput(valid({ technician_id: null }))).toBeNull();
+    expect(validateReportInput(valid({ technician_id: "" }))).toBeNull();
+    expect(validateReportInput(valid({ technician_id: UUID }))).toBeNull();
+  });
+});
+
 describe("normalizeReportInput", () => {
   it("去空白（空 → null）、單號正規化、去重排序、剔除未知欄位", () => {
     const out = normalizeReportInput({
@@ -224,6 +235,27 @@ describe("normalizeReportInput", () => {
 
   it("空單號保持空字串（代表待取號）", () => {
     expect(normalizeReportInput(valid()).report_no).toBe("");
+  });
+
+  it("維護人員（#223）：姓名 + 員工 id 成對；舊資料只有姓名 → id null", () => {
+    const linked = normalizeReportInput(
+      valid({ technician: " 李師傅 ", technician_id: UUID }),
+    );
+    expect(linked.technician).toBe("李師傅");
+    expect(linked.technician_id).toBe(UUID);
+    const legacy = normalizeReportInput(valid({ technician: "老張" }));
+    expect(legacy.technician).toBe("老張");
+    expect(legacy.technician_id).toBeNull();
+    const cleared = normalizeReportInput(
+      valid({ technician: "  ", technician_id: UUID }),
+    );
+    expect(cleared.technician).toBeNull();
+    expect(cleared.technician_id).toBeNull();
+    // 客戶簽名人是客戶方人員：維持自由文字
+    expect(
+      normalizeReportInput(valid({ customer_signer: " 林小姐 " }))
+        .customer_signer,
+    ).toBe("林小姐");
   });
 });
 

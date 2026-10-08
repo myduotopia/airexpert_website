@@ -9,6 +9,7 @@
 import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
+import { normalizeEmployeeRef } from "@/lib/employees/normalize";
 import { calcDocumentTotals, calcLineAmount } from "./calc";
 import { ERP_ERROR_MESSAGES, erpErrorMessage } from "./errors";
 import { ensureErp } from "./guard";
@@ -38,8 +39,9 @@ interface PartySnapshot {
   party_contact: string | null;
   party_phone: string | null;
   party_address: string | null;
-  /** 客戶預設業務（僅客戶單據）。 */
+  /** 客戶預設業務（僅客戶單據）：姓名快照與員工 id（0027）。 */
   sales_rep: string | null;
+  sales_rep_id: string | null;
 }
 
 /** 依客戶 / 廠商帶入表頭快照（列印用，之後主檔改動不影響舊單）。 */
@@ -51,7 +53,7 @@ async function loadPartySnapshot(
     const { data, error } = await supabase
       .from("mx_customers")
       .select(
-        "name, tax_id, invoice_title, contact_person, phone, address, delivery_address, sales_rep",
+        "name, tax_id, invoice_title, contact_person, phone, address, delivery_address, sales_rep, sales_rep_id",
       )
       .eq("id", input.customer_id)
       .maybeSingle();
@@ -67,6 +69,7 @@ async function loadPartySnapshot(
         party_phone: c.phone,
         party_address: c.delivery_address || c.address,
         sales_rep: c.sales_rep,
+        sales_rep_id: c.sales_rep_id,
       },
     };
   }
@@ -88,6 +91,7 @@ async function loadPartySnapshot(
         party_phone: v.phone,
         party_address: v.address,
         sales_rep: null,
+        sales_rep_id: null,
       },
     };
   }
@@ -124,6 +128,12 @@ export async function saveDraftDocument(
     exchangeRate: input.exchange_rate,
   });
 
+  // 業務：單據有填就用單據的（姓名 + 員工 id 成對）；沒填才帶客戶預設業務（同樣成對帶入）。
+  const inputRep = normalizeEmployeeRef(input.sales_rep, input.sales_rep_id);
+  const salesRep = inputRep.name
+    ? inputRep
+    : normalizeEmployeeRef(snap.data?.sales_rep, snap.data?.sales_rep_id);
+
   const isCustomerDoc = ["Q", "S", "SR"].includes(input.doc_type);
   const isVendorDoc = ["P", "I", "PR"].includes(input.doc_type);
   const header = {
@@ -140,7 +150,8 @@ export async function saveDraftDocument(
     party_contact: snap.data?.party_contact ?? null,
     party_phone: snap.data?.party_phone ?? null,
     party_address: snap.data?.party_address ?? null,
-    sales_rep: cleanText(input.sales_rep) ?? snap.data?.sales_rep ?? null,
+    sales_rep: salesRep.name,
+    sales_rep_id: salesRep.id,
     tax_type: input.tax_type,
     tax_rate: input.tax_rate,
     currency: input.currency.trim().toUpperCase(),

@@ -3,15 +3,22 @@
 import { CustomerForm } from "@/app/admin/(protected)/erp/customers/_components/CustomerForm";
 import { emptyCustomerInput, guessCodeOrName } from "@/lib/erp/quick-create";
 import type { CustomerOption } from "@/lib/erp/types";
+import type { EmployeeOption } from "@/lib/employees/types";
 import { ErpDialog } from "./ErpDialog";
 
 export function QuickCreateCustomerDialog({
   query,
+  employees,
+  onEmployeeCreated,
   onClose,
   onCreated,
 }: {
   /** null = 關閉；字串 = 開啟並以此預先帶入。 */
   query: string | null;
+  /** 業務選取器選項（員工主檔）。 */
+  employees: EmployeeOption[];
+  /** 客戶表單的業務欄就地新增員工後通知父層。 */
+  onEmployeeCreated?: (employee: EmployeeOption) => void;
   onClose: () => void;
   onCreated: (customer: CustomerOption) => void;
 }) {
@@ -25,6 +32,8 @@ export function QuickCreateCustomerDialog({
     >
       <CustomerForm
         initial={emptyCustomerInput(guessCodeOrName(query ?? ""))}
+        employees={employees}
+        onEmployeeCreated={onEmployeeCreated}
         onSaved={(_, option) => onCreated(option)}
         onCancel={onClose}
       />

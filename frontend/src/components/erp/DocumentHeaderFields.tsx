@@ -2,7 +2,11 @@
 // 單據表頭欄位（受控）：依單別顯示客戶 / 廠商、日期、倉庫、稅別、幣別匯率、發票號碼、業務、備註。
 // 選客戶自動帶入業務（若尚未填）；選廠商自動帶入幣別。純呈現元件，不讀 DB、不送出。
 // allowCreate：客戶／廠商／倉庫找不到時可就地新增（#218），新對象自動選取並走同一個 onChange。
+// 業務（#223）：從員工主檔選取（姓名快照 + sales_rep_id），客戶單據一律可就地新增業務；
+// 舊單據只有文字時照常顯示。就地新增的員工在「業務」欄與「新增客戶」Dialog 的業務欄間共用。
 import type { ReactNode } from "react";
+import type { EmployeeOption } from "@/lib/employees/types";
+import { salesRepFromCustomer } from "@/lib/erp/draft";
 import type {
   CustomerOption,
   DocType,
@@ -12,6 +16,7 @@ import type {
   WarehouseOption,
 } from "@/lib/erp/types";
 import { CustomerPicker } from "./CustomerPicker";
+import { EmployeePicker } from "./EmployeePicker";
 import { NumberInput } from "./NumberInput";
 import { RocDateInput } from "./RocDateInput";
 import { VendorPicker } from "./VendorPicker";
@@ -48,6 +53,8 @@ export interface DocumentHeaderFieldsProps {
   customers?: CustomerOption[];
   vendors?: VendorOption[];
   warehouses?: WarehouseOption[];
+  /** 業務選取器選項（員工主檔，在職者；客戶單據用）。 */
+  employees?: EmployeeOption[];
   disabled?: boolean;
   /** 允許就地新增的欄位（#218）；未列出者維持只能選既有項目。 */
   allowCreate?: { customer?: boolean; vendor?: boolean; warehouse?: boolean };
@@ -55,6 +62,7 @@ export interface DocumentHeaderFieldsProps {
 
 const NO_CREATE: NonNullable<DocumentHeaderFieldsProps["allowCreate"]> = {};
 const NO_WAREHOUSES: WarehouseOption[] = [];
+const NO_EMPLOYEES: EmployeeOption[] = [];
 
 export function DocumentHeaderFields({
   value,
@@ -62,12 +70,15 @@ export function DocumentHeaderFields({
   customers = [],
   vendors = [],
   warehouses = NO_WAREHOUSES,
+  employees = NO_EMPLOYEES,
   disabled,
   allowCreate = NO_CREATE,
 }: DocumentHeaderFieldsProps) {
   const t = value.doc_type;
   // 調撥單來源倉與目的倉共用就地新增的倉庫。
   const [allWarehouses, addWarehouse] = useAddedOptions(warehouses);
+  // 業務欄與「新增客戶」Dialog 的業務欄共用就地新增的員工。
+  const [allEmployees, addEmployee] = useAddedOptions(employees);
   const set = (patch: Partial<DraftDocumentHeader>) =>
     onChange({ ...value, ...patch });
 
@@ -81,10 +92,12 @@ export function DocumentHeaderFields({
             value={value.customer_id ?? null}
             disabled={disabled}
             allowCreate={!!allowCreate.customer}
+            employees={allEmployees}
+            onEmployeeCreated={addEmployee}
             onChange={(id, c) =>
               set({
                 customer_id: id,
-                sales_rep: value.sales_rep || c?.sales_rep || null,
+                ...salesRepFromCustomer(value, c),
               })
             }
           />
@@ -242,13 +255,20 @@ export function DocumentHeaderFields({
 
       {CUSTOMER_DOCS.includes(t) && (
         <Field label="業務" htmlFor="erp-sales-rep">
-          <input
+          <EmployeePicker
             id="erp-sales-rep"
-            type="text"
-            value={value.sales_rep ?? ""}
+            role="sales"
+            options={allEmployees}
+            value={{
+              id: value.sales_rep_id ?? null,
+              name: value.sales_rep ?? null,
+            }}
             disabled={disabled}
-            onChange={(e) => set({ sales_rep: e.target.value })}
-            className={ERP_INPUT}
+            allowCreate
+            onOptionCreated={addEmployee}
+            onChange={(next) =>
+              set({ sales_rep: next.name, sales_rep_id: next.id })
+            }
           />
         </Field>
       )}

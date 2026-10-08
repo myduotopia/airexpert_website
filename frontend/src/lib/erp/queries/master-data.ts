@@ -5,6 +5,7 @@ import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
 import type { MxMachine } from "@/lib/admin/maintenance";
+import { normalizeEmployeeRef } from "@/lib/employees/normalize";
 import type {
   DocStatus,
   DocType,
@@ -189,7 +190,10 @@ export interface CustomerInput {
   invoice_title: string;
   delivery_address: string;
   payment_terms: string;
+  /** 業務姓名（員工選取器帶入；舊資料可能只有文字）。 */
   sales_rep: string;
+  /** 業務（employees，0027）；null = 未關聯。 */
+  sales_rep_id: string | null;
   /** 傳真（0026）。 */
   fax: string;
   /** 收信人（0026）。 */
@@ -210,6 +214,7 @@ export function normalizeCustomerInput(
   }
   const email = normalizeEmailList(input.email);
   if (!email.ok) return { ok: false, error: EMAIL_FORMAT_MESSAGE };
+  const salesRep = normalizeEmployeeRef(input.sales_rep, input.sales_rep_id);
   return {
     ok: true,
     row: {
@@ -223,7 +228,8 @@ export function normalizeCustomerInput(
       invoice_title: cleanText(input.invoice_title),
       delivery_address: cleanText(input.delivery_address),
       payment_terms: cleanText(input.payment_terms),
-      sales_rep: cleanText(input.sales_rep),
+      sales_rep: salesRep.name,
+      sales_rep_id: salesRep.id,
       fax: cleanText(input.fax),
       mail_recipient: cleanText(input.mail_recipient),
       email: email.value,
@@ -409,9 +415,9 @@ export async function getVendor(id: string): Promise<ErpVendor | null> {
 
 // ── 客戶（mx_customers 共用） ────────────────────────────────
 
-/** ErpCustomer 對應的欄位（fax / mail_recipient / email 需 0026）。 */
+/** ErpCustomer 對應的欄位（fax / mail_recipient / email 需 0026；sales_rep_id 需 0027）。 */
 export const ERP_CUSTOMER_COLUMNS =
-  "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, fax, mail_recipient, email, erp_active";
+  "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, sales_rep_id, fax, mail_recipient, email, erp_active";
 
 export async function listErpCustomers(
   params: ListPartyParams = {},

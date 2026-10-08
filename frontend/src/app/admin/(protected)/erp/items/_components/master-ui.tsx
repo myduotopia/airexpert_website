@@ -1,5 +1,6 @@
-// ERP 基本資料四區（品項／倉庫／廠商／客戶）共用的版面小元件。無 hooks，server / client 皆可用。
-// 放在 items/_components（私有資料夾，不產生路由）；其他三區直接 import。
+// ERP 基本資料各區（品項／倉庫／廠商／客戶／員工）共用的版面小元件。無 hooks，server / client 皆可用。
+// 放在 items/_components（私有資料夾，不產生路由）；其他區直接 import。
+// 員工主檔（#223）由 ERP 與機台維護報告單共用，路由在 /admin/employees（不在 /admin/erp 底下）。
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -9,13 +10,19 @@ export const LINK_SECONDARY =
   "border-border hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border bg-white px-4 text-[14px] font-semibold";
 export const TEXT_LINK = "text-ink hover:text-primary-deep font-medium";
 
-export type MasterTab = "items" | "warehouses" | "vendors" | "customers";
+export type MasterTab =
+  | "items"
+  | "warehouses"
+  | "vendors"
+  | "customers"
+  | "employees";
 
 const TABS: { key: MasterTab; label: string; href: string }[] = [
   { key: "items", label: "品項", href: "/admin/erp/items" },
   { key: "warehouses", label: "倉庫", href: "/admin/erp/warehouses" },
   { key: "vendors", label: "廠商", href: "/admin/erp/vendors" },
   { key: "customers", label: "客戶", href: "/admin/erp/customers" },
+  { key: "employees", label: "員工", href: "/admin/employees" },
 ];
 
 /** 基本資料頁內 tab（側欄只有一個「基本資料」入口）。 */

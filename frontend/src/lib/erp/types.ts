@@ -114,7 +114,10 @@ export interface ErpCustomer {
   invoice_title: string | null;
   delivery_address: string | null;
   payment_terms: string | null;
+  /** 預設業務姓名快照。 */
   sales_rep: string | null;
+  /** 預設業務（employees，0027）；舊資料可能只有 sales_rep 文字。 */
+  sales_rep_id: string | null;
   /** 傳真（0026）。 */
   fax: string | null;
   /** 收信人（0026）。 */
@@ -142,7 +145,10 @@ export interface ErpDocument {
   party_contact: string | null;
   party_phone: string | null;
   party_address: string | null;
+  /** 業務姓名快照（列印用）。 */
   sales_rep: string | null;
+  /** 業務（employees，0027）；舊單據可能只有 sales_rep 文字。 */
+  sales_rep_id: string | null;
   tax_type: TaxType;
   tax_rate: number;
   currency: string;
@@ -372,6 +378,8 @@ export interface DraftDocument {
   to_warehouse_id?: string | null;
   source_doc_id?: string | null;
   sales_rep?: string | null;
+  /** 業務（employees）；與 sales_rep 文字成對，沒有文字時不寫入。 */
+  sales_rep_id?: string | null;
   tax_type: TaxType;
   tax_rate: number;
   currency: string;
@@ -441,6 +449,7 @@ export type CustomerOption = Pick<
   | "delivery_address"
   | "payment_terms"
   | "sales_rep"
+  | "sales_rep_id"
 >;
 
 export type VendorOption = Pick<
