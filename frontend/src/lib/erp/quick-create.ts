@@ -144,6 +144,7 @@ export function emptyCustomerInput(
     delivery_address: "",
     payment_terms: "",
     sales_rep: "",
+    sales_rep_id: null,
     fax: "",
     mail_recipient: "",
     email: "",

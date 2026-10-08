@@ -18,6 +18,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { Combobox } from "@/components/erp/Combobox";
+import { EmployeePicker } from "@/components/erp/EmployeePicker";
+import type { EmployeeOption } from "@/lib/employees/types";
 import { RocDateInput } from "@/components/erp/RocDateInput";
 import {
   ERP_AREA,
@@ -94,6 +96,8 @@ export interface ReportFormProps {
   customers: SrCustomerOption[];
   /** 全部未封存機台；依所選客戶於 client 端篩選。 */
   machines: SrMachineOption[];
+  /** 維護人員選項（員工主檔在職者，#223）；只列維修師傅，可就地新增。 */
+  employees?: EmployeeOption[];
   /** 編輯時的狀態（completed 需二次確認才儲存）。 */
   status?: ServiceReportStatus;
   /** 已列印過（print_count > 0）→ 派工單號唯讀。 */
@@ -168,11 +172,14 @@ const FILTER_OPTIONS = Object.keys(
 ) as FilterConsumable[];
 const CHECK_STATUSES = Object.keys(CHECK_STATUS_LABELS) as CheckStatus[];
 
+const NO_EMPLOYEES: EmployeeOption[] = [];
+
 export function ReportForm({
   reportId,
   initial,
   customers,
   machines,
+  employees = NO_EMPLOYEES,
   status,
   printed = false,
   logoUrl,
@@ -913,12 +920,21 @@ export function ReportForm({
 
                 <Grid>
                   <Field label="維護人員" htmlFor="sr-technician">
-                    <input
+                    <EmployeePicker
                       id="sr-technician"
-                      className={ERP_INPUT}
-                      value={state.technician}
-                      maxLength={TEXT_LIMITS.technician}
-                      onChange={(e) => setText("technician", e.target.value)}
+                      role="technician"
+                      options={employees}
+                      value={{
+                        id: state.technician_id,
+                        name: state.technician,
+                      }}
+                      allowCreate
+                      onChange={(next) =>
+                        set({
+                          technician: next.name ?? "",
+                          technician_id: next.id,
+                        })
+                      }
                     />
                   </Field>
                   <Field label="客戶簽名人" htmlFor="sr-signer">

@@ -1,6 +1,7 @@
 // 草稿（編輯中單據）的建構 / 轉換純函式。client 表單與 server 共用。
 import { SUBTOTAL_DEFAULT_LABEL } from "./calc";
 import type {
+  CustomerOption,
   DocType,
   DraftDocument,
   DraftLine,
@@ -59,6 +60,7 @@ export function newDraftDocument(
     to_warehouse_id: null,
     source_doc_id: null,
     sales_rep: null,
+    sales_rep_id: null,
     tax_type: defaultTaxType(docType),
     tax_rate: 0.05,
     currency: "TWD",
@@ -83,6 +85,7 @@ export function draftDocumentFromRow(doc: ErpDocumentWithLines): DraftDocument {
     to_warehouse_id: doc.to_warehouse_id,
     source_doc_id: doc.source_doc_id,
     sales_rep: doc.sales_rep,
+    sales_rep_id: doc.sales_rep_id ?? null,
     tax_type: doc.tax_type,
     tax_rate: Number(doc.tax_rate),
     currency: doc.currency,
@@ -135,4 +138,20 @@ export function lineMissingItem(line: DraftLine): boolean {
 /** 有內容但未指定品項的品項行行號（1 起算），供銷貨草稿提示「過帳前需選品項」（#222）。 */
 export function linesMissingItem(lines: readonly DraftLine[]): number[] {
   return lines.flatMap((l, i) => (lineMissingItem(l) ? [i + 1] : []));
+}
+
+/**
+ * 選客戶時的業務帶入（#223）：單據尚未填業務才帶客戶預設業務，姓名與員工 id 成對帶入；
+ * 已填（含舊資料文字）則不動。回傳要合併進表頭的欄位。
+ */
+export function salesRepFromCustomer(
+  current: Pick<DraftDocument, "sales_rep" | "sales_rep_id">,
+  customer: Pick<CustomerOption, "sales_rep" | "sales_rep_id"> | null,
+): Pick<DraftDocument, "sales_rep" | "sales_rep_id"> | Record<string, never> {
+  if (current.sales_rep?.trim()) return {};
+  const name = customer?.sales_rep?.trim() || null;
+  return {
+    sales_rep: name,
+    sales_rep_id: name ? (customer?.sales_rep_id ?? null) : null,
+  };
 }

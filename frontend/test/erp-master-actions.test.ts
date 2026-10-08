@@ -126,6 +126,7 @@ import {
 } from "@/app/admin/(protected)/erp/customers/actions";
 import {
   normalizeEmailList,
+  SALES_REP_MISSING_MESSAGE,
   type CustomerInput,
   type VendorInput,
 } from "@/lib/erp/queries/master-data";
@@ -191,6 +192,7 @@ function customer(patch: Partial<CustomerInput> = {}): CustomerInput {
     delivery_address: "",
     payment_terms: "月結30天",
     sales_rep: "",
+    sales_rep_id: null,
     fax: "",
     mail_recipient: "",
     email: "",
@@ -263,6 +265,23 @@ describe("代碼重複（23505）→ 代碼已存在", () => {
       note: "",
     });
     expect(!res.ok && res.error).toContain("預設倉");
+  });
+});
+
+describe("客戶業務指向已刪除的員工（23503，#223）", () => {
+  it("提示重新選擇業務，而不是「已被引用無法刪除」", async () => {
+    responses["mx_customers:update"] = () => ({
+      data: null,
+      error: {
+        code: "23503",
+        message:
+          'insert or update on table "mx_customers" violates foreign key constraint "mx_customers_sales_rep_id_fkey"',
+        details:
+          'Key (sales_rep_id)=(00000000-0000-0000-0000-000000000001) is not present in table "employees".',
+      },
+    });
+    const res = await updateCustomerAction("c1", customer());
+    expect(res).toEqual({ ok: false, error: SALES_REP_MISSING_MESSAGE });
   });
 });
 
@@ -434,6 +453,44 @@ describe("廠商／客戶", () => {
       invoice_title: null,
       erp_active: true,
     });
+  });
+});
+
+describe("客戶業務（員工主檔，#223）", () => {
+  const REP = "11111111-1111-4111-8111-111111111111";
+
+  it("選員工 → 寫入姓名快照與 sales_rep_id", async () => {
+    const res = await createCustomerAction(
+      customer({ sales_rep: " 王小明 ", sales_rep_id: REP }),
+    );
+    expect(res.ok).toBe(true);
+    expect(recorded[0].payload).toMatchObject({
+      sales_rep: "王小明",
+      sales_rep_id: REP,
+    });
+  });
+
+  it("舊資料只有文字 → 文字保留、id 為 null", async () => {
+    await updateCustomerAction("c1", customer({ sales_rep: "謝億興" }));
+    expect(recorded[0].payload).toMatchObject({
+      sales_rep: "謝億興",
+      sales_rep_id: null,
+    });
+  });
+
+  it("清除業務 → 兩者皆 null（不留孤立的 id）", async () => {
+    await updateCustomerAction(
+      "c1",
+      customer({ sales_rep: "  ", sales_rep_id: REP }),
+    );
+    expect(recorded[0].payload).toMatchObject({
+      sales_rep: null,
+      sales_rep_id: null,
+    });
+  });
+
+  it("建立客戶回傳的選項含 sales_rep_id（選客戶時帶入單據業務）", () => {
+    expect(CUSTOMER_OPTION_COLUMNS).toContain("sales_rep_id");
   });
 });
 

@@ -8,6 +8,9 @@
 //   分攤到各品項行（同樣最大餘數分配）。單據若無可分攤的品項行（品項行金額合計為 0），折扣列在「未分攤折扣」。
 // - 成本 = Σ qty × unit_cost（unit_cost 為過帳寫入的 TWD 平均成本；不追蹤庫存的品項 unit_cost 為 null → 0）。
 // - SR（銷退）的數量、銷售額、成本皆以負數扣減；作廢（voided）與草稿不計。
+// - 依業務彙總（#223）：依員工（sales_rep_id）分組；只有文字的舊單據以正規化姓名對回員工主檔，
+//   對不到才以正規化文字分組——打錯空白／大小寫或員工改名都不會把同一人拆成兩筆（見 salesRepGroupKey）。
+import { cleanEmployeeName, employeeNameKey } from "@/lib/employees/normalize";
 import { currencyDecimals, roundHalfAwayFromZero } from "./calc";
 import type { DocStatus, DocType, LineType, TaxType } from "./types";
 
@@ -89,6 +92,8 @@ export interface SalesDocInput {
   doc_date: string;
   customer_id: string | null;
   sales_rep: string | null;
+  /** 業務（employees，0027）；舊單據可能只有 sales_rep 文字。 */
+  sales_rep_id?: string | null;
   tax_type: TaxType;
   tax_rate: number;
   currency: string;
@@ -116,6 +121,7 @@ export interface SalesFact {
   document_id: string;
   customer_id: string | null;
   sales_rep: string | null;
+  sales_rep_id: string | null;
   item_id: string | null;
   qty: number;
   revenue: number;
@@ -222,6 +228,7 @@ export function buildSalesFacts(
         document_id: d.id,
         customer_id: d.customer_id,
         sales_rep: d.sales_rep,
+        sales_rep_id: d.sales_rep_id ?? null,
         item_id: l.item_id,
         qty: sign * q,
         revenue: (sign * itemRevenueCents[i]) / 100,
@@ -233,6 +240,7 @@ export function buildSalesFacts(
         document_id: d.id,
         customer_id: d.customer_id,
         sales_rep: d.sales_rep,
+        sales_rep_id: d.sales_rep_id ?? null,
         item_id: null,
         qty: 0,
         revenue: (sign * unallocatedDiscount) / 100,
@@ -278,23 +286,67 @@ function finishRow<K extends string | null>(
   };
 }
 
-function groupKey(f: SalesFact, groupBy: SalesGroupBy): string | null {
+/** 依業務彙總的 key 前綴：員工（employees.id）／未建檔的正規化文字。 */
+export const SALES_REP_EMPLOYEE_PREFIX = "emp:";
+export const SALES_REP_TEXT_PREFIX = "text:";
+
+/**
+ * 依業務彙總的分組 key（#223）：
+ * 1. 單據有 sales_rep_id → `emp:<id>`（員工改名、快照寫法不同都歸同一人）；
+ * 2. 只有文字（舊單據、過帳時由客戶補的業務）→ 以正規化姓名（employeeNameKey）對回員工主檔，
+ *    對得到 → `emp:<id>`；
+ * 3. 對不到 → `text:<正規化姓名>`（不分空白／大小寫合併）；沒有業務 → null。
+ */
+export function salesRepGroupKey(
+  f: Pick<SalesFact, "sales_rep" | "sales_rep_id">,
+  employeeIdByNameKey: ReadonlyMap<string, string> = new Map(),
+): string | null {
+  if (f.sales_rep_id) return `${SALES_REP_EMPLOYEE_PREFIX}${f.sales_rep_id}`;
+  const key = employeeNameKey(f.sales_rep);
+  if (key === "") return null;
+  const id = employeeIdByNameKey.get(key);
+  return id
+    ? `${SALES_REP_EMPLOYEE_PREFIX}${id}`
+    : `${SALES_REP_TEXT_PREFIX}${key}`;
+}
+
+/** 未建檔業務（`text:` key）的顯示文字：第一個出現的寫法（正規化空白，保留大小寫）。 */
+export function salesRepTextLabels(
+  facts: readonly Pick<SalesFact, "sales_rep">[],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of facts) {
+    const key = employeeNameKey(f.sales_rep);
+    if (key === "") continue;
+    const k = `${SALES_REP_TEXT_PREFIX}${key}`;
+    if (!out.has(k)) out.set(k, cleanEmployeeName(f.sales_rep));
+  }
+  return out;
+}
+
+function groupKey(
+  f: SalesFact,
+  groupBy: SalesGroupBy,
+  employeeIdByNameKey?: ReadonlyMap<string, string>,
+): string | null {
   switch (groupBy) {
     case "customer":
       return f.customer_id;
     case "item":
       return f.item_id;
-    default: {
-      const rep = (f.sales_rep ?? "").trim();
-      return rep === "" ? null : rep;
-    }
+    default:
+      return salesRepGroupKey(f, employeeIdByNameKey);
   }
 }
 
-/** 事實列 → 依客戶／品項／業務彙總（銷售額大到小）+ 合計。 */
+/**
+ * 事實列 → 依客戶／品項／業務彙總（銷售額大到小）+ 合計。
+ * 依業務時傳 employeeIdByNameKey（員工姓名 key → id），讓只有文字的舊單據也歸到員工（見 salesRepGroupKey）。
+ */
 export function aggregateSalesMargin(
   facts: SalesFact[],
   groupBy: SalesGroupBy,
+  opts: { employeeIdByNameKey?: ReadonlyMap<string, string> } = {},
 ): SalesMarginReport {
   const acc = new Map<
     string | null,
@@ -304,7 +356,7 @@ export function aggregateSalesMargin(
   let tr = 0;
   let tc = 0;
   for (const f of facts) {
-    const k = groupKey(f, groupBy);
+    const k = groupKey(f, groupBy, opts.employeeIdByNameKey);
     const a = acc.get(k) ?? { qty: 0, revenue: 0, cost: 0 };
     a.qty += f.qty;
     a.revenue += f.revenue;

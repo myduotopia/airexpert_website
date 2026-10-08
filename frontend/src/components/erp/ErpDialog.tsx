@@ -15,6 +15,7 @@ import {
   type SyntheticEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { handleDialogCancel, handleDialogClose } from "@/lib/erp/dialog-events";
 
 export interface ErpDialogProps {
   open: boolean;
@@ -97,14 +98,11 @@ function OpenDialog({
       aria-labelledby={titleId}
       aria-describedby={description ? descId : undefined}
       // Esc：交給父層決定（受控），不讓瀏覽器自行關閉。
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
+      // 停止冒泡：React 會把 cancel／close 沿元件樹傳給外層 Dialog（巢狀 Dialog 時外層會一起關閉，
+      // 見 lib/erp/dialog-events.ts）。
+      onCancel={(e) => handleDialogCancel(e, onClose)}
       // 少數情況（例如瀏覽器強制關閉）仍會直接關閉 → 同步回報父層。
-      onClose={() => {
-        if (!closingRef.current) onClose();
-      }}
+      onClose={(e) => handleDialogClose(e, closingRef.current, onClose)}
       onClick={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onClose();
       }}

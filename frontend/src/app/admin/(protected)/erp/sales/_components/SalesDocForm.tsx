@@ -23,6 +23,7 @@ import type {
   SerialOption,
   WarehouseOption,
 } from "@/lib/erp/types";
+import type { EmployeeOption } from "@/lib/employees/types";
 import { postSalesDocumentAction, saveSalesDraftAction } from "../actions";
 import { SALES_BASE_PATH, SALES_DOC_LABEL } from "./sales-config";
 
@@ -30,6 +31,8 @@ export interface SalesDocFormProps {
   initial: DraftDocument;
   customers: CustomerOption[];
   warehouses: WarehouseOption[];
+  /** 業務選取器選項（員工主檔，#223）。 */
+  employees: EmployeeOption[];
   items: ItemOption[];
   serials: SerialOption[];
   /** 銷退單：來源銷貨單號與各行可退數量。 */
@@ -46,6 +49,7 @@ export function SalesDocForm({
   initial,
   customers,
   warehouses,
+  employees,
   items,
   serials,
   returnSource,
@@ -164,6 +168,7 @@ export function SalesDocForm({
           onChange={onHeaderChange}
           customers={customers}
           warehouses={warehouses}
+          employees={employees}
           disabled={pending}
           allowCreate={quickCreate}
         />

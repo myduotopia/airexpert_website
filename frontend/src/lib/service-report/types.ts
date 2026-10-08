@@ -76,7 +76,11 @@ export interface ServiceReport {
   results: ServiceReportResults;
   parts: ServiceReportPart[];
   suggestions: Suggestion[];
+  /** 維護人員姓名快照（列印用）。 */
   technician: string | null;
+  /** 維護人員（employees，0027）；舊報告單可能只有 technician 文字。 */
+  technician_id: string | null;
+  /** 客戶簽名人：客戶方人員，不是我方員工，維持自由文字。 */
   customer_signer: string | null;
   note: string | null;
   print_count: number;
@@ -129,6 +133,11 @@ export type ServiceReportInput = Pick<
 > & {
   id?: string;
   /**
+   * 維護人員（employees，0027）。與 technician 姓名成對寫入：沒有姓名或非 UUID → null
+   * （舊資料只有姓名；未帶此欄位也視為 null）。
+   */
+  technician_id?: string | null;
+  /**
    * 套用的保養方案階段（0022）。三個欄位皆為選填：
    * undefined＝不更動既有值；plan_stage_id 傳 null / ""＝清除（快照欄位一併清空）；
    * 帶了 plan_stage_id 就一定會連兩個快照欄位一起寫（缺 → null）。
@@ -145,6 +154,7 @@ export type ServiceReportSheetData = Omit<
   | "id"
   | "customer_id"
   | "machine_id"
+  | "technician_id"
   | "note"
   | "plan_stage_id"
   | "plan_stage_hours"

@@ -2,16 +2,22 @@
 // 客戶新增／編輯表單（mx_customers，含 ERP 欄位；受控，錯誤時保留輸入）。
 // 傳 onSaved 時為「就地新增」模式（建單頁 Dialog 內，#218）：只新增、不導頁不 refresh，
 // 存檔後以新客戶的 Picker 選項回呼；取消改呼叫 onCancel；隱藏 ERP 啟用勾選（一律啟用）。
+// 「業務」為員工選取器（#223）：從員工主檔選、可就地新增；舊資料只有文字時照常顯示。
 import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CustomerInput } from "@/lib/erp/queries/master-data";
 import type { CustomerOption } from "@/lib/erp/types";
+import type { EmployeeOption } from "@/lib/employees/types";
+import { EmployeePicker } from "@/components/erp/EmployeePicker";
 import { ERP_AREA, ERP_INPUT } from "@/components/erp/styles";
 import { Field } from "../../items/_components/master-ui";
 import { createCustomerAction, updateCustomerAction } from "../actions";
 
-type TextKey = Exclude<keyof CustomerInput, "erp_active" | "note">;
+type TextKey = Exclude<
+  keyof CustomerInput,
+  "erp_active" | "note" | "sales_rep_id"
+>;
 
 const TEXT_FIELDS: {
   key: TextKey;
@@ -44,6 +50,7 @@ const TEXT_FIELDS: {
     placeholder: "郵寄對帳單／發票的收件人",
     fullOnly: true,
   },
+  // 業務：員工選取器（見下方 render），不是一般文字框。
   { key: "sales_rep", label: "業務" },
   { key: "payment_terms", label: "付款條件", placeholder: "例：月結30天" },
   { key: "address", label: "聯絡地址", wide: true },
@@ -53,11 +60,17 @@ const TEXT_FIELDS: {
 export function CustomerForm({
   customerId,
   initial,
+  employees,
+  onEmployeeCreated,
   onSaved,
   onCancel,
 }: {
   customerId?: string;
   initial: CustomerInput;
+  /** 業務選取器選項（員工主檔，在職者）。 */
+  employees: EmployeeOption[];
+  /** 業務欄就地新增員工後通知父層（單據頁的業務欄共用新員工）。 */
+  onEmployeeCreated?: (employee: EmployeeOption) => void;
   /** 就地新增：存檔成功後回呼（不導頁）。 */
   onSaved?: (id: string, option: CustomerOption) => void;
   /** 就地新增：取消鈕改呼叫此回呼。 */
@@ -120,31 +133,51 @@ export function CustomerForm({
             : "border-border grid grid-cols-1 gap-4 rounded-xl border bg-white p-5 sm:grid-cols-2"
         }
       >
-        {TEXT_FIELDS.filter((f) => !(embedded && f.fullOnly)).map((f) => (
-          <Field
-            key={f.key}
-            label={f.label}
-            htmlFor={fid(f.key)}
-            required={f.required}
-            wide={f.wide}
-          >
-            <input
-              id={fid(f.key)}
-              data-autofocus={
-                embedded && f.key === (v.code ? "name" : "code")
-                  ? true
-                  : undefined
-              }
-              type={f.type ?? "text"}
-              inputMode={f.inputMode}
-              className={ERP_INPUT}
-              value={v[f.key]}
-              placeholder={f.placeholder}
+        {TEXT_FIELDS.filter((f) => !(embedded && f.fullOnly)).map((f) =>
+          f.key === "sales_rep" ? (
+            <Field key={f.key} label={f.label} htmlFor={fid(f.key)}>
+              <EmployeePicker
+                id={fid(f.key)}
+                role="sales"
+                options={employees}
+                value={{ id: v.sales_rep_id, name: v.sales_rep }}
+                onChange={(next) =>
+                  setV((prev) => ({
+                    ...prev,
+                    sales_rep: next.name ?? "",
+                    sales_rep_id: next.id,
+                  }))
+                }
+                allowCreate
+                onOptionCreated={onEmployeeCreated}
+              />
+            </Field>
+          ) : (
+            <Field
+              key={f.key}
+              label={f.label}
+              htmlFor={fid(f.key)}
               required={f.required}
-              onChange={(e) => set(f.key, e.target.value)}
-            />
-          </Field>
-        ))}
+              wide={f.wide}
+            >
+              <input
+                id={fid(f.key)}
+                data-autofocus={
+                  embedded && f.key === (v.code ? "name" : "code")
+                    ? true
+                    : undefined
+                }
+                type={f.type ?? "text"}
+                inputMode={f.inputMode}
+                className={ERP_INPUT}
+                value={v[f.key]}
+                placeholder={f.placeholder}
+                required={f.required}
+                onChange={(e) => set(f.key, e.target.value)}
+              />
+            </Field>
+          ),
+        )}
         <Field label="備註" htmlFor={fid("note")} wide>
           <textarea
             id={fid("note")}

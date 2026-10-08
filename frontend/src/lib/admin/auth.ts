@@ -120,6 +120,19 @@ export async function requireModule(module: AdminModule): Promise<void> {
 }
 
 /**
+ * 保護 server component / layout：擁有 modules 中任一模組即可，否則導向 /admin。
+ * 例：員工主檔（ERP 與機台維護報告單共用）requireAnyModule(["erp", "service_report"])。
+ * 回傳目前登入者的模組清單（頁面可再依此決定顯示哪些入口）。
+ */
+export async function requireAnyModule(
+  modules: readonly AdminModule[],
+): Promise<AdminModule[]> {
+  const mine = await getCurrentModules();
+  if (!modules.some((m) => mine.includes(m))) redirect("/admin");
+  return mine;
+}
+
+/**
  * 保護 server component / layout：非 admin 導離。
  * 已是後台人員但非 admin（seo_manager / office / erp）→ 總覽 /admin（他已登入，
  * 丟回登入頁會讓人以為 session 過期）；非後台人員 / 未登入 → 登入頁。

@@ -5,6 +5,7 @@ import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
 import type { MxMachine } from "@/lib/admin/maintenance";
+import { normalizeEmployeeRef } from "@/lib/employees/normalize";
 import type {
   DocStatus,
   DocType,
@@ -23,6 +24,8 @@ type Supabase = Awaited<ReturnType<typeof getServerSupabase>>;
 export const MASTER_PAGE_SIZE = 50;
 
 export const CODE_TAKEN_MESSAGE = "代碼已存在，請改用其他代碼。";
+export const SALES_REP_MISSING_MESSAGE =
+  "所選業務已不存在（可能已被刪除），請重新選擇。";
 
 // ── 共用：錯誤對應 / 文字清理 ────────────────────────────────
 
@@ -35,7 +38,7 @@ type DbError = {
 /**
  * 基本資料寫入錯誤 → 中文訊息：
  * - 23505 unique（代碼 lower(btrim(code)) 唯一索引）→「代碼已存在」；預設倉索引另給訊息
- * - 23503 FK（被單據／品項引用）→ 請改為停用
+ * - 23503 FK（被單據／品項引用）→ 請改為停用；客戶業務指向已刪除的員工 → 請重新選擇
  * - 23514 check（品項追蹤設定）→ 設定不符規則
  */
 export function masterWriteError(err: DbError | null | undefined): string {
@@ -47,6 +50,8 @@ export function masterWriteError(err: DbError | null | undefined): string {
     return CODE_TAKEN_MESSAGE;
   }
   if (code === "23503") {
+    // 客戶的業務（sales_rep_id → employees，0027）：所選員工在存檔前已被刪除。
+    if (text.includes("sales_rep_id")) return SALES_REP_MISSING_MESSAGE;
     return "此資料已被單據或其他資料引用，無法刪除，請改為停用。";
   }
   if (code === "23514") {
@@ -189,7 +194,10 @@ export interface CustomerInput {
   invoice_title: string;
   delivery_address: string;
   payment_terms: string;
+  /** 業務姓名（員工選取器帶入；舊資料可能只有文字）。 */
   sales_rep: string;
+  /** 業務（employees，0027）；null = 未關聯。 */
+  sales_rep_id: string | null;
   /** 傳真（0026）。 */
   fax: string;
   /** 收信人（0026）。 */
@@ -210,6 +218,7 @@ export function normalizeCustomerInput(
   }
   const email = normalizeEmailList(input.email);
   if (!email.ok) return { ok: false, error: EMAIL_FORMAT_MESSAGE };
+  const salesRep = normalizeEmployeeRef(input.sales_rep, input.sales_rep_id);
   return {
     ok: true,
     row: {
@@ -223,7 +232,8 @@ export function normalizeCustomerInput(
       invoice_title: cleanText(input.invoice_title),
       delivery_address: cleanText(input.delivery_address),
       payment_terms: cleanText(input.payment_terms),
-      sales_rep: cleanText(input.sales_rep),
+      sales_rep: salesRep.name,
+      sales_rep_id: salesRep.id,
       fax: cleanText(input.fax),
       mail_recipient: cleanText(input.mail_recipient),
       email: email.value,
@@ -409,9 +419,9 @@ export async function getVendor(id: string): Promise<ErpVendor | null> {
 
 // ── 客戶（mx_customers 共用） ────────────────────────────────
 
-/** ErpCustomer 對應的欄位（fax / mail_recipient / email 需 0026）。 */
+/** ErpCustomer 對應的欄位（fax / mail_recipient / email 需 0026；sales_rep_id 需 0027）。 */
 export const ERP_CUSTOMER_COLUMNS =
-  "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, fax, mail_recipient, email, erp_active";
+  "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, sales_rep_id, fax, mail_recipient, email, erp_active";
 
 export async function listErpCustomers(
   params: ListPartyParams = {},

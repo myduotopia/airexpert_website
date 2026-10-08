@@ -107,6 +107,17 @@ export const ADMIN_NAV: AdminNavItem[] = [
     modules: ["service_report"],
     group: "維護",
   },
+  // 員工主檔（#223，業務／維修師傅）：ERP 與維護報告單共用，路由 /admin/employees。
+  // 側欄只給 service_report 使用者一個入口（放在「維護」分組）；ERP 使用者從「基本資料」頁內的
+  // 「員工」tab 進入（見 NAV_ACTIVE_ALIASES），避免只有 ERP 的人看到「維護」分組標題。
+  {
+    key: "employees",
+    label: "員工",
+    href: "/admin/employees",
+    enabled: true,
+    modules: ["service_report"],
+    group: "維護",
+  },
   // ── ERP（spec §3.2 / §6）：以模組授權 gating，與角色無關。
   // W0（#172）一次列齊；各 W1 issue 上線時只把自己那行的 enabled 改 true。
   {
@@ -228,6 +239,9 @@ export const NAV_ACTIVE_ALIASES: Record<string, string[]> = {
     "/admin/erp/warehouses",
     "/admin/erp/vendors",
     "/admin/erp/customers",
+    // 員工主檔（#223）不在 /admin/erp 底下，但對 ERP 使用者是「基本資料」的一個 tab。
+    // 兩個入口都看得到時，與「維護 › 員工」同長度，以 ADMIN_NAV 中較前面的「員工」為準。
+    "/admin/employees",
   ],
 };
 

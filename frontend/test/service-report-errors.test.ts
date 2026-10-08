@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { srErrorMessage } from "@/lib/service-report/errors";
+import {
+  SR_TECHNICIAN_MISSING_MESSAGE,
+  srErrorMessage,
+} from "@/lib/service-report/errors";
 
 describe("srErrorMessage", () => {
   it("對應常見錯誤", () => {
@@ -31,5 +34,24 @@ describe("srErrorMessage", () => {
       "操作失敗：boom",
     );
     expect(srErrorMessage(null)).toBe("操作失敗");
+  });
+
+  it("維護人員已被刪除（technician_id 外鍵，#223）→ 提示重新選擇維護人員", () => {
+    expect(
+      srErrorMessage({
+        code: "23503",
+        message:
+          'insert or update on table "sr_reports" violates foreign key constraint "sr_reports_technician_id_fkey"',
+        details:
+          'Key (technician_id)=(00000000-0000-0000-0000-000000000001) is not present in table "employees".',
+      }),
+    ).toBe(SR_TECHNICIAN_MISSING_MESSAGE);
+    expect(
+      srErrorMessage({
+        code: "23503",
+        message:
+          'insert or update on table "sr_reports" violates foreign key constraint "sr_reports_customer_id_fkey"',
+      }),
+    ).toBe("所選客戶或機台已不存在，請重新選擇");
   });
 });

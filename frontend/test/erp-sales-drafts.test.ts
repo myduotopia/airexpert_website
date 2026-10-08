@@ -76,6 +76,7 @@ function doc(
     party_phone: null,
     party_address: null,
     sales_rep: "阿宏",
+    sales_rep_id: null,
     tax_type: "included",
     tax_rate: 0.05,
     currency: "TWD",

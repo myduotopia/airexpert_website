@@ -227,10 +227,14 @@ export function validateReportInput(input: unknown): string | null {
     }
   }
 
-  for (const key of ["customer_id", "machine_id"] as const) {
+  for (const key of ["customer_id", "machine_id", "technician_id"] as const) {
     const v = r[key];
     if (v !== null && v !== undefined && v !== "" && !isUuid(v)) {
-      return key === "customer_id" ? "客戶選擇不正確" : "機台選擇不正確";
+      return key === "customer_id"
+        ? "客戶選擇不正確"
+        : key === "machine_id"
+          ? "機台選擇不正確"
+          : "維護人員選擇不正確";
     }
   }
 
@@ -357,6 +361,11 @@ export function normalizeReportInput(
   for (const key of NULLABLE_TEXT_FIELDS) {
     out[key] = cleanText(input[key]);
   }
+  // 維護人員（0027）：姓名快照 + 員工 id 成對；沒有姓名就沒有 id，舊資料只有姓名時 id 為 null。
+  out.technician_id =
+    out.technician !== null && isUuid(input.technician_id)
+      ? input.technician_id
+      : null;
 
   // 保養方案階段（0022）：
   // - undefined（含「有 key 但值是 undefined」）＝不更動 DB 既有值。用 undefined 而非
