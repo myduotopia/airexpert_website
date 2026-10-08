@@ -3,6 +3,7 @@
 // 受控：value = 選中項目 id（null = 未選）。傳 name 時另輸出 hidden input 供 <form> 送出。
 // 各 Picker（品項 / 客戶 / 廠商）為此元件的薄包裝。
 // 傳 onCreate 時，清單最後（含查無結果）多一個「＋ 新增『查詢字』」項（建單時就地新增，#218）。
+// 下拉清單以 FloatingList 浮層顯示，不會被明細表等 overflow 容器裁切（#219）。
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   comboboxEntries,
@@ -10,6 +11,7 @@ import {
   isImeComposing,
   quickCreateLabel,
 } from "@/lib/erp/quick-create";
+import { FloatingList, scrollOptionIntoView } from "./FloatingList";
 import { ERP_INPUT } from "./styles";
 
 /** 最多顯示幾筆（避免上千筆選項時渲染過慢；使用者可再輸入縮小範圍）。 */
@@ -62,6 +64,8 @@ export function Combobox<T extends { id: string }>({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  // 輸入框元素（FloatingList 的定位基準）；用 callback ref 存 state，render 時可安全讀取。
+  const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   // 選了「新增」後 Dialog 關閉時，瀏覽器會把焦點還給輸入框；那次聚焦不要再展開清單。
   const skipFocusOpen = useRef(false);
 
@@ -105,16 +109,24 @@ export function Combobox<T extends { id: string }>({
     else pick(entry.option);
   }
 
+  const optionId = (i: number) => `${listId}-opt-${i}`;
+
+  // 鍵盤移動 highlight：同時把該選項捲進清單可視範圍（清單未開時選項尚未渲染，找不到即略過）。
+  function moveHighlight(next: number) {
+    setHighlight(next);
+    if (open) scrollOptionIntoView(optionId(next));
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     // 輸入法選字中的 Enter／方向鍵交給輸入法。
     if (isImeComposing(e.nativeEvent)) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);
-      setHighlight((h) => Math.min(h + 1, entries.length - 1));
+      moveHighlight(Math.max(0, Math.min(highlight + 1, entries.length - 1)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setHighlight((h) => Math.max(h - 1, 0));
+      moveHighlight(Math.max(highlight - 1, 0));
     } else if (e.key === "Enter") {
       if (open && entries[highlight]) {
         e.preventDefault();
@@ -127,16 +139,20 @@ export function Combobox<T extends { id: string }>({
   }
 
   const display = open ? query : selected ? getLabel(selected) : "";
+  const activeId =
+    open && !disabled && entries[highlight] ? optionId(highlight) : undefined;
 
   return (
     <div className="relative">
       <input
+        ref={setAnchor}
         id={inputId}
         type="text"
         role="combobox"
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-controls={listId}
+        aria-activedescendant={activeId}
         aria-autocomplete="list"
         autoComplete="off"
         value={display}
@@ -180,10 +196,12 @@ export function Combobox<T extends { id: string }>({
       )}
       {name && <input type="hidden" name={name} value={value ?? ""} />}
       {open && !disabled && (
-        <ul
+        <FloatingList
+          anchor={anchor}
+          minWidth={240}
           id={listId}
           role="listbox"
-          className="border-border absolute z-30 mt-1 max-h-72 w-full min-w-[240px] overflow-y-auto rounded-lg border bg-white py-1 shadow-lg"
+          className="border-border rounded-lg border bg-white py-1 shadow-lg"
         >
           {results.length === 0 && (
             <li className="text-text-muted px-3 py-2 text-[13px]">
@@ -194,6 +212,7 @@ export function Combobox<T extends { id: string }>({
             entry.kind === "option" ? (
               <li
                 key={entry.option.id}
+                id={optionId(i)}
                 role="option"
                 aria-selected={entry.option.id === value}
                 // mousedown 先於 input blur，才點得到選項。
@@ -213,6 +232,7 @@ export function Combobox<T extends { id: string }>({
             ) : (
               <li
                 key="__create__"
+                id={optionId(i)}
                 role="option"
                 aria-selected={false}
                 onMouseDown={(e) => {
@@ -228,7 +248,7 @@ export function Combobox<T extends { id: string }>({
               </li>
             ),
           )}
-        </ul>
+        </FloatingList>
       )}
     </div>
   );
