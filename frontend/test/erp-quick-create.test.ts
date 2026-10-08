@@ -6,6 +6,8 @@ import { describe, it, expect } from "vitest";
 //   3. quickCreateLabel：新增項的文字
 //   4. guessCodeOrName：搜尋字串預先帶入代碼或名稱
 //   5. empty*Input：Dialog 表單的初始值
+//   6. quickCreateTargets：各單別可新增的主檔（退貨單不提供）
+//   7. isImeComposing：輸入法選字中的 Enter 不可觸發選取／新增
 import {
   comboboxEntries,
   emptyCustomerInput,
@@ -13,8 +15,10 @@ import {
   emptyWarehouseInput,
   filterComboboxOptions,
   guessCodeOrName,
+  isImeComposing,
   mergeOptions,
   quickCreateLabel,
+  quickCreateTargets,
 } from "@/lib/erp/quick-create";
 
 type Opt = { id: string; name: string };
@@ -166,5 +170,74 @@ describe("empty*Input", () => {
       active: true,
       note: "",
     });
+  });
+});
+
+describe("quickCreateTargets", () => {
+  it("報價／銷貨：客戶、倉庫、品項", () => {
+    for (const t of ["Q", "S"] as const) {
+      expect(quickCreateTargets(t)).toEqual({
+        customer: true,
+        vendor: false,
+        warehouse: true,
+        item: true,
+      });
+    }
+  });
+
+  it("採購／進貨：廠商、倉庫、品項", () => {
+    for (const t of ["P", "I"] as const) {
+      expect(quickCreateTargets(t)).toEqual({
+        customer: false,
+        vendor: true,
+        warehouse: true,
+        item: true,
+      });
+    }
+  });
+
+  it("銷退：客戶與品項來自來源銷貨單 → 只可新增入庫倉", () => {
+    expect(quickCreateTargets("SR")).toEqual({
+      customer: false,
+      vendor: false,
+      warehouse: true,
+      item: false,
+    });
+  });
+
+  it("進退：廠商、品項、出庫倉皆來自來源進貨單 → 全部不可新增", () => {
+    expect(quickCreateTargets("PR")).toEqual({
+      customer: false,
+      vendor: false,
+      warehouse: false,
+      item: false,
+    });
+  });
+
+  it("調撥／盤點調整：倉庫、品項", () => {
+    for (const t of ["T", "A"] as const) {
+      expect(quickCreateTargets(t)).toEqual({
+        customer: false,
+        vendor: false,
+        warehouse: true,
+        item: true,
+      });
+    }
+  });
+});
+
+describe("isImeComposing", () => {
+  it("Chrome 組字中（isComposing=true，key 可能仍是 Enter）", () => {
+    expect(isImeComposing({ isComposing: true, keyCode: 13 })).toBe(true);
+  });
+
+  it("Safari 確認選字的 Enter（isComposing=false、keyCode 229）", () => {
+    expect(isImeComposing({ isComposing: false, keyCode: 229 })).toBe(true);
+  });
+
+  it("一般 Enter／方向鍵 → 不是組字", () => {
+    expect(isImeComposing({ isComposing: false, keyCode: 13 })).toBe(false);
+    expect(isImeComposing({ isComposing: false, keyCode: 40 })).toBe(false);
+    expect(isImeComposing({})).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   comboboxEntries,
   filterComboboxOptions,
+  isImeComposing,
   quickCreateLabel,
 } from "@/lib/erp/quick-create";
 import { ERP_INPUT } from "./styles";
@@ -105,6 +106,8 @@ export function Combobox<T extends { id: string }>({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // 輸入法選字中的 Enter／方向鍵交給輸入法。
+    if (isImeComposing(e.nativeEvent)) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);

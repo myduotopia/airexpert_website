@@ -14,6 +14,7 @@ import type {
   SerialOption,
   WarehouseOption,
 } from "@/lib/erp/types";
+import { quickCreateTargets } from "@/lib/erp/quick-create";
 import type { StockDocType } from "../_lib/inventory-logic";
 import { PRIMARY_LINK, SECONDARY_LINK } from "./InventoryShell";
 
@@ -50,6 +51,7 @@ export function StockDocForm({
   const [pending, startTransition] = useTransition();
 
   const { lines, ...header } = doc;
+  const quickCreate = quickCreateTargets(docType);
   const warehouseSerials = serials.filter(
     (s) => s.status === "in_stock" && s.warehouse_id === doc.warehouse_id,
   );
@@ -142,7 +144,7 @@ export function StockDocForm({
           onChange={onHeaderChange}
           warehouses={warehouses}
           disabled={pending}
-          allowCreate={{ warehouse: true }}
+          allowCreate={quickCreate}
         />
       </section>
       <DocumentLinesEditor
@@ -159,7 +161,7 @@ export function StockDocForm({
         allowedLineTypes={["item", "note"]}
         descriptionLabel={docType === "A" ? "調整原因（必填）" : "品名規格"}
         disabled={pending}
-        allowCreateItem
+        allowCreateItem={quickCreate.item}
       />
       {error && (
         <p

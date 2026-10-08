@@ -5,6 +5,7 @@ import type {
   VendorInput,
   WarehouseInput,
 } from "./queries/master-data";
+import type { DocType } from "./types";
 
 /**
  * 合併 server 傳入的選項與就地新增的選項（依 id 去重，base 版本優先）。
@@ -25,6 +26,52 @@ export function mergeOptions<T extends { id: string }>(
     extra.push(o);
   }
   return extra.length === 0 ? base : [...base, ...extra];
+}
+
+/** 單據上可就地新增的主檔。 */
+export interface QuickCreateTargets {
+  customer: boolean;
+  vendor: boolean;
+  warehouse: boolean;
+  item: boolean;
+}
+
+/**
+ * 各單別允許就地新增哪些主檔。
+ * 退貨單（銷退 SR／進退 PR）一律由來源單帶入：客戶／廠商與品項行必須來自來源單
+ * （SR 存檔時 server 會擋「銷退品項須來自原銷貨單」），新建的對象不可能出現在來源單上，
+ * 所以不提供新增；PR 的出庫倉為原入庫倉（新倉沒有可退的庫存），也不提供。
+ * SR 的入庫倉可以是任一倉，保留新增倉庫。
+ */
+export function quickCreateTargets(docType: DocType): QuickCreateTargets {
+  switch (docType) {
+    case "Q":
+    case "S":
+      return { customer: true, vendor: false, warehouse: true, item: true };
+    case "SR":
+      return { customer: false, vendor: false, warehouse: true, item: false };
+    case "P":
+    case "I":
+      return { customer: false, vendor: true, warehouse: true, item: true };
+    case "PR":
+      return { customer: false, vendor: false, warehouse: false, item: false };
+    case "T":
+    case "A":
+      return { customer: false, vendor: false, warehouse: true, item: true };
+  }
+}
+
+/**
+ * 輸入法（注音、倉頡等）組字中的按鍵：選字用的 Enter／方向鍵不可當成 Combobox 的操作。
+ * Chrome 組字中 keydown 為 isComposing=true（key 仍可能是 "Enter"）；
+ * Safari 確認選字的 Enter 在 compositionend 之後才觸發、isComposing=false，但 keyCode 為 229。
+ * 不擋的話，用注音打一個不存在的名稱、按 Enter 選字就會直接開「新增」Dialog（清單只剩新增項）。
+ */
+export function isImeComposing(e: {
+  isComposing?: boolean;
+  keyCode?: number;
+}): boolean {
+  return !!e.isComposing || e.keyCode === 229;
 }
 
 /** Combobox 的 client 端搜尋：不分大小寫部分比對，最多 max 筆；空白查詢回前 max 筆。 */

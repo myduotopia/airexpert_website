@@ -4,7 +4,7 @@
 // - 打字即時以 onText 回寫，失焦不需另外確認；鍵盤 ↑↓ Enter Esc 同 Combobox。
 // - allowCreate：清單最後多一個「＋ 新增品項『xxx』」，開 Dialog 建立品項主檔後帶入（#218）。
 import { useId, useMemo, useRef, useState } from "react";
-import { quickCreateLabel } from "@/lib/erp/quick-create";
+import { isImeComposing, quickCreateLabel } from "@/lib/erp/quick-create";
 import type { ItemOption } from "@/lib/erp/types";
 import { QuickCreateItemDialog } from "./QuickCreateItemDialog";
 import { useAddedOptions } from "./useAddedOptions";
@@ -104,6 +104,8 @@ export function ItemOrTextPicker({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // 輸入法選字中的 Enter／方向鍵交給輸入法。
+    if (isImeComposing(e.nativeEvent)) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);

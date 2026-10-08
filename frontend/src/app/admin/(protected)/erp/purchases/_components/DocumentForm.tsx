@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
+import { quickCreateTargets } from "@/lib/erp/quick-create";
 import { DocumentHeaderFields } from "@/components/erp/DocumentHeaderFields";
 import {
   DocumentLinesEditor,
@@ -55,6 +56,8 @@ export function DocumentForm({
   const [pending, startTransition] = useTransition();
 
   const { lines, ...header } = doc;
+  // 進退單廠商、品項、出庫倉皆來自來源進貨單，不提供就地新增。
+  const quickCreate = quickCreateTargets(initial.doc_type);
 
   // 既有機號只列出表頭倉庫中的（PR 出庫須在該倉）。
   const visibleSerials = useMemo(
@@ -114,7 +117,7 @@ export function DocumentForm({
           vendors={vendors}
           warehouses={warehouses}
           disabled={pending}
-          allowCreate={{ vendor: true, warehouse: true }}
+          allowCreate={quickCreate}
         />
       </section>
       <section>
@@ -131,7 +134,7 @@ export function DocumentForm({
           currency={doc.currency}
           exchangeRate={doc.exchange_rate}
           disabled={pending}
-          allowCreateItem
+          allowCreateItem={quickCreate.item}
         />
       </section>
       {error && (
