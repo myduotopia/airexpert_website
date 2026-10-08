@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { unstable_rethrow, useRouter } from "next/navigation";
 import { ERP_AREA } from "@/components/erp/styles";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import type { PaymentDirection } from "@/lib/erp/types";
 import { voidPaymentAction } from "./actions";
 import { DIRECTION_META, NETWORK_ERROR } from "./allocation";
@@ -22,6 +23,7 @@ export function VoidPaymentForm({
   const [reason, setReason] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [askConfirm, confirmDialog] = useConfirm();
 
   if (!open) {
     return (
@@ -35,19 +37,19 @@ export function VoidPaymentForm({
     );
   }
 
-  function submit() {
+  async function submit() {
     setError(null);
     if (!reason.trim()) {
       setError("請填寫作廢原因。");
       return;
     }
-    if (
-      !window.confirm(
-        `確定作廢${label} ${docNo ?? ""}？沖銷會一併取消，此動作無法復原。`,
-      )
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: docNo ? `確定作廢${label} ${docNo}？` : `確定作廢此${label}？`,
+      message: "沖銷會一併取消，此動作無法復原。",
+      confirmLabel: "作廢",
+      tone: "danger",
+    });
+    if (!ok) return;
     startTransition(async () => {
       let res: Awaited<ReturnType<typeof voidPaymentAction>>;
       try {
@@ -103,6 +105,7 @@ export function VoidPaymentForm({
           {pending ? "作廢中…" : "確認作廢"}
         </button>
       </div>
+      {confirmDialog}
     </div>
   );
 }

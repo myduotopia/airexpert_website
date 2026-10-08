@@ -15,6 +15,7 @@ import type {
   WarehouseOption,
 } from "@/lib/erp/types";
 import { quickCreateTargets } from "@/lib/erp/quick-create";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import type { StockDocType } from "../_lib/inventory-logic";
 import { PRIMARY_LINK, SECONDARY_LINK } from "./InventoryShell";
 
@@ -49,6 +50,7 @@ export function StockDocForm({
   const [doc, setDoc] = useState<DraftDocument>(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [askConfirm, confirmDialog] = useConfirm();
 
   const { lines, ...header } = doc;
   const quickCreate = quickCreateTargets(docType);
@@ -101,11 +103,15 @@ export function StockDocForm({
     });
   }
 
-  function submit(post: boolean) {
+  async function submit(post: boolean) {
     setError(null);
     if (
       post &&
-      !window.confirm("確定儲存並過帳？過帳後將異動庫存，只能以作廢沖回。")
+      !(await askConfirm({
+        title: "確定儲存並過帳？",
+        message: "過帳後將異動庫存，只能以作廢沖回。",
+        confirmLabel: "過帳",
+      }))
     ) {
       return;
     }
@@ -195,6 +201,7 @@ export function StockDocForm({
           取消
         </Link>
       </div>
+      {confirmDialog}
     </div>
   );
 }
