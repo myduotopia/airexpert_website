@@ -1,11 +1,12 @@
 // 草稿（編輯中單據）的建構 / 轉換純函式。client 表單與 server 共用。
-import { SUBTOTAL_DEFAULT_LABEL } from "./calc";
+import { calcLineAmount, SUBTOTAL_DEFAULT_LABEL } from "./calc";
 import type {
   CustomerOption,
   DocType,
   DraftDocument,
   DraftLine,
   ErpDocumentWithLines,
+  ItemOption,
   LineType,
   TaxType,
 } from "./types";
@@ -154,4 +155,42 @@ export function salesRepFromCustomer(
     sales_rep: name,
     sales_rep_id: name ? (customer?.sales_rep_id ?? null) : null,
   };
+}
+
+/** 選品項時帶入哪個主檔價格欄（null = 不帶入，如調撥 / 盤點）。銷售用售價、採購用進價。 */
+export type ItemPriceField =
+  | "sale_price"
+  | "purchase_price"
+  | "avg_cost"
+  | null;
+
+/**
+ * 明細行選定品項（DocumentLinesEditor 的品項欄，所有單別共用）→ 更新後的行（#232）。
+ * - 原本沒有品項（item_id 為空：報價自由輸入、轉單未對應主檔、或全新空白行）：
+ *   保留已有的單價（非 0）與品名規格（非空白），單價為 0 才帶主檔價、品名規格空白才帶主檔品名；
+ *   數量照舊，金額依數量 × 單價重算（與選取前相同）。
+ * - 原本已有品項、改選別的品項，或清除品項（item = null）：維持舊行為，品名規格與單價改為主檔預設。
+ * 兩者皆清空品項文字與機號（品項變了，機號需重選）；單位、序號 / 庫存追蹤由品項主檔決定，不存在行上。
+ */
+export function applyItemToLine(
+  line: DraftLine,
+  item: ItemOption | null,
+  priceField: ItemPriceField,
+): DraftLine {
+  const masterPrice = item && priceField ? Number(item[priceField] ?? 0) : 0;
+  const masterName = item?.name ?? "";
+  const fillBlanks = !line.item_id && item !== null;
+  const keepPrice =
+    fillBlanks && Number.isFinite(line.unit_price) && line.unit_price !== 0;
+  const keepDescription = fillBlanks && !!line.description?.trim();
+  const next: DraftLine = {
+    ...line,
+    item_id: item?.id ?? null,
+    item_text: "",
+    description: keepDescription ? line.description : masterName,
+    unit_price: priceField && !keepPrice ? masterPrice : line.unit_price,
+    serial_ids: [],
+    serial_nos: [],
+  };
+  return { ...next, amount: calcLineAmount(next) };
 }
