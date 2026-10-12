@@ -444,20 +444,25 @@ export async function getDocumentBrief(
   return (data as DocumentBrief | null) ?? null;
 }
 
-/** 由某單據衍生的單據（報價 → 銷貨、銷貨 → 銷退），新→舊。 */
+/** 衍生單據：摘要 + 建立時間（草稿無單號時以建立日期辨識，#234）。 */
+export interface DerivedDocument extends DocumentBrief {
+  created_at: string;
+}
+
+/** 由某單據衍生的單據（報價 → 銷貨、銷貨 → 銷退；含草稿與作廢），新→舊。 */
 export async function listDerivedDocuments(
   sourceDocId: string,
   docType: SalesDocType,
-): Promise<DocumentBrief[]> {
+): Promise<DerivedDocument[]> {
   const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("erp_documents")
-    .select(BRIEF_COLUMNS)
+    .select(`${BRIEF_COLUMNS}, created_at`)
     .eq("source_doc_id", sourceDocId)
     .eq("doc_type", docType)
     .order("created_at", { ascending: false });
   if (error) throw new Error(`讀取衍生單據失敗：${error.message}`);
-  return (data ?? []) as DocumentBrief[];
+  return (data ?? []) as DerivedDocument[];
 }
 
 export interface MachineLink {

@@ -116,9 +116,10 @@ function OpenDialog({
             {title}
           </h2>
           {description && (
-            <p id={descId} className="text-text-muted mt-1 text-[13px]">
+            // <div> 而非 <p>：確認框說明可能含清單（#234），<p> 內不可放 <ul>。
+            <div id={descId} className="text-text-muted mt-1 text-[13px]">
               {description}
-            </p>
+            </div>
           )}
         </div>
         {showCloseButton && (
