@@ -271,7 +271,11 @@ describe("業務（員工主檔，#223）", () => {
     ).toMatchObject({ sales_rep: "王小明", sales_rep_id: REP });
     const sale = { ...quote, doc_type: "S", id: "s1" } as ErpDocumentWithLines;
     expect(
-      saleToReturnDraft(sale, { docDate: "2026-10-08", returnedQtyByLine: {} }),
+      saleToReturnDraft(sale, {
+        docDate: "2026-10-08",
+        returnedQtyByLine: {},
+        returnedAmountByLine: {},
+      }),
     ).toMatchObject({ sales_rep: "王小明", sales_rep_id: REP });
   });
 });

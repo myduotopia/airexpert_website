@@ -19,6 +19,7 @@ import {
   freeTextItemQueries,
   getDocumentType,
   getReturnedQtyBySourceLine,
+  getSaleReturnedAmounts,
   isSalesDocType,
   listItemMatchCandidates,
   listMachinesByIds,
@@ -29,6 +30,7 @@ import {
   validateReturnQty,
   type SalesDocType,
 } from "@/lib/erp/queries/sales";
+import { validateReturnAmount } from "@/lib/erp/returns";
 import type { DraftDocument, ErpResult } from "@/lib/erp/types";
 
 const SALES_PATHS = [
@@ -65,7 +67,10 @@ async function defaultWarehouseId(): Promise<string | null> {
   return (data as { id: string } | null)?.id ?? null;
 }
 
-/** 新增 / 更新銷售草稿。銷退單會檢查可退數量並鎖定來源銷貨單的客戶。 */
+/**
+ * 新增 / 更新銷售草稿。銷退單會檢查可退數量、累計銷退金額不超過原單（#233），
+ * 並鎖定來源銷貨單的客戶、稅別稅率與幣別（金額上限以同稅別、同幣別的明細合計比較）。
+ */
 export async function saveSalesDraftAction(
   input: DraftDocument,
 ): Promise<ErpResult<{ id: string }>> {
@@ -116,7 +121,22 @@ export async function saveSalesDraftAction(
       returnableLines(sale.data, returned.data),
     );
     if (bad) return { ok: false, error: bad };
-    draft = { ...draft, customer_id: sale.data.customer_id };
+    draft = {
+      ...draft,
+      customer_id: sale.data.customer_id,
+      tax_type: sale.data.tax_type,
+      tax_rate: Number(sale.data.tax_rate),
+      currency: sale.data.currency,
+    };
+    const amounts = await getSaleReturnedAmounts(sale.data, draft.id);
+    if (!amounts.ok) return amounts;
+    const over = validateReturnAmount(
+      draft.lines,
+      amounts.data.limit,
+      draft.tax_type,
+      draft.currency,
+    );
+    if (over) return { ok: false, error: over };
   } else if (draft.doc_type === "Q") {
     // 報價單不動庫存：不存倉庫、發票號碼。
     draft = { ...draft, warehouse_id: null, invoice_no: null };
@@ -221,7 +241,7 @@ export async function convertQuoteToSaleAction(
   return res;
 }
 
-/** 銷貨單「建立銷退單」：帶入尚可退的品項行為銷退草稿，回傳新草稿 id。 */
+/** 銷貨單「建立銷退單」：帶入尚可退的品項行（折扣分攤後淨價，#233）為銷退草稿，回傳新草稿 id。 */
 export async function createSalesReturnAction(
   saleId: string,
 ): Promise<ErpResult<{ id: string }>> {
@@ -237,9 +257,12 @@ export async function createSalesReturnAction(
     sale.data.lines.map((l) => l.id),
   );
   if (!returned.ok) return returned;
+  const amounts = await getSaleReturnedAmounts(sale.data);
+  if (!amounts.ok) return amounts;
   const draft = saleToReturnDraft(sale.data, {
     docDate: todayTaipei(),
     returnedQtyByLine: returned.data,
+    returnedAmountByLine: amounts.data.byLine,
   });
   if (draft.lines.length === 0) {
     return { ok: false, error: "此銷貨單已無可退貨的品項數量。" };

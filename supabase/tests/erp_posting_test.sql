@@ -945,6 +945,90 @@ begin
   raise notice 'ok  草稿存取 / 刪除 / 過帳 / 作廢 / 收付款（erp-only 使用者）';
 end $$;
 
+-- ============================================================
+-- 10) 銷退累計金額上限（#233，0028）：Σ 已過帳銷退 + 本單 明細合計 ≤ 原銷貨單明細合計
+-- ============================================================
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
+
+-- S（外加 5%）：油 3 × 1,000 + 安裝 1 × 7,000 + 折扣 −1,000 → 明細合計 9,000
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e0a1', 'S', '2026-09-20', '00000000-0000-0000-0000-00000000d002', erp_test.main(), 'excluded');
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price, amount) values
+  ('00000000-0000-0000-0000-0000f0a10001', '00000000-0000-0000-0000-00000000e0a1', 1, 'item',     '00000000-0000-0000-0000-00000000c003', 3, 1000, 0),
+  ('00000000-0000-0000-0000-0000f0a10002', '00000000-0000-0000-0000-00000000e0a1', 2, 'item',     '00000000-0000-0000-0000-00000000c004', 1, 7000, 0),
+  ('00000000-0000-0000-0000-0000f0a10003', '00000000-0000-0000-0000-00000000e0a1', 3, 'discount', null,                                   0, 0,    -1000);
+do $$ begin
+  perform erp_post_document('00000000-0000-0000-0000-00000000e0a1');
+  assert (select amount_untaxed from erp_documents where id = '00000000-0000-0000-0000-00000000e0a1') = 9000, 'S 未稅 9,000';
+end $$;
+
+-- 銷退草稿：e0a2 原價全退 10,000（超過）、e0a3 稅別不同、e0a4 幣別不同、e0a5 淨價退油 3 @ 900、
+-- e0a6 安裝 1 @ 6,301、e0a7 安裝 1 @ 6,400 + 折扣 −100、e0a8 作廢 e0a5 後再退油 3 @ 900
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, source_doc_id, tax_type, currency, exchange_rate) values
+  ('00000000-0000-0000-0000-00000000e0a2', 'SR', '2026-09-21', '00000000-0000-0000-0000-00000000d002', erp_test.main(), '00000000-0000-0000-0000-00000000e0a1', 'excluded', 'TWD', 1),
+  ('00000000-0000-0000-0000-00000000e0a3', 'SR', '2026-09-21', '00000000-0000-0000-0000-00000000d002', erp_test.main(), '00000000-0000-0000-0000-00000000e0a1', 'included', 'TWD', 1),
+  ('00000000-0000-0000-0000-00000000e0a4', 'SR', '2026-09-21', '00000000-0000-0000-0000-00000000d002', erp_test.main(), '00000000-0000-0000-0000-00000000e0a1', 'excluded', 'USD', 30),
+  ('00000000-0000-0000-0000-00000000e0a5', 'SR', '2026-09-21', '00000000-0000-0000-0000-00000000d002', erp_test.main(), '00000000-0000-0000-0000-00000000e0a1', 'excluded', 'TWD', 1),
+  ('00000000-0000-0000-0000-00000000e0a6', 'SR', '2026-09-21', '00000000-0000-0000-0000-00000000d002', erp_test.main(), '00000000-0000-0000-0000-00000000e0a1', 'excluded', 'TWD', 1),
+  ('00000000-0000-0000-0000-00000000e0a7', 'SR', '2026-09-21', '00000000-0000-0000-0000-00000000d002', erp_test.main(), '00000000-0000-0000-0000-00000000e0a1', 'excluded', 'TWD', 1),
+  ('00000000-0000-0000-0000-00000000e0a8', 'SR', '2026-09-22', '00000000-0000-0000-0000-00000000d002', erp_test.main(), '00000000-0000-0000-0000-00000000e0a1', 'excluded', 'TWD', 1);
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price, amount, source_line_id) values
+  ('00000000-0000-0000-0000-00000000e0a2', 1, 'item', '00000000-0000-0000-0000-00000000c003', 3, 1000, 0, '00000000-0000-0000-0000-0000f0a10001'),
+  ('00000000-0000-0000-0000-00000000e0a2', 2, 'item', '00000000-0000-0000-0000-00000000c004', 1, 7000, 0, '00000000-0000-0000-0000-0000f0a10002'),
+  ('00000000-0000-0000-0000-00000000e0a3', 1, 'item', '00000000-0000-0000-0000-00000000c003', 1, 900,  0, '00000000-0000-0000-0000-0000f0a10001'),
+  ('00000000-0000-0000-0000-00000000e0a4', 1, 'item', '00000000-0000-0000-0000-00000000c003', 1, 30,   0, '00000000-0000-0000-0000-0000f0a10001'),
+  ('00000000-0000-0000-0000-00000000e0a5', 1, 'item', '00000000-0000-0000-0000-00000000c003', 3, 900,  0, '00000000-0000-0000-0000-0000f0a10001'),
+  ('00000000-0000-0000-0000-00000000e0a6', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 6301, 0, '00000000-0000-0000-0000-0000f0a10002'),
+  ('00000000-0000-0000-0000-00000000e0a7', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 6400, 0, '00000000-0000-0000-0000-0000f0a10002'),
+  ('00000000-0000-0000-0000-00000000e0a8', 1, 'item', '00000000-0000-0000-0000-00000000c003', 3, 900,  0, '00000000-0000-0000-0000-0000f0a10001');
+insert into erp_document_lines (document_id, line_no, line_type, qty, unit_price, amount) values
+  ('00000000-0000-0000-0000-00000000e0a7', 2, 'discount', 0, 0, -100);
+
+-- 原價全退：10,000 > 9,000
+select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e0a2')$q$, 'validation');
+-- 稅別、幣別需與原單相同
+select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e0a3')$q$, 'validation');
+select erp_test.expect_error($q$select erp_post_document('00000000-0000-0000-0000-00000000e0a4')$q$, 'validation');
+
+do $$
+declare v_detail text; v_oil numeric;
+begin
+  assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e0a2') = 'draft', '超額銷退維持草稿';
+  begin
+    perform erp_post_document('00000000-0000-0000-0000-00000000e0a3');
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    assert v_detail like '銷退單的幣別、稅別需與原銷貨單 S% 相同（TWD／外加稅）', format('稅別訊息 %s', v_detail);
+  end;
+
+  -- 淨價退油 3 @ 900 = 2,700：過帳成功（另一張超額草稿 e0a2 不計入累計）
+  v_oil := erp_test.qty('00000000-0000-0000-0000-00000000c003', erp_test.main());
+  perform erp_post_document('00000000-0000-0000-0000-00000000e0a5');
+  assert erp_test.qty('00000000-0000-0000-0000-00000000c003', erp_test.main()) = v_oil + 3, '淨價銷退入庫';
+
+  -- 安裝 1 @ 6,301 → 累計 9,001 > 9,000
+  begin
+    perform erp_post_document('00000000-0000-0000-0000-00000000e0a6');
+    raise exception '應被擋下';
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    assert sqlerrm = 'validation'
+       and v_detail like '累計銷退金額 9001.00 超過原銷貨單 S% 的金額 9000.00（本單 6301.00、其他已過帳銷退 2700.00）%',
+      format('累計超額訊息 %s / %s', sqlerrm, v_detail);
+  end;
+  assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e0a6') = 'draft', '超額銷退維持草稿';
+
+  -- 安裝 1 @ 6,400 + 本單折扣 −100 = 6,300 → 累計 9,000 = 上限：成功（折扣行計入）
+  perform erp_post_document('00000000-0000-0000-0000-00000000e0a7');
+  assert (select amount_untaxed from erp_documents where id = '00000000-0000-0000-0000-00000000e0a7') = 6300, '銷退含折扣行';
+
+  -- 作廢的銷退單不計：作廢 e0a5 後再退油 3 @ 900 → 累計 6,300 + 2,700 = 9,000，成功
+  perform erp_void_document('00000000-0000-0000-0000-00000000e0a5', '測試');
+  perform erp_post_document('00000000-0000-0000-0000-00000000e0a8');
+  assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e0a8') = 'posted', '作廢後可再退';
+  raise notice 'ok  銷退累計金額上限（0028）';
+end $$;
+
 reset role;
 do $$ begin
   assert exists (select 1 from mx_customers where id = '00000000-0000-0000-0000-00000000d009'), 'mx_customers 未被刪';

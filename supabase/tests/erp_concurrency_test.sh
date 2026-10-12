@@ -164,6 +164,30 @@ insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qt
 insert into erp_document_line_serials (line_id, serial_id)
   select '00000000-0000-0000-0000-0000000700f1', id from erp_serials where serial_no = 'R7-001';
 select erp_post_document('00000000-0000-0000-0000-0000000700a1');
+
+-- R8（#233）：S 兩行各 1 × 1,000、折扣 −1,000 → 明細合計 1,000；兩張銷退草稿各退不同行 1,000
+insert into erp_items (id, code, name, kind, track_serial, track_stock, mx_card_type) values
+  ('00000000-0000-0000-0000-0000000801c0', 'R8A', 'r8a', 'part', false, true, null),
+  ('00000000-0000-0000-0000-0000000802c0', 'R8B', 'r8b', 'part', false, true, null);
+insert into erp_documents (id, doc_type, doc_date, vendor_id, warehouse_id) values
+  ('00000000-0000-0000-0000-0000000800a0', 'I', '2026-09-01', '00000000-0000-0000-0000-00000000b001', (select wh from ids));
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-0000000800a0', 1, 'item', '00000000-0000-0000-0000-0000000801c0', 5, 100),
+  ('00000000-0000-0000-0000-0000000800a0', 2, 'item', '00000000-0000-0000-0000-0000000802c0', 5, 100);
+select erp_post_document('00000000-0000-0000-0000-0000000800a0');
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id) values
+  ('00000000-0000-0000-0000-0000000800a1', 'S', '2026-09-02', '00000000-0000-0000-0000-00000000d001', (select wh from ids));
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price, amount) values
+  ('00000000-0000-0000-0000-0000000801f1', '00000000-0000-0000-0000-0000000800a1', 1, 'item', '00000000-0000-0000-0000-0000000801c0', 1, 1000, 0),
+  ('00000000-0000-0000-0000-0000000802f1', '00000000-0000-0000-0000-0000000800a1', 2, 'item', '00000000-0000-0000-0000-0000000802c0', 1, 1000, 0),
+  ('00000000-0000-0000-0000-0000000803f1', '00000000-0000-0000-0000-0000000800a1', 3, 'discount', null, 0, 0, -1000);
+select erp_post_document('00000000-0000-0000-0000-0000000800a1');
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, source_doc_id) values
+  ('00000000-0000-0000-0000-0000000800a2', 'SR', '2026-09-03', '00000000-0000-0000-0000-00000000d001', (select wh from ids), '00000000-0000-0000-0000-0000000800a1'),
+  ('00000000-0000-0000-0000-0000000800a3', 'SR', '2026-09-03', '00000000-0000-0000-0000-00000000d001', (select wh from ids), '00000000-0000-0000-0000-0000000800a1');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price, source_line_id) values
+  ('00000000-0000-0000-0000-0000000800a2', 1, 'item', '00000000-0000-0000-0000-0000000801c0', 1, 1000, '00000000-0000-0000-0000-0000000801f1'),
+  ('00000000-0000-0000-0000-0000000800a3', 1, 'item', '00000000-0000-0000-0000-0000000802c0', 1, 1000, '00000000-0000-0000-0000-0000000802f1');
 SQL
 
 FAILS=0
@@ -260,6 +284,13 @@ expect_no_error "B 作廢銷貨成功" "$OUT_B"
 expect_grep "B 回傳保留機台警告" "$OUT_B" "保養紀錄"
 expect_eq "保養卡機台仍存在" "$(val "select count(*) from mx_machines where serial_no = 'R7-001'")" "1"
 expect_eq "保養紀錄未被 cascade 刪除" "$(val "select count(*) from mx_records where note = 'race'")" "1"
+
+echo "== R8（#233）兩張銷退單同時退同一銷貨單的不同行，各自未超過、合計超過原單金額"
+race "select erp_post_document('00000000-0000-0000-0000-0000000800a2');" \
+     "select erp_post_document('00000000-0000-0000-0000-0000000800a3');"
+expect_no_error "A 銷退過帳成功" "$OUT_A"
+expect_grep "B 銷退過帳累計金額超過被拒" "$OUT_B" "累計銷退金額"
+expect_eq "已過帳銷退數" "$(val "select count(*) from erp_documents where id in ('00000000-0000-0000-0000-0000000800a2','00000000-0000-0000-0000-0000000800a3') and status = 'posted'")" "1"
 
 if [ "$FAILS" -ne 0 ]; then
   echo "==> ERP CONCURRENCY TESTS FAILED（$FAILS 項）" >&2
