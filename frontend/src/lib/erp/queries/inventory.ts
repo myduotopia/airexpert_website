@@ -3,6 +3,7 @@
 // 存量 / 庫存帳 / 機號為帳務表，用戶端唯讀；異動一律經過帳 RPC。
 import "server-only";
 
+import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
 import type {
   StockLevelRow,
@@ -17,26 +18,19 @@ import type {
 
 export const INVENTORY_PAGE_SIZE = 50;
 
-/** PostgREST 單次回傳上限為 1000 列；帳務表需分頁讀完。 */
-const FETCH_CHUNK = 1000;
-
 type QueryResult = {
   data: unknown[] | null;
   error: { message: string } | null;
 };
 
+/** PostgREST 單次回傳上限為 1000 列；帳務表需分頁讀完（共用 fetchAllRows，任一頁失敗 throw）。 */
 async function fetchAll<T>(
   label: string,
   build: (from: number, to: number) => PromiseLike<QueryResult>,
 ): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0; ; from += FETCH_CHUNK) {
-    const { data, error } = await build(from, from + FETCH_CHUNK - 1);
-    if (error) throw new Error(`讀取${label}失敗：${error.message}`);
-    const rows = (data ?? []) as T[];
-    out.push(...rows);
-    if (rows.length < FETCH_CHUNK) return out;
-  }
+  const { data, error } = await fetchAllRows<T, { message: string }>(build);
+  if (error) throw new Error(`讀取${label}失敗：${error.message}`);
+  return data;
 }
 
 /** PostgREST or / ilike 值不可含結構字元。 */

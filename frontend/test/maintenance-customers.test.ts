@@ -17,7 +17,17 @@ import {
 type Result = { data: unknown; error: { message: string } | null };
 type Call = { table: string; method: string; args: unknown[] };
 
-const CHAIN = ["select", "eq", "neq", "order", "ilike", "is", "not", "limit"];
+const CHAIN = [
+  "select",
+  "eq",
+  "neq",
+  "order",
+  "ilike",
+  "is",
+  "not",
+  "limit",
+  "range",
+];
 
 /**
  * 依 table 名稱回傳預設結果的假 client。值給陣列時依序取用（同一 table 多次查詢）。
@@ -126,6 +136,57 @@ describe("listCustomers", () => {
       mx_customers: { data: null, error: { message: "boom" } },
     });
     await expect(listCustomers()).rejects.toThrow(/讀取客戶失敗：boom/);
+  });
+
+  it("超過 1,000 位客戶 → 以 range 分頁讀完（#229，PostgREST 單次上限 1,000 列）", async () => {
+    const customer = (i: number) => ({
+      id: `c${i}`,
+      name: `客戶${i}`,
+      code: null,
+      mx_machines: [],
+    });
+    const calls = fakeSupabase({
+      mx_customers: [
+        {
+          data: Array.from({ length: 1000 }, (_, i) => customer(i)),
+          error: null,
+        },
+        { data: [customer(1000)], error: null },
+      ],
+    });
+    const rows = await listCustomers();
+    expect(rows).toHaveLength(1001);
+    expect(rows[1000].name).toBe("客戶1000");
+    expect(
+      calls.filter((c) => c.method === "range").map((c) => c.args),
+    ).toEqual([
+      [0, 999],
+      [1000, 1999],
+    ]);
+    // 排序最後加 id，讓分頁穩定。
+    expect(
+      calls
+        .filter((c) => c.method === "order")
+        .slice(0, 3)
+        .map((c) => c.args[0]),
+    ).toEqual(["code", "name", "id"]);
+  });
+
+  it("第二頁失敗 → 丟錯，不回第一頁的部分資料", async () => {
+    fakeSupabase({
+      mx_customers: [
+        {
+          data: Array.from({ length: 1000 }, (_, i) => ({
+            id: `c${i}`,
+            name: `客戶${i}`,
+            mx_machines: [],
+          })),
+          error: null,
+        },
+        { data: null, error: { message: "timeout" } },
+      ],
+    });
+    await expect(listCustomers()).rejects.toThrow(/讀取客戶失敗：timeout/);
   });
 });
 

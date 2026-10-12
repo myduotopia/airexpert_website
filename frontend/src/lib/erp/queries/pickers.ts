@@ -1,8 +1,11 @@
 // ERP 表單下拉選項查詢 — SERVER ONLY。
 // server component 讀出後以 props 傳給 components/erp 的 Picker（client 端搜尋）。
 // 讀取走登入者 session（RLS：has_module('erp')）；錯誤 throw（同保養卡 DAL 的讀取慣例）。
+// PostgREST 單次最多回 1,000 列且會靜默截斷（#229）：選項一律以 fetchAllRows 分頁讀完，
+// 排序最後加 id 讓分頁穩定；任一頁失敗即 throw，不回部分選項。
 import "server-only";
 
+import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
 import type {
   CustomerOption,
@@ -28,19 +31,19 @@ export async function listItemOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<ItemOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase.from("erp_items").select(ITEM_OPTION_COLUMNS);
-  if (!opts.includeInactive) query = query.eq("active", true);
-  const { data, error } = await query.order("code");
+  const { data, error } = await fetchAllRows<ItemOption>((from, to) => {
+    let query = supabase.from("erp_items").select(ITEM_OPTION_COLUMNS);
+    if (!opts.includeInactive) query = query.eq("active", true);
+    return query.order("code").order("id").range(from, to);
+  });
   if (error) throw new Error(`讀取品項失敗：${error.message}`);
-  return (data ?? []) as ItemOption[];
+  return data;
 }
-
-const MODEL_PAGE_SIZE = 1000;
 
 /**
  * 保養卡 / 維護報告單上出現過的機型（去重、排序），供報價單自由輸入品項時搜尋帶入。
  * 讀 mx_machines（erp 有 select policy）與 sr_reports（僅有 service_report 模組時讀得到，
- * 讀不到即略過）；PostgREST 單次上限 1000 筆，分頁讀完。
+ * 讀取失敗即整段略過、不帶入部分資料）；PostgREST 單次上限 1000 筆，兩表皆分頁讀完。
  */
 export async function listMachineModelOptions(): Promise<string[]> {
   const supabase = await getServerSupabase();
@@ -52,25 +55,29 @@ export async function listMachineModelOptions(): Promise<string[]> {
     }
   };
 
-  for (let from = 0; ; from += MODEL_PAGE_SIZE) {
-    const { data, error } = await supabase
+  const machines = await fetchAllRows<{ model: string | null }>((from, to) =>
+    supabase
       .from("mx_machines")
       .select("model")
       .is("archived_at", null)
       .not("model", "is", null)
       .order("id")
-      .range(from, from + MODEL_PAGE_SIZE - 1);
-    if (error) throw new Error(`讀取保養卡機型失敗：${error.message}`);
-    add((data ?? []) as { model: string | null }[]);
-    if (!data || data.length < MODEL_PAGE_SIZE) break;
+      .range(from, to),
+  );
+  if (machines.error) {
+    throw new Error(`讀取保養卡機型失敗：${machines.error.message}`);
   }
+  add(machines.data);
 
-  const { data: reports } = await supabase
-    .from("sr_reports")
-    .select("model")
-    .not("model", "is", null)
-    .limit(MODEL_PAGE_SIZE);
-  add((reports ?? []) as { model: string | null }[]);
+  const reports = await fetchAllRows<{ model: string | null }>((from, to) =>
+    supabase
+      .from("sr_reports")
+      .select("model")
+      .not("model", "is", null)
+      .order("id")
+      .range(from, to),
+  );
+  if (reports.data) add(reports.data);
 
   return [...models.values()].sort((a, b) => a.localeCompare(b, "zh-Hant"));
 }
@@ -80,11 +87,13 @@ export async function listCustomerOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<CustomerOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase.from("mx_customers").select(CUSTOMER_OPTION_COLUMNS);
-  if (!opts.includeInactive) query = query.eq("erp_active", true);
-  const { data, error } = await query.order("name");
+  const { data, error } = await fetchAllRows<CustomerOption>((from, to) => {
+    let query = supabase.from("mx_customers").select(CUSTOMER_OPTION_COLUMNS);
+    if (!opts.includeInactive) query = query.eq("erp_active", true);
+    return query.order("name").order("id").range(from, to);
+  });
   if (error) throw new Error(`讀取客戶失敗：${error.message}`);
-  return (data ?? []) as CustomerOption[];
+  return data;
 }
 
 /** 廠商選項（預設只列啟用中）。 */
@@ -92,11 +101,13 @@ export async function listVendorOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<VendorOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase.from("erp_vendors").select(VENDOR_OPTION_COLUMNS);
-  if (!opts.includeInactive) query = query.eq("active", true);
-  const { data, error } = await query.order("code");
+  const { data, error } = await fetchAllRows<VendorOption>((from, to) => {
+    let query = supabase.from("erp_vendors").select(VENDOR_OPTION_COLUMNS);
+    if (!opts.includeInactive) query = query.eq("active", true);
+    return query.order("code").order("id").range(from, to);
+  });
   if (error) throw new Error(`讀取廠商失敗：${error.message}`);
-  return (data ?? []) as VendorOption[];
+  return data;
 }
 
 /** 倉庫選項（預設倉排最前）。 */
@@ -104,13 +115,19 @@ export async function listWarehouseOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<WarehouseOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase.from("erp_warehouses").select(WAREHOUSE_OPTION_COLUMNS);
-  if (!opts.includeInactive) query = query.eq("active", true);
-  const { data, error } = await query
-    .order("is_default", { ascending: false })
-    .order("code");
+  const { data, error } = await fetchAllRows<WarehouseOption>((from, to) => {
+    let query = supabase
+      .from("erp_warehouses")
+      .select(WAREHOUSE_OPTION_COLUMNS);
+    if (!opts.includeInactive) query = query.eq("active", true);
+    return query
+      .order("is_default", { ascending: false })
+      .order("code")
+      .order("id")
+      .range(from, to);
+  });
   if (error) throw new Error(`讀取倉庫失敗：${error.message}`);
-  return (data ?? []) as WarehouseOption[];
+  return data;
 }
 
 /**
@@ -139,25 +156,25 @@ export async function listAvailableSerials(params: {
   const out: SerialOption[] = [];
   for (let c = 0; c < itemIds.length; c += SERIAL_ITEM_CHUNK) {
     const chunk = itemIds.slice(c, c + SERIAL_ITEM_CHUNK);
-    for (let from = 0; ; from += SERIAL_PAGE_SIZE) {
-      let query = supabase
-        .from("erp_serials")
-        .select("id, item_id, serial_no, status, warehouse_id, customer_id")
-        .in("item_id", chunk)
-        .eq("status", params.status);
-      if (params.warehouseId) {
-        query = query.eq("warehouse_id", params.warehouseId);
-      }
-      if (params.customerId) query = query.eq("customer_id", params.customerId);
-      const { data, error } = await query
-        .order("serial_no")
-        .order("id")
-        .range(from, from + SERIAL_PAGE_SIZE - 1);
-      if (error) throw new Error(`讀取機號失敗：${error.message}`);
-      const rows = (data ?? []) as SerialOption[];
-      out.push(...rows);
-      if (rows.length < SERIAL_PAGE_SIZE) break;
-    }
+    const { data, error } = await fetchAllRows<SerialOption>(
+      (from, to) => {
+        let query = supabase
+          .from("erp_serials")
+          .select("id, item_id, serial_no, status, warehouse_id, customer_id")
+          .in("item_id", chunk)
+          .eq("status", params.status);
+        if (params.warehouseId) {
+          query = query.eq("warehouse_id", params.warehouseId);
+        }
+        if (params.customerId) {
+          query = query.eq("customer_id", params.customerId);
+        }
+        return query.order("serial_no").order("id").range(from, to);
+      },
+      { pageSize: SERIAL_PAGE_SIZE },
+    );
+    if (error) throw new Error(`讀取機號失敗：${error.message}`);
+    out.push(...data);
   }
   if (itemIds.length > SERIAL_ITEM_CHUNK) {
     // 多批時合併後重新排序（單批已由 DB 排好）。

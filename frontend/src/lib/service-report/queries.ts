@@ -2,6 +2,7 @@
 // has_module('service_report') 擋（sr_reports、mx_customers / mx_machines 的 select policy）。
 import "server-only";
 
+import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { srErrorMessage } from "./errors";
 import type { SrCustomerOption, SrMachineOption } from "./prefill";
@@ -158,38 +159,49 @@ export async function getReport(
   return { ok: true, data: (data as ServiceReport | null) ?? null };
 }
 
-/** 客戶選單（帶入用），依客戶編號 → 名稱排序。 */
+/**
+ * 客戶選單（帶入用），依客戶編號 → 名稱排序。
+ * mx_customers 與 ERP 共用、可能超過 1000 列：以 fetchAllRows 分頁讀完（#229），任一頁失敗回錯誤。
+ */
 export async function listCustomerOptions(): Promise<
   SrResult<SrCustomerOption[]>
 > {
   const supabase = await getServerSupabase();
-  const { data, error } = await supabase
-    .from("mx_customers")
-    .select(
-      "id, code, name, invoice_title, phone, tax_id, contact_person, address",
-    )
-    .order("code", { ascending: true, nullsFirst: false })
-    .order("name", { ascending: true });
+  const { data, error } = await fetchAllRows<SrCustomerOption>((from, to) =>
+    supabase
+      .from("mx_customers")
+      .select(
+        "id, code, name, invoice_title, phone, tax_id, contact_person, address",
+      )
+      .order("code", { ascending: true, nullsFirst: false })
+      .order("name", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (error) return { ok: false, error: srErrorMessage(error) };
-  return { ok: true, data: (data ?? []) as SrCustomerOption[] };
+  return { ok: true, data };
 }
 
-/** 機台選單（未封存），可限定客戶；依代號 → 機號排序。 */
+/** 機台選單（未封存），可限定客戶；依代號 → 機號排序；分頁讀完（#229）。 */
 export async function listMachineOptions(
   customerId?: string | null,
 ): Promise<SrResult<SrMachineOption[]>> {
   if (customerId && !isUuid(customerId)) return { ok: true, data: [] };
   const supabase = await getServerSupabase();
-  let query = supabase
-    .from("mx_machines")
-    .select(
-      "id, customer_id, card_type, machine_no, serial_no, model, horsepower, voltage",
-    )
-    .is("archived_at", null);
-  if (customerId) query = query.eq("customer_id", customerId);
-  const { data, error } = await query
-    .order("machine_no", { ascending: true, nullsFirst: false })
-    .order("serial_no", { ascending: true, nullsFirst: false });
+  const { data, error } = await fetchAllRows<SrMachineOption>((from, to) => {
+    let query = supabase
+      .from("mx_machines")
+      .select(
+        "id, customer_id, card_type, machine_no, serial_no, model, horsepower, voltage",
+      )
+      .is("archived_at", null);
+    if (customerId) query = query.eq("customer_id", customerId);
+    return query
+      .order("machine_no", { ascending: true, nullsFirst: false })
+      .order("serial_no", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true })
+      .range(from, to);
+  });
   if (error) return { ok: false, error: srErrorMessage(error) };
-  return { ok: true, data: (data ?? []) as SrMachineOption[] };
+  return { ok: true, data };
 }

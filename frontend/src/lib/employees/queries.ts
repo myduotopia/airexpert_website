@@ -3,6 +3,7 @@
 // 讀取錯誤 throw（同 lib/erp/queries/pickers.ts 慣例）。
 import "server-only";
 
+import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
 import type { Employee, EmployeeOption, EmployeeRole } from "./types";
 
@@ -17,16 +18,21 @@ function sanitizeSearch(q: string | null | undefined): string {
   return (q ?? "").replace(/[,()"\\%*]/g, " ").trim();
 }
 
-/** 選取器選項（預設只列在職；角色篩選在 client 端依欄位用途進行）。 */
+/**
+ * 選取器選項（預設只列在職；角色篩選在 client 端依欄位用途進行）。
+ * 以 fetchAllRows 分頁讀完（PostgREST 單次上限 1000 列，#229）；任一頁失敗即 throw。
+ */
 export async function listEmployeeOptions(
   opts: { includeInactive?: boolean } = {},
 ): Promise<EmployeeOption[]> {
   const supabase = await getServerSupabase();
-  let query = supabase.from("employees").select(EMPLOYEE_OPTION_COLUMNS);
-  if (!opts.includeInactive) query = query.eq("active", true);
-  const { data, error } = await query.order("name");
+  const { data, error } = await fetchAllRows<EmployeeOption>((from, to) => {
+    let query = supabase.from("employees").select(EMPLOYEE_OPTION_COLUMNS);
+    if (!opts.includeInactive) query = query.eq("active", true);
+    return query.order("name").order("id").range(from, to);
+  });
   if (error) throw new Error(`讀取員工失敗：${error.message}`);
-  return (data ?? []) as EmployeeOption[];
+  return data;
 }
 
 export interface ListEmployeesParams {
