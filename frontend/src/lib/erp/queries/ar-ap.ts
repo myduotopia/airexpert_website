@@ -3,6 +3,7 @@
 // 寫入一律經 lib/erp/rpc.ts（erp_payments 用戶端只可改 check_status / note）。
 import "server-only";
 
+import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { erpErrorMessage } from "../errors";
 import { ensureErp } from "../guard";
@@ -282,7 +283,10 @@ export async function getPaymentDetail(
 
 // ── 未沖銷單據 ───────────────────────────────────────────────
 
-/** 對象的未沖銷單據（erp_document_balances，outstanding ≠ 0，舊→新）。 */
+/**
+ * 對象的未沖銷單據（erp_document_balances，outstanding ≠ 0，舊→新）。
+ * 沖銷畫面需要完整清單：以 fetchAllRows 分頁讀完（#229），任一頁失敗回錯誤。
+ */
 export async function listOutstandingDocuments(
   direction: PaymentDirection,
   partyId: string,
@@ -291,20 +295,24 @@ export async function listOutstandingDocuments(
   if (denied) return denied;
   if (!partyId) return { ok: true, data: [] };
   const supabase = await getServerSupabase();
-  const { data, error } = await supabase
-    .from("erp_document_balances")
-    .select(
-      "document_id, doc_type, doc_no, doc_date, customer_id, vendor_id, total_twd, allocated, outstanding",
-    )
-    .eq(direction === "in" ? "customer_id" : "vendor_id", partyId)
-    .in("doc_type", docTypesForDirection(direction))
-    .neq("outstanding", 0)
-    .order("doc_date", { ascending: true })
-    .order("doc_no", { ascending: true });
+  const { data, error } = await fetchAllRows<ErpDocumentBalance>((from, to) =>
+    supabase
+      .from("erp_document_balances")
+      .select(
+        "document_id, doc_type, doc_no, doc_date, customer_id, vendor_id, total_twd, allocated, outstanding",
+      )
+      .eq(direction === "in" ? "customer_id" : "vendor_id", partyId)
+      .in("doc_type", docTypesForDirection(direction))
+      .neq("outstanding", 0)
+      .order("doc_date", { ascending: true })
+      .order("doc_no", { ascending: true })
+      .order("document_id", { ascending: true })
+      .range(from, to),
+  );
   if (error) return { ok: false, error: erpErrorMessage(error) };
   return {
     ok: true,
-    data: ((data ?? []) as ErpDocumentBalance[]).map((d) => ({
+    data: data.map((d) => ({
       ...d,
       total_twd: Number(d.total_twd),
       allocated: Number(d.allocated),
@@ -333,9 +341,7 @@ export interface StatementData {
   statement: Statement;
 }
 
-const CHUNK = 1000;
-
-/** 逐段讀完（PostgREST 單次上限 1000 列）。 */
+/** 逐段讀完（PostgREST 單次上限 1000 列；共用 fetchAllRows，失敗時 rows 為空）。 */
 async function fetchAll<T>(
   run: (
     from: number,
@@ -345,15 +351,13 @@ async function fetchAll<T>(
     error: { message?: string; details?: string } | null;
   }>,
 ): Promise<{ rows: T[]; error: string | null }> {
-  const rows: T[] = [];
-  for (let start = 0; ; start += CHUNK) {
-    const { data, error } = await run(start, start + CHUNK - 1);
-    if (error) return { rows, error: erpErrorMessage(error) };
-    const chunk = (data ?? []) as T[];
-    rows.push(...chunk);
-    if (chunk.length < CHUNK) break;
-  }
-  return { rows, error: null };
+  const { data, error } = await fetchAllRows<
+    T,
+    { message?: string; details?: string }
+  >(run);
+  return error
+    ? { rows: [], error: erpErrorMessage(error) }
+    : { rows: data, error: null };
 }
 
 /**

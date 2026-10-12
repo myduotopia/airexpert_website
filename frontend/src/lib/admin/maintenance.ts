@@ -1,5 +1,6 @@
 // 保養卡 DAL — SERVER ONLY。讀寫走登入者 session，靠 mx_* 的 office RLS 擋。
 import "server-only";
+import { fetchAllRows } from "../fetch-all-rows";
 import { getServerSupabase } from "../supabase-server";
 import {
   normalizeSerial,
@@ -124,31 +125,46 @@ function mapMachineListRow(m: Record<string, unknown>): MxMachineListItem {
   };
 }
 
-/** 使用中的保養卡列表。傳 cardType 可只取單一卡別；省略則不分卡別全取。 */
+/**
+ * 使用中的保養卡列表。傳 cardType 可只取單一卡別；省略則不分卡別全取。
+ * 全表讀取：以 fetchAllRows 分頁讀完（PostgREST 單次上限 1000 列，#229），任一頁失敗即 throw。
+ */
 export async function listMachines(
   cardType?: MxCardType,
 ): Promise<MxMachineListItem[]> {
   const supabase = await getServerSupabase();
-  let query = supabase
-    .from("mx_machines")
-    .select("*, mx_customers(name), mx_records(service_date)")
-    .is("archived_at", null);
-  if (cardType) query = query.eq("card_type", cardType);
-  const { data, error } = await query.order("created_at", { ascending: false });
+  const { data, error } = await fetchAllRows<Record<string, unknown>>(
+    (from, to) => {
+      let query = supabase
+        .from("mx_machines")
+        .select("*, mx_customers(name), mx_records(service_date)")
+        .is("archived_at", null);
+      if (cardType) query = query.eq("card_type", cardType);
+      return query
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to);
+    },
+  );
   if (error) throw new Error(`讀取保養卡失敗：${error.message}`);
-  return (data ?? []).map(mapMachineListRow);
+  return data.map(mapMachineListRow);
 }
 
-/** 封存區列表：僅已封存的卡，依封存時間新到舊排序。 */
+/** 封存區列表：僅已封存的卡，依封存時間新到舊排序；分頁讀完（#229）。 */
 export async function listArchivedMachines(): Promise<MxMachineListItem[]> {
   const supabase = await getServerSupabase();
-  const { data, error } = await supabase
-    .from("mx_machines")
-    .select("*, mx_customers(name), mx_records(service_date)")
-    .not("archived_at", "is", null)
-    .order("archived_at", { ascending: false });
+  const { data, error } = await fetchAllRows<Record<string, unknown>>(
+    (from, to) =>
+      supabase
+        .from("mx_machines")
+        .select("*, mx_customers(name), mx_records(service_date)")
+        .not("archived_at", "is", null)
+        .order("archived_at", { ascending: false })
+        .order("id")
+        .range(from, to),
+  );
   if (error) throw new Error(`讀取封存區失敗：${error.message}`);
-  return (data ?? []).map(mapMachineListRow);
+  return data.map(mapMachineListRow);
 }
 
 export async function getMachine(id: string): Promise<{
@@ -519,17 +535,25 @@ export interface MxCustomerMachine extends MxMachine {
   last_service_date: string | null;
 }
 
-/** 客戶列表：含使用中機台數與最後保養日，依客戶編號排序。 */
+/**
+ * 客戶列表：含使用中機台數與最後保養日，依客戶編號排序。
+ * mx_customers 與 ERP 共用、可能超過 1000 列：分頁讀完（#229），任一頁失敗即 throw。
+ */
 export async function listCustomers(): Promise<MxCustomerListItem[]> {
   const supabase = await getServerSupabase();
-  const { data, error } = await supabase
-    .from("mx_customers")
-    .select("*, mx_machines(archived_at, mx_records(service_date))")
-    .order("code", { ascending: true, nullsFirst: false })
-    .order("name", { ascending: true });
+  const { data, error } = await fetchAllRows<Record<string, unknown>>(
+    (from, to) =>
+      supabase
+        .from("mx_customers")
+        .select("*, mx_machines(archived_at, mx_records(service_date))")
+        .order("code", { ascending: true, nullsFirst: false })
+        .order("name", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+  );
   if (error) throw new Error(`讀取客戶失敗：${error.message}`);
 
-  return (data ?? []).map((row) => {
+  return data.map((row) => {
     const r = row as Record<string, unknown>;
     const machines =
       (r.mx_machines as {

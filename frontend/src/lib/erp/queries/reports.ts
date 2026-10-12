@@ -4,6 +4,7 @@
 // 資料量大時可改為 DB view 彙總（本期不新增 migration）。
 import "server-only";
 
+import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { employeeNameKey } from "@/lib/employees/normalize";
 import { erpErrorMessage } from "../errors";
@@ -33,12 +34,12 @@ import type { ErpResult, PartyType } from "../types";
 
 type Supabase = Awaited<ReturnType<typeof getServerSupabase>>;
 
-const CHUNK = 1000;
 /** .in() 一次帶入的 id 數（避免 URL 過長）。 */
 const ID_CHUNK = 150;
 
 class QueryError extends Error {}
 
+/** 分頁讀完（共用 fetchAllRows）；任一頁失敗 throw，由 wrap 轉成 ok:false。 */
 async function fetchAll<T>(
   run: (
     from: number,
@@ -48,14 +49,12 @@ async function fetchAll<T>(
     error: { message?: string; details?: string } | null;
   }>,
 ): Promise<T[]> {
-  const rows: T[] = [];
-  for (let start = 0; ; start += CHUNK) {
-    const { data, error } = await run(start, start + CHUNK - 1);
-    if (error) throw new QueryError(erpErrorMessage(error));
-    const chunk = (data ?? []) as T[];
-    rows.push(...chunk);
-    if (chunk.length < CHUNK) return rows;
-  }
+  const { data, error } = await fetchAllRows<
+    T,
+    { message?: string; details?: string }
+  >(run);
+  if (error) throw new QueryError(erpErrorMessage(error));
+  return data;
 }
 
 function chunks<T>(arr: T[], size: number): T[][] {
