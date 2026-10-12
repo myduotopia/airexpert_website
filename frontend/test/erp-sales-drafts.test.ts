@@ -376,10 +376,12 @@ describe("銷退：saleToReturnDraft / returnableLines / validateReturnQty", () 
     { tax_type: "exempt" },
   );
 
-  it("只帶尚可退的 item 行，數量上限 = 銷貨 − 已退", () => {
+  it("只帶尚可退的 item 行，數量上限 = 銷貨 − 已退；單價為折扣分攤後淨價（#233）", () => {
+    // 折扣 −38,000 依品項金額比例分攤：177,000 / 215,000 → sl-1 160,535、sl-2 3,293 × 5 = 16,465。
     const draft = saleToReturnDraft(sale, {
       docDate: "2026-09-20",
       returnedQtyByLine: { "sl-1": 1, "sl-2": 2 },
+      returnedAmountByLine: { "sl-1": 160535, "sl-2": 6586 },
     });
     expect(draft).toMatchObject({
       doc_type: "SR",
@@ -395,7 +397,7 @@ describe("銷退：saleToReturnDraft / returnableLines / validateReturnQty", () 
         l.qty,
         l.unit_price,
       ]),
-    ).toEqual([["sl-2", "TOK-0360-S", 3, 4000]]);
+    ).toEqual([["sl-2", "TOK-0360-S", 3, 3293]]);
   });
 
   it("全部退完 → 無明細", () => {
@@ -403,6 +405,7 @@ describe("銷退：saleToReturnDraft / returnableLines / validateReturnQty", () 
       saleToReturnDraft(sale, {
         docDate: "2026-09-20",
         returnedQtyByLine: { "sl-1": 1, "sl-2": 5 },
+        returnedAmountByLine: {},
       }).lines,
     ).toEqual([]);
   });
@@ -418,6 +421,68 @@ describe("銷退：saleToReturnDraft / returnableLines / validateReturnQty", () 
     ).toEqual([
       ["sl-1", 1, 0, 1],
       ["sl-2", 5, 9, 0],
+    ]);
+  });
+
+  it("全退：銷退合計（未稅、稅額、總計）= 原單，稅別幣別沿用原單", () => {
+    const sale5 = { ...sale, tax_type: "excluded" as const, currency: "TWD" };
+    const draft = saleToReturnDraft(sale5, {
+      docDate: "2026-09-20",
+      returnedQtyByLine: {},
+      returnedAmountByLine: {},
+    });
+    expect(draft).toMatchObject({
+      tax_type: "excluded",
+      tax_rate: 0.05,
+      currency: "TWD",
+      exchange_rate: 1,
+    });
+    expect(
+      draft.lines.map((l) => [l.source_line_id, l.qty, l.unit_price]),
+    ).toEqual([
+      ["sl-1", 1, 160535],
+      ["sl-2", 5, 3293],
+    ]);
+    const opts = {
+      taxType: "excluded" as const,
+      taxRate: 0.05,
+      currency: "TWD",
+      exchangeRate: 1,
+    };
+    expect(calcDocumentTotals({ lines: draft.lines, ...opts })).toEqual(
+      calcDocumentTotals({ lines: sale5.lines, ...opts }),
+    );
+    expect(
+      calcDocumentTotals({ lines: draft.lines, ...opts }).amount_untaxed,
+    ).toBe(177000);
+  });
+
+  it("已部分退貨：剩餘以「原行淨額 − 已退金額」計（含先前手動調低的單價）", () => {
+    const draft = saleToReturnDraft(sale, {
+      docDate: "2026-09-20",
+      returnedQtyByLine: { "sl-2": 2 },
+      // 先前以單價 3,000（折讓）退 2 個 → 剩 3 個可退 16,465 − 6,000 = 10,465（除不盡 → 拆兩行）。
+      returnedAmountByLine: { "sl-2": 6000 },
+    });
+    const tok = draft.lines.filter((l) => l.source_line_id === "sl-2");
+    expect(tok.map((l) => [l.item_id, l.qty, l.unit_price])).toEqual([
+      ["TOK-0360-S", 2, 3488],
+      ["TOK-0360-S", 1, 3489],
+    ]);
+    expect(tok.reduce((s, l) => s + l.qty * l.unit_price, 0)).toBe(10465);
+  });
+
+  it("returnableLines：淨額、已退金額、可退金額", () => {
+    expect(
+      returnableLines(sale, { "sl-2": 2 }, { "sl-2": 6586 }).map((r) => [
+        r.line_id,
+        r.net_amount,
+        r.returned_amount,
+        r.remaining_amount,
+      ]),
+    ).toEqual([
+      ["sl-1", 160535, 0, 160535],
+      ["sl-2", 16465, 6586, 9879],
     ]);
   });
 

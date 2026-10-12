@@ -13,6 +13,12 @@ import {
 import { newDraftDocument, newDraftLine } from "../draft";
 import { erpErrorMessage } from "../errors";
 import { formatMoney } from "../format";
+import {
+  allocateDiscountNet,
+  linesSubtotal,
+  splitReturnPrice,
+  type ReturnAmountLimit,
+} from "../returns";
 import { ITEM_OPTION_COLUMNS } from "./pickers";
 import type {
   DocStatus,
@@ -22,6 +28,7 @@ import type {
   ErpDocumentWithLines,
   ErpResult,
   ItemOption,
+  LineType,
   MxCardType,
 } from "../types";
 
@@ -193,21 +200,35 @@ export interface ReturnableLine {
   sold: number;
   returned: number;
   remaining: number;
+  /** 原銷貨行扣除折扣分攤後的淨額（#233，單據幣別；見 allocateDiscountNet）。 */
+  net_amount: number;
+  /** 已過帳銷退行（來源 = 本行）的金額合計。 */
+  returned_amount: number;
+  /** 可退金額 = 淨額 − 已退金額（不小於 0）；預設退貨單價 = 可退金額 ÷ 可退數量。 */
+  remaining_amount: number;
 }
 
 /**
- * 銷貨單各 item 行的可退數量：remaining = 銷貨數量 − 已過帳銷退數量（不小於 0）。
- * returnedQtyByLine 以銷貨行 id 為 key（getReturnedQtyBySourceLine 的結果）。
+ * 銷貨單各 item 行的可退數量與金額：
+ * - remaining = 銷貨數量 − 已過帳銷退數量（不小於 0）；
+ * - remaining_amount = 折扣分攤後淨額 − 已過帳銷退金額（不小於 0）。
+ * returnedQtyByLine / returnedAmountByLine 以銷貨行 id 為 key
+ * （getReturnedQtyBySourceLine、getSaleReturnedAmounts 的結果）。
  */
 export function returnableLines(
   sale: ErpDocumentWithLines,
   returnedQtyByLine: Record<string, number>,
+  returnedAmountByLine: Record<string, number> = {},
 ): ReturnableLine[] {
-  return sortedLines(sale)
+  const lines = sortedLines(sale);
+  const net = allocateDiscountNet(lines, sale.currency);
+  return lines
     .filter((l) => l.line_type === "item")
     .map((l) => {
       const sold = Number(l.qty) || 0;
       const returned = Number(returnedQtyByLine[l.id] ?? 0);
+      const netAmount = net[l.id] ?? 0;
+      const returnedAmount = Number(returnedAmountByLine[l.id] ?? 0) || 0;
       return {
         line_id: l.id,
         line_no: l.line_no,
@@ -216,25 +237,38 @@ export function returnableLines(
         sold,
         returned,
         remaining: Math.max(0, roundHalfAwayFromZero(sold - returned, 3)),
+        net_amount: netAmount,
+        returned_amount: returnedAmount,
+        remaining_amount: Math.max(
+          0,
+          roundHalfAwayFromZero(netAmount - returnedAmount, 2),
+        ),
       };
     });
 }
 
 /**
  * 銷貨單 → 銷退單草稿（spec §6「從銷貨單帶入可退行」）：
- * 只帶尚有可退數量的 item 行，qty 預設 = 可退數量（上限），單價沿用原銷貨行；
- * source_line_id = 銷貨行；入庫倉預設原出庫倉；機號由使用者勾選實際退回的台數。
- * 折扣 / 備註行不帶入（部分退貨無法自動分攤，需要時請手動新增折扣行）。
+ * 只帶尚有可退數量的 item 行，qty 預設 = 可退數量（上限），source_line_id = 銷貨行；
+ * 入庫倉預設原出庫倉；客戶、業務、稅別稅率、幣別匯率沿用原單；機號由使用者勾選實際退回的台數。
+ * 單價（#233）= 原單折扣依品項金額比例分攤後的淨價：可退金額（淨額 − 已退金額）÷ 可退數量；
+ * 除不盡時同一來源行拆成兩行（見 splitReturnPrice），使全退時銷退合計 = 原單、部分退貨後剩餘仍正確。
+ * 折扣 / 備註行不帶入（折扣已併入淨價）。
  */
 export function saleToReturnDraft(
   sale: ErpDocumentWithLines,
-  opts: { docDate: string; returnedQtyByLine: Record<string, number> },
+  opts: {
+    docDate: string;
+    returnedQtyByLine: Record<string, number>;
+    returnedAmountByLine: Record<string, number>;
+  },
 ): DraftDocument {
-  const remaining = new Map(
-    returnableLines(sale, opts.returnedQtyByLine).map((r) => [
-      r.line_id,
-      r.remaining,
-    ]),
+  const returnable = new Map(
+    returnableLines(
+      sale,
+      opts.returnedQtyByLine,
+      opts.returnedAmountByLine,
+    ).map((r) => [r.line_id, r]),
   );
   return newDraftDocument("SR", opts.docDate, {
     customer_id: sale.customer_id,
@@ -246,17 +280,23 @@ export function saleToReturnDraft(
     tax_rate: Number(sale.tax_rate),
     currency: sale.currency,
     exchange_rate: Number(sale.exchange_rate),
-    lines: sortedLines(sale)
-      .filter((l) => l.line_type === "item" && (remaining.get(l.id) ?? 0) > 0)
-      .map((l) =>
+    lines: sortedLines(sale).flatMap((l) => {
+      const r = returnable.get(l.id);
+      if (l.line_type !== "item" || !r || r.remaining <= 0) return [];
+      return splitReturnPrice(
+        r.remaining,
+        r.remaining_amount,
+        sale.currency,
+      ).map((p) =>
         newDraftLine("item", {
           item_id: l.item_id,
           description: l.description ?? "",
-          qty: remaining.get(l.id) ?? 0,
-          unit_price: Number(l.unit_price),
+          qty: p.qty,
+          unit_price: p.unit_price,
           source_line_id: l.id,
         }),
-      ),
+      );
+    }),
   });
 }
 
@@ -415,6 +455,63 @@ export async function getReturnedQtyBySourceLine(
     );
   }
   return { ok: true, data: out };
+}
+
+export interface SaleReturnedAmounts {
+  /** 已過帳銷退品項行金額合計（key = 銷貨行 id）。 */
+  byLine: Record<string, number>;
+  /** 原單明細合計與已過帳銷退明細合計（含銷退單折扣行），供 validateReturnAmount。 */
+  limit: ReturnAmountLimit;
+}
+
+/**
+ * 銷貨單的已退金額（#233）：來源為此銷貨單的已過帳銷退單（source_doc_id），
+ * 各來源行的品項金額與整張單的明細合計（品項 + 折扣）。excludeDocId：排除編輯中的銷退草稿本身。
+ */
+export async function getSaleReturnedAmounts(
+  sale: ErpDocumentWithLines,
+  excludeDocId?: string | null,
+): Promise<ErpResult<SaleReturnedAmounts>> {
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("erp_document_lines")
+    .select(
+      "line_type, amount, source_line_id, document_id, document:erp_documents!inner(status, doc_type, source_doc_id)",
+    )
+    .in("line_type", ["item", "discount"])
+    .eq("document.source_doc_id", sale.id)
+    .eq("document.status", "posted")
+    .eq("document.doc_type", "SR");
+  if (error) return { ok: false, error: erpErrorMessage(error) };
+  const byLine: Record<string, number> = {};
+  let returned = 0;
+  for (const row of (data ?? []) as {
+    line_type: LineType;
+    amount: number;
+    source_line_id: string | null;
+    document_id: string;
+  }[]) {
+    if (row.document_id === excludeDocId) continue;
+    // 已過帳單據的 amount 由過帳 RPC 重算（品項 = qty × 單價、折扣為負數）。
+    const amount = Number(row.amount) || 0;
+    returned += amount;
+    if (row.line_type === "item" && row.source_line_id) {
+      byLine[row.source_line_id] = roundHalfAwayFromZero(
+        (byLine[row.source_line_id] ?? 0) + amount,
+        2,
+      );
+    }
+  }
+  return {
+    ok: true,
+    data: {
+      byLine,
+      limit: {
+        original: linesSubtotal(sale.lines),
+        returned: roundHalfAwayFromZero(returned, 2),
+      },
+    },
+  };
 }
 
 export interface DocumentBrief {

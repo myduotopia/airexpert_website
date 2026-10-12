@@ -2,7 +2,8 @@
 // 銷售單據表單（報價 / 銷貨 / 銷退共用）：受控表頭 + 明細編輯器，「儲存草稿」後導向明細頁（於明細頁過帳）。
 // - 報價單：儲存即確認（存草稿後立刻過帳取號，列表直接看到正式單）；品項欄可自由輸入或帶入保養卡機型。
 // - 銷貨單：追機號品項只列「出庫倉」中 in_stock 的機號（serials 由 server 讀出，client 依倉庫篩選）。
-// - 銷退單：客戶鎖定為來源銷貨單客戶；上方列出各來源行可退數量。
+// - 銷退單：客戶、稅別稅率、幣別鎖定為來源銷貨單；上方列出各來源行可退數量與可退金額（折扣分攤後淨額，#233），
+//   明細合計超過可退金額時即時提示（存草稿時 server 會擋，過帳時 DB 再檢查一次）。
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,9 +12,13 @@ import { DocumentHeaderFields } from "@/components/erp/DocumentHeaderFields";
 import { DocumentLinesEditor } from "@/components/erp/DocumentLinesEditor";
 import { ERP_BUTTON_SECONDARY } from "@/components/erp/styles";
 import { linesMissingItem } from "@/lib/erp/draft";
-import { formatQty } from "@/lib/erp/format";
+import { formatMoney, formatQty } from "@/lib/erp/format";
 import { quickCreateTargets } from "@/lib/erp/quick-create";
 import type { ReturnableLine, SalesDocType } from "@/lib/erp/queries/sales";
+import {
+  validateReturnAmount,
+  type ReturnAmountLimit,
+} from "@/lib/erp/returns";
 import type {
   CustomerOption,
   DraftDocument,
@@ -21,6 +26,7 @@ import type {
   DraftLine,
   ItemOption,
   SerialOption,
+  TaxType,
   WarehouseOption,
 } from "@/lib/erp/types";
 import type { EmployeeOption } from "@/lib/employees/types";
@@ -35,11 +41,16 @@ export interface SalesDocFormProps {
   employees: EmployeeOption[];
   items: ItemOption[];
   serials: SerialOption[];
-  /** 銷退單：來源銷貨單號與各行可退數量。 */
+  /** 銷退單：來源銷貨單號、稅別幣別、各行可退數量／金額與整張單的金額上限。 */
   returnSource?: {
     docNo: string | null;
     customerId: string | null;
+    taxType: TaxType;
+    taxRate: number;
+    currency: string;
     lines: ReturnableLine[];
+    /** 讀取已退金額失敗時為 null（不即時提示；存草稿時 server 仍會檢查）。 */
+    amountLimit: ReturnAmountLimit | null;
   } | null;
   /** 報價單：保養卡 / 維護報告單上的機型，供品項欄搜尋帶入。 */
   machineModels?: string[];
@@ -75,7 +86,13 @@ export function SalesDocForm({
 
   function onHeaderChange(next: DraftDocumentHeader) {
     if (docType === "SR" && returnSource) {
-      next = { ...next, customer_id: returnSource.customerId };
+      next = {
+        ...next,
+        customer_id: returnSource.customerId,
+        tax_type: returnSource.taxType,
+        tax_rate: returnSource.taxRate,
+        currency: returnSource.currency,
+      };
     }
     setHeader(next);
   }
@@ -113,23 +130,35 @@ export function SalesDocForm({
   const missingItemLines = docType === "S" ? linesMissingItem(lines) : [];
   // 銷退單客戶與品項行固定來自來源銷貨單，不提供新增客戶／品項。
   const quickCreate = quickCreateTargets(docType);
+  const returnAmountError =
+    returnSource?.amountLimit && docType === "SR"
+      ? validateReturnAmount(
+          lines,
+          returnSource.amountLimit,
+          returnSource.taxType,
+          returnSource.currency,
+        )
+      : null;
+  const money = (x: number) =>
+    formatMoney(x, { currency: returnSource?.currency ?? header.currency });
 
   return (
     <div className="flex flex-col gap-6">
       {returnSource && (
         <section className="border-border rounded-xl border bg-white p-4">
           <h2 className="text-ink mb-2 text-[15px] font-semibold">
-            來源銷貨單 {returnSource.docNo ?? ""}：可退數量
+            來源銷貨單 {returnSource.docNo ?? ""}：可退數量與金額
           </h2>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-[13px]">
+            <table className="w-full min-w-[600px] text-[13px]">
               <thead className="text-text-muted text-left">
                 <tr>
                   <th className="py-1 pr-3 font-medium">#</th>
                   <th className="py-1 pr-3 font-medium">品項</th>
                   <th className="py-1 pr-3 text-right font-medium">銷貨</th>
                   <th className="py-1 pr-3 text-right font-medium">已退</th>
-                  <th className="py-1 text-right font-medium">可退</th>
+                  <th className="py-1 pr-3 text-right font-medium">可退</th>
+                  <th className="py-1 text-right font-medium">可退金額</th>
                 </tr>
               </thead>
               <tbody>
@@ -148,15 +177,33 @@ export function SalesDocForm({
                     <td className="py-1 pr-3 text-right tabular-nums">
                       {formatQty(l.returned)}
                     </td>
-                    <td className="py-1 text-right font-semibold tabular-nums">
+                    <td className="py-1 pr-3 text-right font-semibold tabular-nums">
                       {formatQty(l.remaining)}
+                    </td>
+                    <td className="py-1 text-right tabular-nums">
+                      {money(l.remaining_amount)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {returnSource.amountLimit && (
+            <p className="text-ink mt-2 text-[13px]">
+              原單金額 {money(returnSource.amountLimit.original)}
+              ，已退 {money(returnSource.amountLimit.returned)}
+              ，本單最多可退{" "}
+              <span className="font-semibold tabular-nums">
+                {money(
+                  returnSource.amountLimit.original -
+                    returnSource.amountLimit.returned,
+                )}
+              </span>
+              （{returnSource.taxType === "included" ? "含稅" : "未稅"}）。
+            </p>
+          )}
           <p className="text-text-muted mt-2 text-[12px]">
+            退貨單價預設為原單折扣依品項金額比例分攤後的淨價，可手動調整（例如折讓），但累計退貨金額不可超過原單；除不盡時同一品項會拆成兩行。
             退貨數量不可超過可退數量；追蹤機號的品項請勾選實際退回的機號。過帳後機號回到入庫倉，保養卡機台保留。
           </p>
         </section>
@@ -174,7 +221,7 @@ export function SalesDocForm({
         />
         {docType === "SR" && (
           <p className="text-text-muted mt-2 text-[12px]">
-            銷退單客戶固定為來源銷貨單的客戶。
+            銷退單的客戶、稅別與幣別固定沿用來源銷貨單。
           </p>
         )}
         {docType === "Q" && (
@@ -215,6 +262,14 @@ export function SalesDocForm({
           >
             第 {missingItemLines.join("、")}{" "}
             行尚未選擇品項（報價單為自由輸入，未能自動對應品項主檔），過帳前請選定品項。
+          </p>
+        )}
+        {returnAmountError && (
+          <p
+            role="status"
+            className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
+          >
+            {returnAmountError}
           </p>
         )}
         {docType === "S" && !header.warehouse_id && (

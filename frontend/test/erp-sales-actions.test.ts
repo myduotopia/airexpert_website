@@ -497,12 +497,19 @@ describe("銷退單", () => {
     }),
   ];
 
-  it("createSalesReturnAction：帶入可退數量（扣除已過帳銷退）", async () => {
-    documentsSelect(docRow({ id: "s-1", lines: saleLines }), "S");
+  /** 已過帳銷退行（getReturnedQtyBySourceLine 與 getSaleReturnedAmounts 共用同一組列）。 */
+  function returnedRows(rows: Record<string, unknown>[]) {
     responses["erp_document_lines:select"] = () => ({
-      data: [{ qty: 2, source_line_id: "sl-1", document_id: "sr-old" }],
+      data: rows.map((r) => ({ line_type: "item", ...r })),
       error: null,
     });
+  }
+
+  it("createSalesReturnAction：帶入可退數量（扣除已過帳銷退）", async () => {
+    documentsSelect(docRow({ id: "s-1", lines: saleLines }), "S");
+    returnedRows([
+      { qty: 2, amount: 8000, source_line_id: "sl-1", document_id: "sr-old" },
+    ]);
     responses["mx_customers:select"] = () => ({ data: CUSTOMER, error: null });
 
     const res = await createSalesReturnAction("s-1");
@@ -518,15 +525,131 @@ describe("銷退單", () => {
     const lines = recorded.find(
       (r) => r.table === "erp_document_lines" && r.kind === "insert",
     )!.payload as Record<string, unknown>[];
-    expect(lines.map((l) => [l.source_line_id, l.qty])).toEqual([["sl-1", 3]]);
+    expect(lines.map((l) => [l.source_line_id, l.qty, l.unit_price])).toEqual([
+      ["sl-1", 3, 4000],
+    ]);
+  });
+
+  it("createSalesReturnAction：單價為原單折扣分攤後淨價，查詢已退金額依來源銷貨單（#233）", async () => {
+    documentsSelect(
+      docRow({
+        id: "s-1",
+        tax_type: "excluded",
+        lines: [
+          ...saleLines,
+          lineRow("sl-2", 2, {
+            item_id: "item-al",
+            description: "AL010N",
+            qty: 1,
+            unit_price: 32000,
+            amount: 32000,
+          }),
+          lineRow("sl-3", 3, { line_type: "discount", amount: -5200 }),
+        ],
+      }),
+      "S",
+    );
+    returnedRows([]);
+    responses["mx_customers:select"] = () => ({ data: CUSTOMER, error: null });
+
+    const res = await createSalesReturnAction("s-1");
+    expect(res.ok).toBe(true);
+    const amountQuery = recorded.find(
+      (r) =>
+        r.table === "erp_document_lines" && r.columns.includes("source_doc_id"),
+    )!;
+    expect(amountQuery.filters).toContainEqual({
+      fn: "eq",
+      args: ["document.source_doc_id", "s-1"],
+    });
+    const header = recorded.find(
+      (r) => r.table === "erp_documents" && r.kind === "insert",
+    )!.payload as Record<string, unknown>;
+    expect(header).toMatchObject({ tax_type: "excluded", currency: "TWD" });
+    const lines = recorded.find(
+      (r) => r.table === "erp_document_lines" && r.kind === "insert",
+    )!.payload as Record<string, unknown>[];
+    // 52,000 − 5,200 = 46,800（× 0.9）：TOK 5 × 3,600、AL010N 28,800。
+    expect(lines.map((l) => [l.source_line_id, l.qty, l.unit_price])).toEqual([
+      ["sl-1", 5, 3600],
+      ["sl-2", 1, 28800],
+    ]);
+  });
+
+  it("saveSalesDraftAction：累計銷退金額超過原單 → 錯誤，不寫入（#233）", async () => {
+    documentsSelect(docRow({ id: "s-1", lines: saleLines }), "SR");
+    // 已過帳銷退 2 個 @ 4,000 + 折扣 −500 → 已退 7,500；原單 20,000 → 可退 12,500。
+    returnedRows([
+      { qty: 2, amount: 8000, source_line_id: "sl-1", document_id: "sr-old" },
+      {
+        line_type: "discount",
+        qty: 0,
+        amount: -500,
+        source_line_id: null,
+        document_id: "sr-old",
+      },
+    ]);
+    const input = (unitPrice: number) => ({
+      ...newDraftDocument("SR", "2026-09-20"),
+      id: "sr-1",
+      customer_id: "cust-1",
+      source_doc_id: "s-1",
+      tax_type: "included" as const,
+      lines: [
+        newDraftLine("item", {
+          item_id: "item-tok",
+          qty: 3,
+          unit_price: unitPrice,
+          source_line_id: "sl-1",
+        }),
+      ],
+    });
+    const res = await saveSalesDraftAction(input(4200));
+    expect(res).toEqual({
+      ok: false,
+      error:
+        "銷退金額（含稅）12,600 超過原銷貨單可退金額 12,500（原單 20,000、已退 7,500）；請調低退貨單價或數量。",
+    });
+    expect(recorded.some((r) => r.kind !== "select")).toBe(false);
+  });
+
+  it("saveSalesDraftAction：未超過上限 → 存檔，稅別稅率幣別強制沿用原單", async () => {
+    documentsSelect(docRow({ id: "s-1", lines: saleLines }), "SR");
+    returnedRows([]);
+    responses["mx_customers:select"] = () => ({ data: CUSTOMER, error: null });
+    const res = await saveSalesDraftAction({
+      ...newDraftDocument("SR", "2026-09-20"),
+      customer_id: "cust-1",
+      source_doc_id: "s-1",
+      tax_type: "excluded",
+      tax_rate: 0.1,
+      currency: "USD",
+      exchange_rate: 30,
+      lines: [
+        newDraftLine("item", {
+          item_id: "item-tok",
+          qty: 5,
+          unit_price: 4000,
+          source_line_id: "sl-1",
+        }),
+      ],
+    });
+    expect(res.ok).toBe(true);
+    const header = recorded.find(
+      (r) => r.table === "erp_documents" && r.kind === "insert",
+    )!.payload as Record<string, unknown>;
+    expect(header).toMatchObject({
+      tax_type: "included",
+      tax_rate: 0.05,
+      currency: "TWD",
+    });
   });
 
   it("createSalesReturnAction：已全部退貨 → 錯誤", async () => {
     documentsSelect(docRow({ id: "s-1", lines: saleLines }), "S");
-    responses["erp_document_lines:select"] = () => ({
-      data: [{ qty: 5, source_line_id: "sl-1", document_id: "sr-old" }],
-      error: null,
-    });
+    returnedRows([
+      { qty: 5, amount: 20000, source_line_id: "sl-1", document_id: "sr-old" },
+    ]);
     const res = await createSalesReturnAction("s-1");
     expect(res).toEqual({
       ok: false,

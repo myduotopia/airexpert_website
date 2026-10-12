@@ -11,6 +11,7 @@ import {
   type SalesDocInput,
   type SalesLineInput,
 } from "@/lib/erp/reports";
+import { allocateDiscountNet, splitReturnPrice } from "@/lib/erp/returns";
 
 const doc = (
   id: string,
@@ -51,6 +52,85 @@ const discount = (document_id: string, amount: number): SalesLineInput => ({
   qty: 0,
   amount,
   unit_cost: null,
+});
+
+describe("銷退以折扣分攤後淨價（#233）：毛利報表扣減", () => {
+  // S：a 1 × 32,000（成本 20,000）、b 3 × 12,000（成本 8,000）、折扣 −8,000 → 未稅 60,000。
+  const sLines = [
+    {
+      id: "la",
+      line_type: "item" as const,
+      qty: 1,
+      unit_price: 32000,
+      amount: 32000,
+    },
+    {
+      id: "lb",
+      line_type: "item" as const,
+      qty: 3,
+      unit_price: 12000,
+      amount: 36000,
+    },
+    {
+      id: "ld",
+      line_type: "discount" as const,
+      qty: 0,
+      unit_price: 0,
+      amount: -8000,
+    },
+  ];
+  const itemOf: Record<string, string> = { la: "a", lb: "b" };
+  const costOf: Record<string, number> = { la: 20000, lb: 8000 };
+  const sFacts = [
+    item("s1", "a", 1, 32000, 20000),
+    item("s1", "b", 3, 36000, 8000),
+    discount("s1", -8000),
+  ];
+
+  /** 依 returns.ts 產生銷退行（成本 = 原銷貨行 unit_cost，同過帳 RPC）。 */
+  function srLines(qtyByLine: Record<string, number>): SalesLineInput[] {
+    const net = allocateDiscountNet(sLines, "TWD");
+    return sLines
+      .filter((l) => l.line_type === "item" && qtyByLine[l.id])
+      .flatMap((l) =>
+        splitReturnPrice(
+          qtyByLine[l.id],
+          (net[l.id] * qtyByLine[l.id]) / l.qty,
+          "TWD",
+        ).map((p) =>
+          item("sr1", itemOf[l.id], p.qty, p.qty * p.unit_price, costOf[l.id]),
+        ),
+      );
+  }
+
+  it("全退：銷售額、成本、數量皆歸零（依客戶）；依品項僅剩取整尾差", () => {
+    const facts = buildSalesFacts(
+      [doc("s1"), doc("sr1", { doc_type: "SR" })],
+      [...sFacts, ...srLines({ la: 1, lb: 3 })],
+    );
+    const byCustomer = aggregateSalesMargin(facts, "customer");
+    expect(byCustomer.totals).toMatchObject({ qty: 0, revenue: 0, cost: 0 });
+    const byItem = aggregateSalesMargin(facts, "item");
+    for (const row of byItem.rows) {
+      expect(row.qty).toBe(0);
+      expect(row.cost).toBe(0);
+      expect(Math.abs(row.revenue)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("部分退：以淨價扣減銷售額、以原銷貨成本回沖", () => {
+    // 淨價：a 32,000 × 60/68 = 28,235.29 → 28,235；b 10,588.24 → 10,588（× 3 = 31,764）；尾差 +1 → a 28,236。
+    const facts = buildSalesFacts(
+      [doc("s1"), doc("sr1", { doc_type: "SR" })],
+      [...sFacts, ...srLines({ la: 1 })],
+    );
+    const r = aggregateSalesMargin(facts, "customer");
+    expect(r.totals).toMatchObject({
+      qty: 3,
+      revenue: 60000 - 28236,
+      cost: 3 * 8000,
+    });
+  });
 });
 
 describe("allocateCents", () => {

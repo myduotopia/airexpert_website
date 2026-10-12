@@ -14,6 +14,7 @@ import {
 import {
   getDocumentBrief,
   getReturnedQtyBySourceLine,
+  getSaleReturnedAmounts,
   returnableLines,
   todayTaipei,
   type SalesDocType,
@@ -135,15 +136,27 @@ export async function SalesDocEditPage({
   } else if (docType === "SR" && doc.source_doc_id) {
     const sale = await getDocumentWithLines(doc.source_doc_id);
     if (sale.ok) {
-      const returned = await getReturnedQtyBySourceLine(
-        sale.data.lines.map((l) => l.id),
-        doc.id,
-      );
+      const [returned, amounts] = await Promise.all([
+        getReturnedQtyBySourceLine(
+          sale.data.lines.map((l) => l.id),
+          doc.id,
+        ),
+        getSaleReturnedAmounts(sale.data, doc.id),
+      ]);
       if (!returned.ok) loadError = returned.error;
+      else if (!amounts.ok) loadError = amounts.error;
       returnSource = {
         docNo: sale.data.doc_no,
         customerId: sale.data.customer_id,
-        lines: returnableLines(sale.data, returned.ok ? returned.data : {}),
+        taxType: sale.data.tax_type,
+        taxRate: Number(sale.data.tax_rate),
+        currency: sale.data.currency,
+        lines: returnableLines(
+          sale.data,
+          returned.ok ? returned.data : {},
+          amounts.ok ? amounts.data.byLine : {},
+        ),
+        amountLimit: amounts.ok ? amounts.data.limit : null,
       };
       // 只列出來源銷貨單上、目前仍售予此客戶的機號。
       const soldOnSale = new Set(

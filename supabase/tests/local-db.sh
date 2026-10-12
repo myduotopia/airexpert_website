@@ -96,6 +96,10 @@ psql_run -1 < "$ROOT/migrations/0026_customer_fax_recipient_email.sql"
 echo "==> 重跑 0027（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0027_employees.sql"
 
+# 0028 以 0025 為底 create or replace erp_post_document（銷退累計金額上限）；重跑 0020／0023–0025 會蓋回舊版，故需最後重跑。
+echo "==> 重跑 0028（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0028_sales_return_amount_cap.sql"
+
 echo "==> 執行 erp_posting_test.sql"
 psql_run < "$ROOT/tests/erp_posting_test.sql"
 
