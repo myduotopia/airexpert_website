@@ -1,7 +1,8 @@
 "use client";
 // 單據明細編輯器（受控）：品項 / 折扣 / 備註 / 小計（僅報價單）行，新增、刪除、上下移動，
-// 選品項自動帶入品名規格與單價；序號品項可選既有機號（serialMode="existing"）
-// 或逐行輸入新機號（serialMode="new"）；下方以 calc.ts 即時試算合計 / 稅額 / 總計。
+// 選品項自動帶入品名規格與單價（未指定品項的行補選時保留已有值，#232）；
+// 序號品項可選既有機號（serialMode="existing"）或逐行輸入新機號（serialMode="new"）；
+// 下方以 calc.ts 即時試算合計 / 稅額 / 總計。
 // 純呈現元件：不讀 DB、不送出；傳 name 時輸出 hidden input（JSON）供 <form> 送出。
 // allowCreateItem：品項欄找不到時可就地新增品項主檔（#218）；新品項收在本元件，同張單每一行都搜得到。
 // 品名規格 / 備註為多行輸入（#221）：Enter 換行、不送出表單，列印時保留換行。
@@ -14,9 +15,11 @@ import {
   SUBTOTAL_DEFAULT_LABEL,
 } from "@/lib/erp/calc";
 import {
+  applyItemToLine,
   lineMissingItem,
   newDraftLine,
   parseSerialLines,
+  type ItemPriceField,
 } from "@/lib/erp/draft";
 import type {
   DraftLine,
@@ -44,7 +47,7 @@ export interface DocumentLinesEditorProps {
   serials?: SerialOption[];
   serialMode?: SerialMode;
   /** 選品項時帶入哪個價格欄（null = 不帶入）。銷售用 sale_price、採購用 purchase_price。 */
-  priceField?: "sale_price" | "purchase_price" | "avg_cost" | null;
+  priceField?: ItemPriceField;
   taxType: TaxType;
   taxRate: number;
   currency?: string;
@@ -140,16 +143,13 @@ export function DocumentLinesEditor({
   function addLine(type: LineType) {
     onChange([...value, newDraftLine(type)]);
   }
+  // 帶入規則見 applyItemToLine：未指定品項的行補選品項時保留已有單價與品名規格（#232）。
   function pickItem(line: DraftLine, item: ItemOption | null) {
-    const price = item && priceField ? Number(item[priceField] ?? 0) : 0;
-    patchLine(line.key, {
-      item_id: item?.id ?? null,
-      item_text: "",
-      description: item?.name ?? "",
-      unit_price: priceField ? price : line.unit_price,
-      serial_ids: [],
-      serial_nos: [],
-    });
+    onChange(
+      value.map((l) =>
+        l.key === line.key ? applyItemToLine(l, item, priceField) : l,
+      ),
+    );
   }
   // 自由輸入只改品項文字；品名規格（description）維持使用者自行填寫的內容。
   function setFreeText(line: DraftLine, text: string) {
