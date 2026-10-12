@@ -1,14 +1,22 @@
 "use client";
 // 銷售單據明細頁的動作列：編輯 / 過帳（確認）/ 刪除草稿 / 作廢（原因必填、二次確認）/
 // 轉銷貨單 / 建立銷退單 / 列印。過帳與作廢的 RPC 結果（取號、保養卡機台、警告）就地顯示。
+// 轉銷貨單 / 建立銷退單的確認框會列出已轉出的單據並視情況警示（#234，規則見 lib/erp/derived-confirm.ts）。
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, unstable_rethrow } from "next/navigation";
+import { DocStatusBadge } from "@/components/erp/DocStatusBadge";
 import { ERP_BUTTON_SECONDARY, ERP_INPUT } from "@/components/erp/styles";
 import {
   useConfirm,
   type ConfirmOptions,
 } from "@/components/erp/ConfirmDialog";
+import {
+  reconvertConfirmOptions,
+  returnConfirmOptions,
+  type DerivedConfirm,
+  type DerivedDocInput,
+} from "@/lib/erp/derived-confirm";
 import type { SalesDocType } from "@/lib/erp/queries/sales";
 import type { DocStatus, ErpResult } from "@/lib/erp/types";
 import {
@@ -32,14 +40,46 @@ const PRIMARY =
 const DANGER =
   "inline-flex h-10 items-center rounded-lg border border-red-200 bg-white px-4 text-[14px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60";
 
+/** 衍生單據確認框內容 → ConfirmOptions：有單據時把清單（單號／草稿 + 狀態標籤）放進說明。 */
+function derivedConfirmOptions({
+  docs,
+  message,
+  ...rest
+}: DerivedConfirm): ConfirmOptions {
+  if (docs.length === 0) return { ...rest, message };
+  return {
+    ...rest,
+    message: (
+      <>
+        {message && <p>{message}</p>}
+        <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto">
+          {docs.map((d) => (
+            <li key={d.id} className="flex items-center justify-between gap-3">
+              <span
+                className={`${d.status === "draft" ? "" : "font-mono"} ${d.voided ? "text-gray-400 line-through" : "text-ink"}`}
+              >
+                {d.label}
+              </span>
+              <DocStatusBadge status={d.status} />
+            </li>
+          ))}
+        </ul>
+      </>
+    ),
+  };
+}
+
 export function SalesDocActions({
   docId,
   docType,
   status,
+  derivedDocs = [],
 }: {
   docId: string;
   docType: SalesDocType;
   status: DocStatus;
+  /** 由本單轉出的單據（報價 → 銷貨、銷貨 → 銷退；含草稿與作廢），新→舊。 */
+  derivedDocs?: DerivedDocInput[];
 }) {
   const router = useRouter();
   const basePath = SALES_BASE_PATH[docType];
@@ -140,10 +180,7 @@ export function SalesDocActions({
               run(
                 () => convertQuoteToSaleAction(docId),
                 (data) => router.push(`${SALES_BASE_PATH.S}/${data.id}/edit`),
-                {
-                  title: "將此報價單複製為銷貨單草稿？",
-                  confirmLabel: "轉銷貨單",
-                },
+                derivedConfirmOptions(reconvertConfirmOptions(derivedDocs)),
               )
             }
           >
@@ -159,10 +196,7 @@ export function SalesDocActions({
               run(
                 () => createSalesReturnAction(docId),
                 (data) => router.push(`${SALES_BASE_PATH.SR}/${data.id}/edit`),
-                {
-                  title: "從此銷貨單建立銷退單草稿？",
-                  confirmLabel: "建立銷退單",
-                },
+                derivedConfirmOptions(returnConfirmOptions(derivedDocs)),
               )
             }
           >

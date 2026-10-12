@@ -26,8 +26,11 @@ import { ErpDialog } from "./ErpDialog";
 export interface ConfirmOptions {
   /** 問句，例：「確定過帳？」。 */
   title: string;
-  /** 補充說明（後果），顯示在標題下方，並作為 aria-describedby。 */
-  message?: string;
+  /**
+   * 補充說明（後果），顯示在標題下方，並作為 aria-describedby。
+   * 一般為字串；需要列出單據等多行內容時可傳 ReactNode（外層為 <div>，可放清單）。
+   */
+  message?: ReactNode;
   /** 確認鈕文字：用動作名稱（過帳、作廢、刪除），不要用泛用的「確定」。 */
   confirmLabel: string;
   /** 取消鈕文字，預設「取消」。 */

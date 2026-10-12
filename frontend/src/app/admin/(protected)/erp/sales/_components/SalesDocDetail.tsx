@@ -144,7 +144,18 @@ export async function SalesDocDetail({
       </div>
 
       <div className="mb-6">
-        <SalesDocActions docId={doc.id} docType={docType} status={doc.status} />
+        <SalesDocActions
+          docId={doc.id}
+          docType={docType}
+          status={doc.status}
+          // 已讀到的衍生單據，供「轉銷貨單／建立銷退單」確認框列出（#234），點擊時不另外查詢。
+          derivedDocs={derived.map((d) => ({
+            id: d.id,
+            doc_no: d.doc_no,
+            status: d.status,
+            created_at: d.created_at,
+          }))}
+        />
       </div>
 
       {doc.status === "voided" && (
