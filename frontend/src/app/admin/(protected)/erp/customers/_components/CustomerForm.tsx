@@ -3,10 +3,12 @@
 // 傳 onSaved 時為「就地新增」模式（建單頁 Dialog 內，#218）：只新增、不導頁不 refresh，
 // 存檔後以新客戶的 Picker 選項回呼；取消改呼叫 onCancel；隱藏 ERP 啟用勾選（一律啟用）。
 // 「業務」為員工選取器（#223）：從員工主檔選、可就地新增；舊資料只有文字時照常顯示。
+// 文字欄位設定見 lib/erp/customer-form-fields（就地新增 Dialog 也有傳真、收信人，#248 N-4）。
 import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CustomerInput } from "@/lib/erp/queries/master-data";
+import { customerFormFields } from "@/lib/erp/customer-form-fields";
 import type { CustomerOption } from "@/lib/erp/types";
 import type { EmployeeOption } from "@/lib/employees/types";
 import { EmployeePicker } from "@/components/erp/EmployeePicker";
@@ -17,49 +19,6 @@ import {
   INPUT_INVALID,
 } from "../../items/_components/master-ui";
 import { createCustomerAction, updateCustomerAction } from "../actions";
-
-type TextKey = Exclude<
-  keyof CustomerInput,
-  "erp_active" | "note" | "sales_rep_id"
->;
-
-const TEXT_FIELDS: {
-  key: TextKey;
-  label: string;
-  required?: boolean;
-  wide?: boolean;
-  type?: string;
-  inputMode?: "email" | "tel";
-  placeholder?: string;
-  /** 只在客戶主檔頁顯示（建單時就地新增的 Dialog 只放常用欄位）。 */
-  fullOnly?: boolean;
-}[] = [
-  { key: "code", label: "客戶編號", placeholder: "例：KC360" },
-  { key: "name", label: "客戶名稱", required: true },
-  { key: "tax_id", label: "統一編號", placeholder: "8 位數字" },
-  { key: "invoice_title", label: "發票抬頭" },
-  { key: "contact_person", label: "聯絡人" },
-  { key: "phone", label: "電話", type: "tel" },
-  { key: "fax", label: "傳真", type: "tel", fullOnly: true },
-  {
-    // 不用 type="email"：瀏覽器原生驗證不接受多筆，且錯誤只以浮動提示呈現；改由 server 檢查，錯誤標在此欄（B-05）。
-    key: "email",
-    label: "Email",
-    inputMode: "email",
-    placeholder: "多筆以 ; 分隔",
-  },
-  {
-    key: "mail_recipient",
-    label: "收信人",
-    placeholder: "郵寄對帳單／發票的收件人",
-    fullOnly: true,
-  },
-  // 業務：員工選取器（見下方 render），不是一般文字框。
-  { key: "sales_rep", label: "業務" },
-  { key: "payment_terms", label: "付款條件", placeholder: "例：月結30天" },
-  { key: "address", label: "聯絡地址", wide: true },
-  { key: "delivery_address", label: "送貨地址", wide: true },
-];
 
 export function CustomerForm({
   customerId,
@@ -155,7 +114,7 @@ export function CustomerForm({
             : "border-border grid grid-cols-1 gap-4 rounded-xl border bg-white p-5 sm:grid-cols-2"
         }
       >
-        {TEXT_FIELDS.filter((f) => !(embedded && f.fullOnly)).map((f) =>
+        {customerFormFields(embedded).map((f) =>
           f.key === "sales_rep" ? (
             <Field key={f.key} label={f.label} htmlFor={fid(f.key)}>
               <EmployeePicker

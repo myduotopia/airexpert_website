@@ -2,11 +2,17 @@
 
 // 單據明細頁動作列：草稿 → 編輯 / 過帳 / 刪除；已過帳 → 轉單 / 作廢（需原因 + 二次確認）；列印連結。
 // action 皆為已 bind 單據 id 的 server action，回傳 { ok, error }；錯誤就地顯示。
+// 採購單 / 進貨單 / 進退單共用；確認框文字依單別（採購單過帳不異動庫存，#248 N-3）。
 import Link from "next/link";
 import { useRouter, unstable_rethrow } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ERP_AREA } from "@/components/erp/styles";
 import { useConfirm } from "@/components/erp/ConfirmDialog";
+import {
+  purchasingPostConfirmMessage,
+  purchasingVoidConfirmMessage,
+  type PurchasingDocType,
+} from "@/lib/erp/confirm-text";
 import type { DocStatus } from "@/lib/erp/types";
 
 type DocActionResult =
@@ -23,6 +29,7 @@ const BTN_DANGER =
 
 export function DocActionBar({
   docId,
+  docType,
   status,
   basePath,
   listPath,
@@ -32,6 +39,8 @@ export function DocActionBar({
   convert,
 }: {
   docId: string;
+  /** 單別：決定過帳／作廢確認框文字。 */
+  docType: PurchasingDocType;
   status: DocStatus;
   basePath: string;
   listPath: string;
@@ -116,7 +125,7 @@ export function DocActionBar({
               onClick={async () => {
                 const ok = await askConfirm({
                   title: "確定過帳？",
-                  message: "過帳後將取號並異動庫存，只能以作廢撤銷。",
+                  message: purchasingPostConfirmMessage(docType),
                   confirmLabel: "過帳",
                 });
                 if (!ok) return;
@@ -196,7 +205,7 @@ export function DocActionBar({
               onClick={async () => {
                 const ok = await askConfirm({
                   title: "確定作廢此單據？",
-                  message: "庫存將回沖，單號不再使用。",
+                  message: purchasingVoidConfirmMessage(docType),
                   confirmLabel: "作廢",
                   tone: "danger",
                 });

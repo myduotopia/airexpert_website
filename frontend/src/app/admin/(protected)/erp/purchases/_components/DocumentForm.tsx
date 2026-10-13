@@ -7,6 +7,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
+import {
+  purchasingPostConfirmMessage,
+  type PurchasingDocType,
+} from "@/lib/erp/confirm-text";
 import { quickCreateTargets } from "@/lib/erp/quick-create";
 import { useConfirm } from "@/components/erp/ConfirmDialog";
 import { DocumentHeaderFields } from "@/components/erp/DocumentHeaderFields";
@@ -92,7 +96,10 @@ export function DocumentForm({
       andPost &&
       !(await askConfirm({
         title: "確定儲存並過帳？",
-        message: "過帳後將取號並異動庫存，只能以作廢撤銷。",
+        // 採購單過帳只取號、不異動庫存（#248 N-3）。
+        message: purchasingPostConfirmMessage(
+          initial.doc_type as PurchasingDocType,
+        ),
         confirmLabel: "過帳",
       }))
     ) {

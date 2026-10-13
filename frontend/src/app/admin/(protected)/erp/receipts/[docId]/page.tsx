@@ -62,6 +62,7 @@ export default async function ReceiptDetailPage({
         <DocTitle doc={doc} />
         <DocActionBar
           docId={doc.id}
+          docType="I"
           status={doc.status}
           basePath={BASE}
           listPath={BASE}

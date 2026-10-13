@@ -33,6 +33,19 @@ export function mergeErrors(
   return out;
 }
 
+/**
+ * 表單底部紅底錯誤清單實際要顯示的項目（#248 N-5）：已由即時提示（黃底）顯示的訊息不再重複列出。
+ * 例：銷退金額超過可退上限時，即時提示與存檔檢核（或 server 回傳）是同一句，只留即時提示。
+ * hints 為 null／空字串時略過；只排除完全相同的字串（金額已改的舊訊息不誤刪）。
+ */
+export function excludeLiveHints(
+  errors: readonly string[],
+  ...hints: (string | null | undefined)[]
+): string[] {
+  const shown = new Set(hints.filter((h): h is string => !!h));
+  return errors.filter((e) => !shown.has(e));
+}
+
 /** 存草稿前的檢核：回傳全部錯誤（依表頭 → 各行順序）；通過回空陣列。 */
 export function collectDraftDocumentErrors(doc: DraftDocument): string[] {
   const errors: string[] = [];

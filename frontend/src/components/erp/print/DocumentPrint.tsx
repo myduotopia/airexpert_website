@@ -8,12 +8,14 @@ import { rocDate } from "@/lib/admin/minguo";
 import { formatMoney, formatQty } from "@/lib/erp/format";
 import {
   buildPrintLines,
+  docPrintColumns,
   DOC_PRINT_ROWS,
   formatUnitPrice,
   paginateLines,
   PRINT_DOC_TITLE,
   printDocKind,
   printLineRows,
+  printNameUnitsPerRow,
   salePaymentRows,
   watermarkText,
   type PrintDocKind,
@@ -141,10 +143,12 @@ export function DocumentPrint({
   const hasPrice = kind !== "stock";
   const isAdjust = doc.doc_type === "A";
   const colCount = hasPrice ? 5 : isAdjust ? 4 : 3;
+  const cols = docPrintColumns(doc.doc_type);
+  const nameUnits = printNameUnitsPerRow(doc.doc_type);
   const lines = buildPrintLines(doc, ctx.items);
   const pages = paginateLines(lines, {
     ...DOC_PRINT_ROWS,
-    rowsOf: (l) => printLineRows(l),
+    rowsOf: (l) => printLineRows(l, nameUnits),
   });
   const party = partyFields(doc, ctx, kind);
   const paymentRows = salePaymentRows(doc, ctx.balance);
@@ -168,13 +172,14 @@ export function DocumentPrint({
           <PartyGrid fields={party} />
 
           <table className="erp-lines">
+            {/* 欄寬見 docPrintColumns（產品編號 36mm，#248 N-7）；品名規格取剩餘寬度。 */}
             <colgroup>
-              <col style={{ width: "28mm" }} />
+              <col style={{ width: `${cols.code}mm` }} />
               <col />
-              <col style={{ width: hasPrice ? "20mm" : "24mm" }} />
-              {hasPrice && <col style={{ width: "22mm" }} />}
-              {hasPrice && <col style={{ width: "26mm" }} />}
-              {isAdjust && <col style={{ width: "52mm" }} />}
+              <col style={{ width: `${cols.qty}mm` }} />
+              {hasPrice && <col style={{ width: `${cols.unitPrice}mm` }} />}
+              {hasPrice && <col style={{ width: `${cols.amount}mm` }} />}
+              {isAdjust && <col style={{ width: `${cols.reason}mm` }} />}
             </colgroup>
             <thead>
               <tr>
