@@ -1,6 +1,7 @@
 "use client";
 // 新增收款 / 付款表單（受控；錯誤時保留輸入）。選完對象後載入其未沖銷單據供勾選沖銷。
 // 送出：前端檢核一次列出所有錯誤 → 頁內確認框（對象、金額、方式、沖銷、預收／預付餘額，#240）→ 過帳。
+// 金額 0 = 沖抵單（#249）：只以銷退（進退）沖抵單據，方式送出時正規化為「其他」。
 import { useState, useTransition } from "react";
 import { unstable_rethrow, useRouter } from "next/navigation";
 import {
@@ -28,6 +29,8 @@ import {
   NETWORK_ERROR,
   PAYMENT_METHODS,
   collectPaymentSubmitErrors,
+  isOffsetAmount,
+  normalizePaymentInput,
   toAllocationInputs,
   type AllocationRow,
   type OutstandingDoc,
@@ -82,7 +85,7 @@ function paymentConfirmOptions(s: PaymentConfirmSummary): ConfirmOptions {
             </ul>
           )}
           <p className="mt-1">
-            {s.remainingLabel}餘額{" "}
+            {s.offset ? `轉入${s.remainingLabel}` : `${s.remainingLabel}餘額`}{" "}
             <span className="font-semibold tabular-nums">
               {s.remainingText}
             </span>
@@ -168,7 +171,7 @@ export function PaymentForm({
     e.preventDefault();
     setErrors([]);
     const allocations = toAllocationInputs(rows);
-    const input = {
+    const input = normalizePaymentInput({
       direction,
       pay_date: payDate,
       party_id: partyId,
@@ -179,7 +182,7 @@ export function PaymentForm({
       bank,
       note,
       allocations,
-    };
+    });
     const bad = collectPaymentSubmitErrors(input, rows, docs);
     if (bad.length > 0) {
       setErrors(bad);
@@ -301,6 +304,15 @@ export function PaymentForm({
             disabled={pending}
             onChange={setAmount}
           />
+          {isOffsetAmount(amount) && (
+            <p className="text-text-muted text-[12px]">
+              金額 0 為沖抵單：以{meta.creditLabel}單沖抵{meta.debitLabel}
+              單，不{direction === "in" ? "收" : "付"}
+              款、方式不適用；沖抵後多出的
+              {meta.creditLabel}貸項轉為{meta.unallocatedLabel}，可再開「
+              {meta.refundAction}」。
+            </p>
+          )}
         </div>
         <div className="space-y-1.5">
           <label htmlFor="pay-bank" className={ERP_LABEL}>
@@ -391,7 +403,11 @@ export function PaymentForm({
           disabled={busy}
           className="bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-5 text-[14px] font-semibold text-white disabled:opacity-60"
         >
-          {pending ? "過帳中…" : `過帳${meta.label}`}
+          {pending
+            ? "過帳中…"
+            : isOffsetAmount(amount)
+              ? "過帳沖抵單"
+              : `過帳${meta.label}`}
         </button>
       </div>
       {confirmDialog}

@@ -225,12 +225,16 @@ describe("validatePaymentForm", () => {
     ).toBeNull();
   });
 
-  it("未選對象 / 金額 ≤ 0 / 沖銷合計超過金額", () => {
+  it("未選對象 / 金額為負 / 金額 0 無銷退 / 沖銷合計超過金額", () => {
     expect(validatePaymentForm(form({ party_id: null }))).toBe("請選擇客戶。");
     expect(
       validatePaymentForm(form({ direction: "out", party_id: null })),
     ).toBe("請選擇廠商。");
-    expect(validatePaymentForm(form({ amount: 0 }))).toBe("金額需大於 0。");
+    expect(validatePaymentForm(form({ amount: -1 }))).toBe("金額不可為負數。");
+    // #249：金額 0 為沖抵單，需至少一筆負數（銷退）沖銷
+    expect(validatePaymentForm(form({ amount: 0 }))).toBe(
+      "金額 0 為沖抵單，需至少勾選一張銷退單。",
+    );
     expect(
       validatePaymentForm(
         form({ allocations: [{ document_id: "d", amount: 70001 }] }),

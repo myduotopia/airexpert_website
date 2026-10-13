@@ -11,6 +11,7 @@ import type {
 import {
   CHECK_STATUS_LABEL,
   DIRECTION_META,
+  isOffsetAmount,
   PAYMENT_METHODS,
 } from "./allocation";
 import { PaymentListFilters } from "./PaymentListFilters";
@@ -74,15 +75,23 @@ export async function PaymentListView({
           <p className="text-text-muted mt-1 text-[14px]">
             {meta.label}登錄、沖銷
             {direction === "in" ? "銷貨 / 銷退" : "進貨 / 進退"}
-            單據與支票票期管理。
+            單據（金額 0 為沖抵單）、{meta.refundLabel}與支票票期管理。
           </p>
         </div>
-        <Link
-          href={`${meta.basePath}/new`}
-          className="bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-4 text-[14px] font-semibold text-white"
-        >
-          新增{meta.label}
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={meta.refundPath}
+            className="border-border text-ink hover:bg-surface-muted inline-flex h-10 items-center rounded-lg border bg-white px-4 text-[14px] font-semibold"
+          >
+            {meta.refundAction}
+          </Link>
+          <Link
+            href={`${meta.basePath}/new`}
+            className="bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-4 text-[14px] font-semibold text-white"
+          >
+            新增{meta.label}
+          </Link>
+        </div>
       </div>
       <PaymentTabs active={direction} />
       <PaymentListFilters
@@ -126,6 +135,8 @@ export async function PaymentListView({
                 ) : (
                   res.data.rows.map((r) => {
                     const voided = r.status === "voided";
+                    const refund = r.kind === "refund";
+                    const offset = !refund && isOffsetAmount(r.amount);
                     return (
                       <tr
                         key={r.id}
@@ -138,6 +149,13 @@ export async function PaymentListView({
                           >
                             {r.doc_no ?? "—"}
                           </Link>
+                          {(refund || offset) && (
+                            <span
+                              className={`ml-2 rounded px-1.5 py-0.5 text-[11px] font-semibold no-underline ${refund ? "bg-amber-50 text-amber-700" : "bg-surface-muted text-text-muted"}`}
+                            >
+                              {refund ? "退款" : "沖抵"}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {rocDate(r.pay_date)}
@@ -151,7 +169,7 @@ export async function PaymentListView({
                           {r.party_name ?? "—"}
                         </td>
                         <td className="px-4 py-3">
-                          {PAYMENT_METHOD_LABEL[r.method]}
+                          {offset ? "沖抵" : PAYMENT_METHOD_LABEL[r.method]}
                         </td>
                         <td className="px-4 py-3 text-[13px] whitespace-nowrap">
                           {r.method === "check" ? (
@@ -165,10 +183,14 @@ export async function PaymentListView({
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <MoneyText value={r.amount} />
+                          {/* 退款是付出（收回）的錢：以負數顯示 */}
+                          <MoneyText
+                            value={refund ? -r.amount : r.amount}
+                            negativeRed
+                          />
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {voided ? (
+                          {voided || refund ? (
                             "—"
                           ) : (
                             <MoneyText

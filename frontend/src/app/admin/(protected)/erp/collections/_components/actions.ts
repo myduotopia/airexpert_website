@@ -7,8 +7,17 @@ import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { erpErrorMessage } from "@/lib/erp/errors";
 import { ensureErp } from "@/lib/erp/guard";
-import { listOutstandingDocuments } from "@/lib/erp/queries/ar-ap";
-import { allocatePayment, postPayment, voidPayment } from "@/lib/erp/rpc";
+import {
+  getPrepaidSummary,
+  listOutstandingDocuments,
+  type PrepaidSummary,
+} from "@/lib/erp/queries/ar-ap";
+import {
+  allocatePayment,
+  postPayment,
+  postRefund,
+  voidPayment,
+} from "@/lib/erp/rpc";
 import type {
   CheckStatus,
   ErpDocumentBalance,
@@ -19,9 +28,11 @@ import type {
 } from "@/lib/erp/types";
 import {
   DIRECTION_META,
+  normalizePaymentInput,
   validatePaymentForm,
   type PaymentFormInput,
 } from "./allocation";
+import { validateRefundForm, type RefundFormInput } from "./refund";
 
 function isDirection(v: unknown): v is PaymentDirection {
   return v === "in" || v === "out";
@@ -35,15 +46,16 @@ function revalidatePayments(direction: PaymentDirection, id?: string) {
   revalidatePath("/admin/erp");
 }
 
-/** 新增收款 / 付款（含沖銷）。 */
+/** 新增收款 / 付款（含沖銷）；金額 0 為沖抵單（方式正規化為「其他」，#249）。 */
 export async function createPaymentAction(
-  input: PaymentFormInput,
+  raw: PaymentFormInput,
 ): Promise<ErpResult<PostPaymentResult>> {
   const denied = await ensureErp();
   if (denied) return denied;
-  if (!input || !isDirection(input.direction)) {
+  if (!raw || !isDirection(raw.direction)) {
     return { ok: false, error: "收付款方向不正確。" };
   }
+  const input = normalizePaymentInput(raw);
   const invalid = validatePaymentForm(input);
   if (invalid) return { ok: false, error: invalid };
 
@@ -65,6 +77,51 @@ export async function createPaymentAction(
   if (!res.ok) return res;
   revalidatePayments(input.direction, res.data?.id);
   return res;
+}
+
+/** 退款給客戶（RF）／廠商退款（VR）（#249）：從預收（預付）扣減，DB 依日期先後選來源。 */
+export async function createRefundAction(
+  input: RefundFormInput,
+): Promise<ErpResult<PostPaymentResult>> {
+  const denied = await ensureErp();
+  if (denied) return denied;
+  if (!input || !isDirection(input.direction)) {
+    return { ok: false, error: "退款方向不正確。" };
+  }
+  const invalid = validateRefundForm(input);
+  if (invalid) return { ok: false, error: invalid };
+
+  const isCheck = input.method === "check";
+  const res = await postRefund({
+    direction: input.direction,
+    pay_date: input.pay_date,
+    customer_id: input.direction === "in" ? input.party_id : null,
+    vendor_id: input.direction === "out" ? input.party_id : null,
+    method: input.method,
+    amount: Number(input.amount),
+    check_no: isCheck ? input.check_no?.trim() || null : null,
+    check_due_date: isCheck ? input.check_due_date || null : null,
+    bank: input.bank?.trim() || null,
+    check_status: isCheck ? "pending" : null,
+    note: input.note?.trim() || null,
+  });
+  if (!res.ok) return res;
+  revalidatePayments(input.direction, res.data?.id);
+  revalidatePath("/admin/erp/reports");
+  return res;
+}
+
+/** 讀取對象可退款的預收（預付）與來源（退款表單選完對象後呼叫）。 */
+export async function loadPrepaidAction(
+  direction: PaymentDirection,
+  partyId: string,
+): Promise<ErpResult<PrepaidSummary>> {
+  const denied = await ensureErp();
+  if (denied) return denied;
+  if (!isDirection(direction)) {
+    return { ok: false, error: "退款方向不正確。" };
+  }
+  return getPrepaidSummary(direction, partyId);
 }
 
 /** 讀取對象的未沖銷單據（新增表單選完客戶 / 廠商後呼叫）。 */

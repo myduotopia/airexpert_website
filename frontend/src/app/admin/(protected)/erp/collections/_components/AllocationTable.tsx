@@ -7,7 +7,7 @@ import { DOC_TYPE_LABEL } from "@/lib/erp/doc-no";
 import type { DocType } from "@/lib/erp/types";
 import {
   allocatedTotal,
-  defaultAllocation,
+  distributeAllocations,
   outstandingAfter,
   roundAmount,
   type AllocationRow,
@@ -34,22 +34,18 @@ export function AllocationTable({
   const byId = new Map(rows.map((r) => [r.document_id, r]));
   const remaining = roundAmount(capacity - allocatedTotal(rows));
 
+  // 勾選／取消時重算全部已勾選列（先計入退貨單貸項，再依日期分配給一般單據），
+  // 結果與勾選順序無關（#249：先勾 S 再勾 SR 時 S 不再停在 0）。
   function toggle(doc: OutstandingDoc, checked: boolean) {
-    const others = rows.filter((r) => r.document_id !== doc.document_id);
-    const left = roundAmount(capacity - allocatedTotal(others));
-    const amount = checked ? defaultAllocation(doc.outstanding, left) : 0;
-    onChange(
-      docs.map(
-        (d) =>
-          (d.document_id === doc.document_id
-            ? { document_id: d.document_id, selected: checked, amount }
-            : byId.get(d.document_id)) ?? {
-            document_id: d.document_id,
-            selected: false,
-            amount: 0,
-          },
-      ),
-    );
+    const next = docs.map((d) => ({
+      document_id: d.document_id,
+      selected:
+        d.document_id === doc.document_id
+          ? checked
+          : Boolean(byId.get(d.document_id)?.selected),
+      amount: 0,
+    }));
+    onChange(distributeAllocations(docs, next, capacity));
   }
 
   function setAmount(docId: string, amount: number) {

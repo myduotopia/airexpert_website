@@ -121,7 +121,9 @@ export function StatementPrint({
               <div className="erp-summary">
                 <div className="erp-remark">
                   <div className="erp-remark-label">說明</div>
-                  作廢單據與草稿不列入。如有疑問請洽服務專線。
+                  作廢單據與草稿不列入；{isVendor ? "廠商退款" : "退款"}
+                  以負數列於{isVendor ? "付款" : "收款"}欄，沖抵單金額為
+                  0。如有疑問請洽服務專線。
                 </div>
                 <table className="erp-totals">
                   <tbody>

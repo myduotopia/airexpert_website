@@ -397,7 +397,7 @@ export async function getOverviewData(): Promise<ErpResult<OverviewData>> {
         supabase
           .from("erp_payments")
           .select(
-            "id, direction, doc_no, method, status, check_status, check_due_date, check_no, bank, amount, customer:mx_customers(name), vendor:erp_vendors(name)",
+            "id, direction, kind, doc_no, method, status, check_status, check_due_date, check_no, bank, amount, customer:mx_customers(name), vendor:erp_vendors(name)",
           )
           .eq("method", "check")
           .eq("status", "posted")

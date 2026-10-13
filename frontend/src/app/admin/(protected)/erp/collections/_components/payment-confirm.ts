@@ -8,6 +8,7 @@ import type { PaymentDirection, PaymentMethod } from "@/lib/erp/types";
 import {
   allocatedTotal,
   DIRECTION_META,
+  isOffsetAmount,
   remainingAmount,
   type AllocationRow,
   type OutstandingDoc,
@@ -28,6 +29,8 @@ export interface PaymentConfirmInput {
 }
 
 export interface PaymentConfirmSummary {
+  /** 金額 0 的沖抵單（#249）。 */
+  offset: boolean;
   title: string;
   /** 確認鈕文字（動作名）：「過帳收款」／「過帳付款」。 */
   confirmLabel: string;
@@ -45,7 +48,7 @@ export interface PaymentConfirmSummary {
 }
 
 /** 金額：整數不帶小數、有角分時顯示 2 位（確認框不可把 1,234.5 顯示成 1,235）。 */
-function money(value: number): string {
+export function confirmMoney(value: number): string {
   const v = Number(value) || 0;
   return formatMoney(v, { decimals: Number.isInteger(v) ? 0 : 2 });
 }
@@ -64,18 +67,22 @@ export function paymentConfirmSummary(
   input: PaymentConfirmInput,
 ): PaymentConfirmSummary {
   const meta = DIRECTION_META[input.direction];
+  // 沖抵單不收付現金：方式顯示「沖抵」，不列銀行／票號（送出時亦會正規化，見 normalizePaymentInput）。
+  const offset = isOffsetAmount(input.amount);
   const details: { label: string; value: string }[] = [
     { label: meta.partyLabel, value: input.partyLabel?.trim() || "—" },
     { label: `${meta.label}日期`, value: rocDate(input.payDate) },
     {
       label: "方式",
-      value: PAYMENT_METHOD_LABEL[input.method] ?? input.method,
+      value: offset
+        ? `沖抵（以${meta.creditLabel}沖抵，不${input.direction === "in" ? "收" : "付"}款）`
+        : (PAYMENT_METHOD_LABEL[input.method] ?? input.method),
     },
   ];
-  if (input.bank.trim()) {
+  if (!offset && input.bank.trim()) {
     details.push({ label: "銀行", value: input.bank.trim() });
   }
-  if (input.method === "check") {
+  if (!offset && input.method === "check") {
     details.push({ label: "票號", value: input.checkNo.trim() || "—" });
     details.push({ label: "到期日", value: rocDate(input.checkDueDate) });
   }
@@ -86,19 +93,20 @@ export function paymentConfirmSummary(
   );
 
   return {
-    title: `確定過帳此${meta.label}？`,
-    confirmLabel: `過帳${meta.label}`,
-    amountLabel: `${meta.label}金額（TWD）`,
-    amountText: money(input.amount),
+    offset,
+    title: offset ? "確定過帳此沖抵單？" : `確定過帳此${meta.label}？`,
+    confirmLabel: offset ? "過帳沖抵單" : `過帳${meta.label}`,
+    amountLabel: offset ? "沖抵單金額（TWD）" : `${meta.label}金額（TWD）`,
+    amountText: confirmMoney(input.amount),
     amountHint: wanHint(input.amount),
     details,
     allocationCount: selected.length,
-    allocationTotalText: money(allocatedTotal(selected)),
+    allocationTotalText: confirmMoney(allocatedTotal(selected)),
     allocations: selected.map((r) => ({
       docNo: docNo.get(r.document_id) ?? "—",
-      amountText: money(r.amount),
+      amountText: confirmMoney(r.amount),
     })),
     remainingLabel: meta.unallocatedLabel,
-    remainingText: money(remainingAmount(input.amount, selected)),
+    remainingText: confirmMoney(remainingAmount(input.amount, selected)),
   };
 }

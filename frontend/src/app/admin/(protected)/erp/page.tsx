@@ -4,7 +4,7 @@ import { MoneyText } from "@/components/erp/MoneyText";
 import { requireModule } from "@/lib/admin/auth";
 import { rocDate } from "@/lib/admin/minguo";
 import { getOverviewData } from "@/lib/erp/queries/reports";
-import { paymentHref, percentValue } from "@/lib/erp/reports";
+import { checkFlowLabel, paymentHref, percentValue } from "@/lib/erp/reports";
 
 export const metadata = { title: "ERP 總覽 · 後台" };
 
@@ -150,7 +150,7 @@ export default async function ErpOverviewPage() {
                         {rocDate(c.check_due_date)}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">
-                        {c.direction === "in" ? "收票" : "開票"}
+                        {checkFlowLabel(c)}
                       </td>
                       <td className="px-3 py-2 font-mono text-[13px]">
                         <Link

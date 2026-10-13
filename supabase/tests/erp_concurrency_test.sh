@@ -188,6 +188,27 @@ insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, so
 insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price, source_line_id) values
   ('00000000-0000-0000-0000-0000000800a2', 1, 'item', '00000000-0000-0000-0000-0000000801c0', 1, 1000, '00000000-0000-0000-0000-0000000801f1'),
   ('00000000-0000-0000-0000-0000000800a3', 1, 'item', '00000000-0000-0000-0000-0000000802c0', 1, 1000, '00000000-0000-0000-0000-0000000802f1');
+
+-- R9／R10（#249）：各一位客戶，預收 1,000（收款不沖銷）
+insert into mx_customers (id, name) values
+  ('00000000-0000-0000-0000-00000000d009', 'C9'),
+  ('00000000-0000-0000-0000-00000000d010', 'C10');
+select erp_post_payment('{"direction":"in","pay_date":"2026-09-01","customer_id":"00000000-0000-0000-0000-00000000d009","method":"cash","amount":1000}');
+select erp_post_payment('{"direction":"in","pay_date":"2026-09-01","customer_id":"00000000-0000-0000-0000-00000000d010","method":"cash","amount":1000}');
+
+-- R11／R12（#249 review）：客戶預收 1,000（收款不沖銷）＋ 未收銷貨 800、500（服務品項，不動庫存）
+insert into mx_customers (id, name) values ('00000000-0000-0000-0000-00000000d011', 'C11');
+insert into erp_items (id, code, name, kind, track_serial, track_stock) values
+  ('00000000-0000-0000-0000-0000001100c0', 'R11', 'r11', 'service', false, false);
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, tax_type) values
+  ('00000000-0000-0000-0000-0000001100a1', 'S', '2026-09-02', '00000000-0000-0000-0000-00000000d011', (select wh from ids), 'exempt'),
+  ('00000000-0000-0000-0000-0000001100a2', 'S', '2026-09-02', '00000000-0000-0000-0000-00000000d011', (select wh from ids), 'exempt');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-0000001100a1', 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1, 800),
+  ('00000000-0000-0000-0000-0000001100a2', 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1, 500);
+select erp_post_document('00000000-0000-0000-0000-0000001100a1');
+select erp_post_document('00000000-0000-0000-0000-0000001100a2');
+select erp_post_payment('{"direction":"in","pay_date":"2026-09-01","customer_id":"00000000-0000-0000-0000-00000000d011","method":"cash","amount":1000}');
 SQL
 
 FAILS=0
@@ -291,6 +312,40 @@ race "select erp_post_document('00000000-0000-0000-0000-0000000800a2');" \
 expect_no_error "A 銷退過帳成功" "$OUT_A"
 expect_grep "B 銷退過帳累計金額超過被拒" "$OUT_B" "累計銷退金額"
 expect_eq "已過帳銷退數" "$(val "select count(*) from erp_documents where id in ('00000000-0000-0000-0000-0000000800a2','00000000-0000-0000-0000-0000000800a3') and status = 'posted'")" "1"
+
+# B 用不同月份：避開同一取號列（erp_doc_sequences）的鎖，才能驗證退款本身的 for update 鎖
+echo "== R9（#249）兩張退款單同時從同一客戶預收退款（預收 1,000、各退 800）"
+race "select erp_post_refund('{\"direction\":\"in\",\"pay_date\":\"2026-09-10\",\"customer_id\":\"00000000-0000-0000-0000-00000000d009\",\"method\":\"transfer\",\"amount\":800}');" \
+     "select erp_post_refund('{\"direction\":\"in\",\"pay_date\":\"2026-10-10\",\"customer_id\":\"00000000-0000-0000-0000-00000000d009\",\"method\":\"cash\",\"amount\":800}');"
+expect_no_error "A 退款過帳成功" "$OUT_A"
+expect_grep "B 退款超過預收被拒" "$OUT_B" "ERROR:  over_allocation"
+expect_eq "已過帳退款數" "$(val "select count(*) from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d009' and kind = 'refund' and status = 'posted'")" "1"
+expect_eq "R9 剩餘預收" "$(val "select unallocated::int from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d009'")" "200"
+
+echo "== R10（#249）先退款（動用預收），同時作廢該預收的收款"
+R10_PAY="$(val "select id from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d010' and kind = 'payment'")"
+race "select erp_post_refund('{\"direction\":\"in\",\"pay_date\":\"2026-09-10\",\"customer_id\":\"00000000-0000-0000-0000-00000000d010\",\"method\":\"transfer\",\"amount\":500}');" \
+     "select erp_void_payment('$R10_PAY', 'race');"
+expect_no_error "A 退款過帳成功" "$OUT_A"
+expect_grep "B 作廢收款 has_dependents" "$OUT_B" "ERROR:  has_dependents"
+expect_eq "收款仍 posted" "$(val "select status from erp_payments where id = '$R10_PAY'")" "posted"
+expect_eq "R10 剩餘預收" "$(val "select unallocated::int from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d010'")" "500"
+
+echo "== R11（#249 review）同一筆預收：補沖銷 800 與退款 800 同時（預收 1,000，不可超領）"
+R11_PAY="$(val "select id from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d011' and kind = 'payment'")"
+race "select erp_allocate_payment('$R11_PAY', '[{\"document_id\":\"00000000-0000-0000-0000-0000001100a1\",\"amount\":800}]');" \
+     "select erp_post_refund('{\"direction\":\"in\",\"pay_date\":\"2026-09-10\",\"customer_id\":\"00000000-0000-0000-0000-00000000d011\",\"method\":\"transfer\",\"amount\":800}');"
+expect_no_error "A 補沖銷成功" "$OUT_A"
+expect_grep "B 退款超過剩餘預收被拒" "$OUT_B" "ERROR:  over_allocation"
+expect_eq "R11 剩餘預收" "$(val "select unallocated::int from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d011'")" "200"
+
+echo "== R12（#249 review）反向：先退款 200（用完剩餘預收），同時補沖銷另一張銷貨 200"
+race "select erp_post_refund('{\"direction\":\"in\",\"pay_date\":\"2026-09-11\",\"customer_id\":\"00000000-0000-0000-0000-00000000d011\",\"method\":\"cash\",\"amount\":200}');" \
+     "select erp_allocate_payment('$R11_PAY', '[{\"document_id\":\"00000000-0000-0000-0000-0000001100a2\",\"amount\":200}]');"
+expect_no_error "A 退款 200（用完預收）成功" "$OUT_A"
+expect_grep "B 補沖銷超過剩餘預收被拒" "$OUT_B" "ERROR:  over_allocation"
+expect_eq "R12 剩餘預收" "$(val "select unallocated::int from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d011'")" "0"
+expect_eq "R12 第二張銷貨仍未沖" "$(val "select outstanding::int from erp_document_balances where document_id = '00000000-0000-0000-0000-0000001100a2'")" "500"
 
 if [ "$FAILS" -ne 0 ]; then
   echo "==> ERP CONCURRENCY TESTS FAILED（$FAILS 項）" >&2

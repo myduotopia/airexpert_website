@@ -1,5 +1,5 @@
 "use client";
-// 作廢收付款：原因必填 + 二次確認。
+// 作廢收付款／退款單：原因必填 + 二次確認。
 import { useState, useTransition } from "react";
 import { unstable_rethrow, useRouter } from "next/navigation";
 import { ERP_AREA } from "@/components/erp/styles";
@@ -12,12 +12,16 @@ export function VoidPaymentForm({
   paymentId,
   direction,
   docNo,
+  refund = false,
 }: {
   paymentId: string;
   direction: PaymentDirection;
   docNo: string | null;
+  /** 退款單（#249）：作廢後預收（預付）還原。 */
+  refund?: boolean;
 }) {
-  const label = DIRECTION_META[direction].label;
+  const meta = DIRECTION_META[direction];
+  const label = refund ? meta.refundLabel : meta.label;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -45,7 +49,9 @@ export function VoidPaymentForm({
     }
     const ok = await askConfirm({
       title: docNo ? `確定作廢${label} ${docNo}？` : `確定作廢此${label}？`,
-      message: "沖銷會一併取消，此動作無法復原。",
+      message: refund
+        ? `退款扣減的${meta.unallocatedLabel}會還原，此動作無法復原。`
+        : "沖銷會一併取消，此動作無法復原。",
       confirmLabel: "作廢",
       tone: "danger",
     });

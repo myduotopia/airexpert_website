@@ -19,11 +19,14 @@ export function CheckStatusControl({
   direction,
   status,
   disabled,
+  refund = false,
 }: {
   paymentId: string;
   direction: PaymentDirection;
   status: CheckStatus | null;
   disabled?: boolean;
+  /** 退款單的支票（#249）：退票時提示作廢退款單、預收（預付）還原。 */
+  refund?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -84,9 +87,9 @@ export function CheckStatusControl({
       </div>
       {status === "bounced" && !disabled && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-          此支票已退票。系統不會自動沖回，請作廢此
-          {DIRECTION_META[direction].label}
-          ，沖銷會一併取消，相關單據恢復未沖餘額。
+          {refund
+            ? `此支票已退票。系統不會自動還原，請作廢此${DIRECTION_META[direction].refundLabel}，扣減的${DIRECTION_META[direction].unallocatedLabel}會還原。`
+            : `此支票已退票。系統不會自動沖回，請作廢此${DIRECTION_META[direction].label}，沖銷會一併取消，相關單據恢復未沖餘額。`}
         </p>
       )}
       {error && (
