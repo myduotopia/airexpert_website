@@ -25,6 +25,7 @@ import {
 import {
   collectDraftDocumentErrors,
   collectPostErrors,
+  excludeLiveHints,
   mergeErrors,
   validateDraftDocument,
 } from "@/lib/erp/validate";
@@ -430,5 +431,42 @@ describe("wanHint（以「萬」複述金額，N-1 多打一個 0 時一眼看�
     expect(wanHint(1234567)).toBe("約 123.46 萬");
     expect(wanHint(9999)).toBeNull();
     expect(wanHint(0)).toBeNull();
+  });
+});
+
+// #248 N-5：銷退超額時，同一句錯誤同時出現在黃底即時提示與紅底儲存錯誤。
+// 紅底清單排除已由即時提示顯示的訊息（相同字串），其餘錯誤照常列出。
+describe("excludeLiveHints", () => {
+  const over =
+    "銷退金額（含稅）12,000 超過原銷貨單可退金額 10,500（原單 10,500、已退 0）；請調低退貨單價或數量。";
+
+  it("儲存錯誤與即時提示相同 → 紅底不再列出", () => {
+    expect(excludeLiveHints([over], over)).toEqual([]);
+  });
+
+  it("即時提示存在時，只列其他錯誤（保留順序）", () => {
+    expect(
+      excludeLiveHints(["請選擇入庫倉。", over, "第 1 行數量需大於 0。"], over),
+    ).toEqual(["請選擇入庫倉。", "第 1 行數量需大於 0。"]);
+  });
+
+  it("沒有即時提示（null／空字串）→ 原樣回傳", () => {
+    expect(excludeLiveHints([over], null)).toEqual([over]);
+    expect(excludeLiveHints([over], undefined, "")).toEqual([over]);
+  });
+
+  it("即時提示內容不同（例如金額已改）→ 只排除完全相同的字串，不誤刪", () => {
+    const amountChanged = over.replace("12,000", "11,000");
+    const returnedChanged = over.replace("已退 0", "已退 500");
+    expect(excludeLiveHints([amountChanged, returnedChanged], over)).toEqual([
+      amountChanged,
+      returnedChanged,
+    ]);
+  });
+
+  it("搭配 mergeErrors：存檔檢核結果排除即時提示後為空 → 不顯示紅底", () => {
+    const problems = mergeErrors([], [], over);
+    expect(problems).toEqual([over]);
+    expect(excludeLiveHints(problems, over)).toEqual([]);
   });
 });

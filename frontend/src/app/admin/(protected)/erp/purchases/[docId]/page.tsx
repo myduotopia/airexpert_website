@@ -77,6 +77,7 @@ export default async function PurchaseDetailPage({
         <DocTitle doc={doc} />
         <DocActionBar
           docId={doc.id}
+          docType="P"
           status={doc.status}
           basePath={BASE}
           listPath={BASE}

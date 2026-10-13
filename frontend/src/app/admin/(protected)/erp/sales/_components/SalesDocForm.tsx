@@ -8,6 +8,7 @@
 // - 銷貨單：追機號品項只列「出庫倉」中 in_stock 的機號（serials 由 server 讀出，client 依倉庫篩選）。
 // - 銷退單：客戶、稅別稅率、幣別鎖定為來源銷貨單；上方列出各來源行可退數量與可退金額（折扣分攤後淨額，#233），
 //   明細合計超過可退金額時即時提示（存草稿時 server 會擋，過帳時 DB 再檢查一次）。
+//   即時提示（黃底）已顯示的訊息不再出現在紅底錯誤清單（#248 N-5，excludeLiveHints）。
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -39,6 +40,7 @@ import type { EmployeeOption } from "@/lib/employees/types";
 import {
   collectDraftDocumentErrors,
   collectPostErrors,
+  excludeLiveHints,
   mergeErrors,
 } from "@/lib/erp/validate";
 import { postSalesDocumentAction, saveSalesDraftAction } from "../actions";
@@ -120,7 +122,9 @@ export function SalesDocForm({
       returnAmountError,
     );
     if (problems.length > 0) {
-      setErrors(problems);
+      // 銷退超額仍擋下存檔，但該訊息已在黃底即時提示，紅底只列其他錯誤；
+      // 不存入 errors，之後改金額時也不會留下舊金額的紅底訊息。
+      setErrors(excludeLiveHints(problems, returnAmountError));
       return;
     }
     if (
@@ -317,7 +321,8 @@ export function SalesDocForm({
         )}
       </section>
 
-      <ErrorList errors={errors} />
+      {/* server 回傳與即時提示相同的訊息（例：銷退超額）時也只顯示一次。 */}
+      <ErrorList errors={excludeLiveHints(errors, returnAmountError)} />
 
       <div className="flex flex-wrap gap-2">
         <button

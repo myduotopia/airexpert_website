@@ -56,6 +56,7 @@ export default async function PurchaseReturnDetailPage({
         <DocTitle doc={doc} />
         <DocActionBar
           docId={doc.id}
+          docType="PR"
           status={doc.status}
           basePath={BASE}
           listPath={BASE}

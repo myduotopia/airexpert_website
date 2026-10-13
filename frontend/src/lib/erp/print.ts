@@ -245,14 +245,74 @@ export function estimateTextRows(text: string, unitsPerRow: number): number {
     );
 }
 
-/** 品名規格欄每列可容納的寬度單位（約 25 個中文字）。 */
-export const NAME_UNITS_PER_ROW = 48;
+/** 明細表可用寬度（mm）：A4 直式 210mm − 左右邊界 12mm×2。 */
+export const PRINT_TABLE_WIDTH_MM = 186;
 
 /**
- * 產品編號欄每列可容納的寬度單位（28mm）。以 Inter 10pt 實測：英數約 11 字、中文 7 字即滿一列
- * （「NAD-0402-CKD」12 字會折行），英數比品名欄的估算寬，故取 11（中文 7 字估 2 列，偏保守）。
+ * 明細表固定欄寬（mm）；品名規格欄取剩餘寬度。DocumentPrint 的 colgroup 依此設定，
+ * 下方列數估算常數須與欄寬一致（測試會檢查）。
+ * 產品編號 36mm（#248 N-7，原 28mm）：Inter 10pt 實測 14 字代碼（例 AM3-A-42012-04、C65N22B24Y4399）同一行。
  */
-export const CODE_UNITS_PER_ROW = 11;
+export const DOC_PRINT_COL_MM = {
+  code: 36,
+  /** 有金額的單別（報價、銷貨、銷退、採購、進貨、進退）。 */
+  qty: 20,
+  /** 調撥、盤點調整（無金額欄，數量欄較寬）。 */
+  stockQty: 24,
+  unitPrice: 22,
+  amount: 26,
+  /** 盤點調整單的調整原因。 */
+  reason: 52,
+} as const;
+
+export interface DocPrintColumns {
+  code: number;
+  name: number;
+  qty: number;
+  /** null = 此單別不印該欄。 */
+  unitPrice: number | null;
+  amount: number | null;
+  reason: number | null;
+}
+
+/** 各單別的明細欄寬（mm）。 */
+export function docPrintColumns(docType: DocType): DocPrintColumns {
+  const C = DOC_PRINT_COL_MM;
+  const hasPrice = printDocKind(docType) !== "stock";
+  const qty = hasPrice ? C.qty : C.stockQty;
+  const unitPrice = hasPrice ? C.unitPrice : null;
+  const amount = hasPrice ? C.amount : null;
+  const reason = docType === "A" ? C.reason : null;
+  const name =
+    PRINT_TABLE_WIDTH_MM -
+    C.code -
+    qty -
+    (unitPrice ?? 0) -
+    (amount ?? 0) -
+    (reason ?? 0);
+  return { code: C.code, name, qty, unitPrice, amount, reason };
+}
+
+/**
+ * 品名規格欄每列可容納的寬度單位：有金額的單別品名欄 82mm，約 22 個中文字（#248 N-7 前為 90mm、24 字）。
+ * 調撥單品名欄較寬（126mm），沿用此值偏保守。
+ */
+export const NAME_UNITS_PER_ROW = 44;
+
+/** 盤點調整單品名欄（74mm，另有調整原因欄）每列可容納的寬度單位：約 19 個中文字。 */
+export const ADJUST_NAME_UNITS_PER_ROW = 38;
+
+/** 單別的品名欄估算寬度（傳給 printLineRows）。 */
+export function printNameUnitsPerRow(docType: DocType): number {
+  return docType === "A" ? ADJUST_NAME_UNITS_PER_ROW : NAME_UNITS_PER_ROW;
+}
+
+/**
+ * 產品編號欄每列可容納的寬度單位（36mm）。以 Inter 10pt 實測：英數約 14 字即滿一列
+ * （「AM3-A-42012-04」「C65N22B24Y4399」14 字不折行；M、W 等寬字母較多時可能提早折行），
+ * 中文約 9 字；英數比品名欄的估算寬，故取 14（中文 8 字以上估 2 列，偏保守）。
+ */
+export const CODE_UNITS_PER_ROW = 14;
 
 /** 盤點調整單「調整原因」欄每列可容納的寬度單位（52mm，約 13 個中文字）。 */
 export const REASON_UNITS_PER_ROW = 26;
