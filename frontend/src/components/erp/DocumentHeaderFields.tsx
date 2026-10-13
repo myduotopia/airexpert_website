@@ -199,6 +199,8 @@ export function DocumentHeaderFields({
                 id="erp-tax-rate"
                 value={Math.round(value.tax_rate * 10000) / 100}
                 decimals={2}
+                // 稅率 0% 是刻意的設定，明確顯示 0（不套用「0 顯示空白」）。
+                blankZero={false}
                 disabled={disabled}
                 onChange={(n) => set({ tax_rate: Math.round(n * 100) / 10000 })}
               />
