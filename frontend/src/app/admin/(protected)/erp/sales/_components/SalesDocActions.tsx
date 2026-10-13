@@ -2,10 +2,12 @@
 // 銷售單據明細頁的動作列：編輯 / 過帳（確認）/ 刪除草稿 / 作廢（原因必填、二次確認）/
 // 轉銷貨單 / 建立銷退單 / 列印。過帳與作廢的 RPC 結果（取號、保養卡機台、警告）就地顯示。
 // 轉銷貨單 / 建立銷退單的確認框會列出已轉出的單據並視情況警示（#234，規則見 lib/erp/derived-confirm.ts）。
+// 過帳前先看前端檢核（postErrors，由明細頁以 collectPostErrors 算好傳入），有錯一次列出、不跳確認框（#240）。
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, unstable_rethrow } from "next/navigation";
 import { DocStatusBadge } from "@/components/erp/DocStatusBadge";
+import { ErrorList } from "@/components/erp/ErrorList";
 import { ERP_BUTTON_SECONDARY, ERP_INPUT } from "@/components/erp/styles";
 import {
   useConfirm,
@@ -74,17 +76,21 @@ export function SalesDocActions({
   docType,
   status,
   derivedDocs = [],
+  postErrors = [],
 }: {
   docId: string;
   docType: SalesDocType;
   status: DocStatus;
   /** 由本單轉出的單據（報價 → 銷貨、銷貨 → 銷退；含草稿與作廢），新→舊。 */
   derivedDocs?: DerivedDocInput[];
+  /** 草稿過帳前的前端檢核錯誤（lib/erp/validate collectPostErrors）；有錯時按過帳只列出錯誤。 */
+  postErrors?: string[];
 }) {
   const router = useRouter();
   const basePath = SALES_BASE_PATH[docType];
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [checkErrors, setCheckErrors] = useState<string[]>([]);
   const [postResult, setPostResult] = useState<SalesPostResult | null>(null);
   const [voidWarnings, setVoidWarnings] = useState<string[] | null>(null);
   const [voiding, setVoiding] = useState(false);
@@ -97,6 +103,7 @@ export function SalesDocActions({
     confirm?: ConfirmOptions,
   ) {
     setError(null);
+    setCheckErrors([]);
     if (confirm && !(await askConfirm(confirm))) return;
     startTransition(async () => {
       try {
@@ -127,7 +134,12 @@ export function SalesDocActions({
               type="button"
               disabled={pending}
               className={PRIMARY}
-              onClick={() =>
+              onClick={() => {
+                if (postErrors.length > 0) {
+                  setError(null);
+                  setCheckErrors(postErrors);
+                  return;
+                }
                 run(
                   () => postSalesDocumentAction(docId),
                   (data) => {
@@ -146,8 +158,8 @@ export function SalesDocActions({
                           "過帳後將取號並異動庫存，不可再修改（需作廢）。",
                         confirmLabel: "過帳",
                       },
-                )
-              }
+                );
+              }}
             >
               {pending ? "處理中…" : SALES_POST_LABEL[docType]}
             </button>
@@ -280,14 +292,7 @@ export function SalesDocActions({
         </div>
       )}
 
-      {error && (
-        <p
-          role="alert"
-          className="rounded-lg bg-red-50 px-4 py-3 text-[14px] text-red-700"
-        >
-          {error}
-        </p>
-      )}
+      <ErrorList errors={error ? [error] : checkErrors} />
 
       {postResult && (
         <div

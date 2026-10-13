@@ -1,6 +1,10 @@
 "use client";
-// 銷售單據表單（報價 / 銷貨 / 銷退共用）：受控表頭 + 明細編輯器，「儲存草稿」後導向明細頁（於明細頁過帳）。
+// 銷售單據表單（報價 / 銷貨 / 銷退共用）：受控表頭 + 明細編輯器，存檔後導向明細頁。
 // - 報價單：儲存即確認（存草稿後立刻過帳取號，列表直接看到正式單）；品項欄可自由輸入或帶入保養卡機型。
+// - 銷貨 / 銷退單：「儲存草稿」或「儲存並過帳」（#240，比照採購／進貨）：存草稿成功後過帳，
+//   過帳失敗時留在本頁（草稿已存）並顯示錯誤。
+// - 送出前先做前端檢核（存草稿條件；過帳時另加倉庫、品項、數量、機號數），一次列出所有錯誤；
+//   有錯就不跳確認框（#238 A-4 順帶）。server／RPC 的錯誤仍一次一條。
 // - 銷貨單：追機號品項只列「出庫倉」中 in_stock 的機號（serials 由 server 讀出，client 依倉庫篩選）。
 // - 銷退單：客戶、稅別稅率、幣別鎖定為來源銷貨單；上方列出各來源行可退數量與可退金額（折扣分攤後淨額，#233），
 //   明細合計超過可退金額時即時提示（存草稿時 server 會擋，過帳時 DB 再檢查一次）。
@@ -8,8 +12,10 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { unstable_rethrow } from "next/navigation";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import { DocumentHeaderFields } from "@/components/erp/DocumentHeaderFields";
 import { DocumentLinesEditor } from "@/components/erp/DocumentLinesEditor";
+import { ErrorList } from "@/components/erp/ErrorList";
 import { ERP_BUTTON_SECONDARY } from "@/components/erp/styles";
 import { linesMissingItem } from "@/lib/erp/draft";
 import { formatMoney, formatQty } from "@/lib/erp/format";
@@ -30,6 +36,11 @@ import type {
   WarehouseOption,
 } from "@/lib/erp/types";
 import type { EmployeeOption } from "@/lib/employees/types";
+import {
+  collectDraftDocumentErrors,
+  collectPostErrors,
+  mergeErrors,
+} from "@/lib/erp/validate";
 import { postSalesDocumentAction, saveSalesDraftAction } from "../actions";
 import { SALES_BASE_PATH, SALES_DOC_LABEL } from "./sales-config";
 
@@ -72,8 +83,9 @@ export function SalesDocForm({
   const { lines: initialLines, ...initialHeader } = initial;
   const [header, setHeader] = useState<DraftDocumentHeader>(initialHeader);
   const [lines, setLines] = useState<DraftLine[]>(initialLines);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
+  const [askConfirm, confirmDialog] = useConfirm();
 
   // 銷貨：只列出庫倉的在庫機號；銷退：server 已限定為來源單已售機號。
   const serialOptions =
@@ -97,28 +109,54 @@ export function SalesDocForm({
     setHeader(next);
   }
 
-  function save() {
-    setError(null);
+  /** andPost：銷貨 / 銷退「儲存並過帳」。報價單一律儲存即確認（confirmOnSave）。 */
+  async function save(andPost: boolean) {
+    setErrors([]);
+    const doc = { ...header, lines };
+    const posting = andPost || confirmOnSave;
+    const problems = mergeErrors(
+      collectDraftDocumentErrors(doc),
+      posting ? collectPostErrors(doc, items) : [],
+      returnAmountError,
+    );
+    if (problems.length > 0) {
+      setErrors(problems);
+      return;
+    }
+    if (
+      andPost &&
+      !(await askConfirm({
+        title: `確定儲存並過帳此${SALES_DOC_LABEL[docType]}？`,
+        message: "過帳後將取號並異動庫存，不可再修改（需作廢）。",
+        confirmLabel: "過帳",
+      }))
+    ) {
+      return;
+    }
     startTransition(async () => {
       try {
-        const res = await saveSalesDraftAction({ ...header, lines });
+        const res = await saveSalesDraftAction(doc);
         if (!res.ok) {
-          setError(res.error);
+          setErrors([res.error]);
           return;
         }
-        if (confirmOnSave) {
-          // 記住草稿 id：確認失敗時修正後再存，會更新同一張草稿而非另建新單。
+        if (posting) {
+          // 記住草稿 id：過帳（確認）失敗時修正後再存，會更新同一張草稿而非另建新單。
           setHeader((h) => ({ ...h, id: res.data.id }));
           const posted = await postSalesDocumentAction(res.data.id);
           if (!posted.ok) {
-            setError(`報價單已存為草稿，但確認失敗：${posted.error}`);
+            setErrors([
+              confirmOnSave
+                ? `報價單已存為草稿，但確認失敗：${posted.error}`
+                : `草稿已儲存，但過帳失敗：${posted.error}`,
+            ]);
             return;
           }
         }
         router.push(`${basePath}/${res.data.id}`);
       } catch (e) {
         unstable_rethrow(e);
-        setError("儲存失敗，請檢查網路連線後再試一次。");
+        setErrors(["儲存失敗，請檢查網路連線後再試一次。"]);
       }
     });
   }
@@ -279,21 +317,18 @@ export function SalesDocForm({
         )}
       </section>
 
-      {error && (
-        <p
-          role="alert"
-          className="rounded-lg bg-red-50 px-4 py-3 text-[14px] text-red-700"
-        >
-          {error}
-        </p>
-      )}
+      <ErrorList errors={errors} />
 
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={save}
+          onClick={() => save(false)}
           disabled={pending}
-          className="bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-5 text-[14px] font-semibold text-white disabled:opacity-60"
+          className={
+            confirmOnSave
+              ? "bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-5 text-[14px] font-semibold text-white disabled:opacity-60"
+              : `${ERP_BUTTON_SECONDARY} h-10`
+          }
         >
           {pending
             ? "儲存中…"
@@ -301,10 +336,21 @@ export function SalesDocForm({
               ? `儲存${SALES_DOC_LABEL[docType]}`
               : `儲存${SALES_DOC_LABEL[docType]}草稿`}
         </button>
+        {!confirmOnSave && (
+          <button
+            type="button"
+            onClick={() => save(true)}
+            disabled={pending}
+            className="bg-primary hover:bg-primary-deep inline-flex h-10 items-center rounded-lg px-5 text-[14px] font-semibold text-white disabled:opacity-60"
+          >
+            {pending ? "處理中…" : "儲存並過帳"}
+          </button>
+        )}
         <Link href={cancelHref} className={`${ERP_BUTTON_SECONDARY} h-10`}>
           取消
         </Link>
       </div>
+      {confirmDialog}
     </div>
   );
 }
