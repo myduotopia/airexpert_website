@@ -8,7 +8,11 @@ import { useRouter } from "next/navigation";
 import type { VendorInput } from "@/lib/erp/queries/master-data";
 import type { VendorOption } from "@/lib/erp/types";
 import { ERP_AREA, ERP_INPUT } from "@/components/erp/styles";
-import { Field } from "../../items/_components/master-ui";
+import {
+  Field,
+  fieldErrorId,
+  INPUT_INVALID,
+} from "../../items/_components/master-ui";
 import { createVendorAction, updateVendorAction } from "../actions";
 
 const TEXT_FIELDS: {
@@ -27,7 +31,7 @@ const TEXT_FIELDS: {
   { key: "phone", label: "電話", type: "tel" },
   { key: "fax", label: "傳真", type: "tel" },
   // 不用 type="email"：瀏覽器原生驗證不接受多筆、錯誤只以浮動提示呈現（自動化工具與部分使用者
-  // 看起來像「按儲存沒反應」）；改由 server 檢查並在表單下方顯示訊息（#222）。
+  // 看起來像「按儲存沒反應」）；改由 server 檢查，錯誤標在此欄（紅框＋欄下訊息，#222、B-05）。
   {
     key: "email",
     label: "Email",
@@ -65,12 +69,30 @@ export function VendorForm({
   const [v, setV] = useState<VendorInput>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 錯誤屬於某一欄（server 驗證回傳 field，例：Email 格式）→ 標在該欄（紅框＋欄下訊息），
+  // 不在表單底部重複顯示（B-05）；其餘錯誤（DB、網路）仍顯示在底部。
+  const [errorField, setErrorField] = useState<keyof VendorInput | null>(null);
   const cancelHref = vendorId
     ? `/admin/erp/vendors/${vendorId}`
     : "/admin/erp/vendors";
 
   function set<K extends keyof VendorInput>(k: K, value: VendorInput[K]) {
     setV((prev) => ({ ...prev, [k]: value }));
+    // 修改出錯的欄位即清除該欄錯誤（重新儲存時再驗證）。
+    if (k === errorField) {
+      setError(null);
+      setErrorField(null);
+    }
+  }
+
+  function fail(message: string, field?: keyof VendorInput) {
+    // 該欄不在畫面上（例：就地新增 Dialog 未顯示的欄位）→ 改顯示在表單底部，避免訊息消失。
+    const input = field ? document.getElementById(fid(field)) : null;
+    setError(message);
+    setErrorField(input ? field! : null);
+    setBusy(false);
+    // 表單較長時欄位可能在畫面外：聚焦（並捲動到）出錯的欄位。
+    input?.focus();
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -78,12 +100,12 @@ export function VendorForm({
     e.stopPropagation();
     setBusy(true);
     setError(null);
+    setErrorField(null);
     try {
       if (onSaved) {
         const created = await createVendorAction(v);
         if (!created.ok) {
-          setError(created.error);
-          setBusy(false);
+          fail(created.error, created.field);
           return;
         }
         onSaved(created.id, created.option);
@@ -93,15 +115,13 @@ export function VendorForm({
         ? await updateVendorAction(vendorId, v)
         : await createVendorAction(v);
       if (!res.ok) {
-        setError(res.error);
-        setBusy(false);
+        fail(res.error, res.field);
         return;
       }
       router.push(`/admin/erp/vendors/${res.id}`);
       router.refresh();
     } catch (err) {
-      setError((err as Error)?.message || "儲存失敗，請確認網路後再試一次。");
-      setBusy(false);
+      fail((err as Error)?.message || "儲存失敗，請確認網路後再試一次。");
     }
   }
 
@@ -121,6 +141,7 @@ export function VendorForm({
             htmlFor={fid(f.key)}
             required={f.required}
             wide={f.wide}
+            error={errorField === f.key ? error : null}
           >
             <input
               id={fid(f.key)}
@@ -131,7 +152,13 @@ export function VendorForm({
               }
               type={f.type ?? "text"}
               inputMode={f.inputMode}
-              className={ERP_INPUT}
+              className={`${ERP_INPUT} ${INPUT_INVALID}`}
+              aria-invalid={errorField === f.key && error ? true : undefined}
+              aria-describedby={
+                errorField === f.key && error
+                  ? fieldErrorId(fid(f.key))
+                  : undefined
+              }
               value={String(v[f.key] ?? "")}
               placeholder={f.placeholder}
               required={f.required}
@@ -160,7 +187,7 @@ export function VendorForm({
         )}
       </div>
 
-      {error && (
+      {error && !errorField && (
         <p role="alert" className="text-[14px] text-red-600">
           {error}
         </p>

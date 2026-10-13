@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   2. 驗證錯誤（進貨單未選倉庫、未選廠商）；
 //   3. RPC 錯誤碼 → 中文（over_receipt / serial_unavailable / has_dependents）；
 //   4. 「轉進貨單」以未到貨量建立 I 草稿（source_doc_id / source_line_id）。
+//   5. 「轉進退單」預設數量扣除已退與已售出／不在庫（B-10）。
 
 type Kind = "select" | "insert" | "update" | "delete";
 interface Recorded {
@@ -549,6 +550,128 @@ describe("轉進貨單", () => {
     expect(await convertPurchaseToReceiptAction("p-1")).toEqual({
       ok: false,
       error: "只能由已過帳的單據轉單。",
+    });
+  });
+});
+
+describe("轉進退單（B-10：預設數量扣除已售出／不在庫）", () => {
+  // I11510002：乾燥機進 2 台（T001、T002），折扣 −1,000；T001 已由 S11510001 售出。
+  const receipt = {
+    id: "i-1",
+    doc_type: "I",
+    status: "posted",
+    doc_no: "I11510002",
+    vendor_id: "vendor-1",
+    warehouse_id: "wh-main",
+    tax_type: "excluded",
+    tax_rate: 0.05,
+    currency: "TWD",
+    exchange_rate: 1,
+    source_doc_id: null,
+    lines: [
+      {
+        id: "il-1",
+        line_no: 1,
+        line_type: "item",
+        item_id: "dryer",
+        description: "AL-010N 乾燥機",
+        qty: 2,
+        unit_price: 30000,
+        amount: 60000,
+        serial_nos: ["AL010N-T001", "AL010N-T002"],
+        // getDocumentWithLines 讀回的原始形狀：line_serials → serial。
+        serials: [
+          { serial: { id: "t001", serial_no: "AL010N-T001", status: "sold" } },
+          {
+            serial: {
+              id: "t002",
+              serial_no: "AL010N-T002",
+              status: "in_stock",
+            },
+          },
+        ],
+      },
+      {
+        id: "il-2",
+        line_no: 2,
+        line_type: "discount",
+        item_id: null,
+        description: "折扣",
+        qty: 0,
+        unit_price: 0,
+        amount: -1000,
+        serial_nos: null,
+        serials: [],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    responses["erp_documents:select"] = () => ({ data: receipt, error: null });
+    // 尚無已過帳進退單。
+    responses["erp_document_lines:select"] = () => ({ data: [], error: null });
+    responses["erp_items:select"] = () => ({
+      data: [{ id: "dryer", track_stock: true, track_serial: true }],
+      error: null,
+    });
+    responses["erp_stock_levels:select"] = () => ({
+      data: [{ item_id: "dryer", qty: 1 }],
+      error: null,
+    });
+    responses["erp_serials:select"] = () => ({
+      data: [{ id: "t002" }],
+      error: null,
+    });
+    responses["erp_vendors:select"] = () => ({
+      data: { name: "漢鐘" },
+      error: null,
+    });
+  });
+
+  it("進 2 台售出 1 台 → 預設數量 1，折扣依比例 −500", async () => {
+    const res = await convertReceiptToReturnAction("i-1");
+    expect(res).toEqual({ ok: true, id: "erp_documents-1" });
+    const serialQuery = recorded.find((r) => r.table === "erp_serials")!;
+    expect(serialQuery.filters).toEqual(
+      expect.arrayContaining([
+        { fn: "eq", args: ["in_doc_id", "i-1"] },
+        { fn: "eq", args: ["status", "in_stock"] },
+        { fn: "eq", args: ["warehouse_id", "wh-main"] },
+      ]),
+    );
+    const lines = recorded.find(
+      (r) => r.table === "erp_document_lines" && r.kind === "insert",
+    )!.payload as Record<string, unknown>[];
+    expect(lines).toEqual([
+      expect.objectContaining({
+        line_type: "item",
+        item_id: "dryer",
+        qty: 1,
+        source_line_id: "il-1",
+      }),
+      expect.objectContaining({ line_type: "discount", amount: -500 }),
+    ]);
+  });
+
+  it("全數售出（尚未退）→ 提示無在庫可退，不建單", async () => {
+    responses["erp_serials:select"] = () => ({ data: [], error: null });
+    const res = await convertReceiptToReturnAction("i-1");
+    expect(res).toEqual({
+      ok: false,
+      error: "此進貨單的品項已無在庫可退（已售出或已調出原入庫倉）。",
+    });
+    expect(recorded.some((r) => r.kind === "insert")).toBe(false);
+  });
+
+  it("已全數退回 → 維持原訊息", async () => {
+    responses["erp_document_lines:select"] = () => ({
+      data: [{ source_line_id: "il-1", qty: 2 }],
+      error: null,
+    });
+    const res = await convertReceiptToReturnAction("i-1");
+    expect(res).toEqual({
+      ok: false,
+      error: "此進貨單已全數退回，無可退數量。",
     });
   });
 });

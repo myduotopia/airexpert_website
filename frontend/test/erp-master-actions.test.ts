@@ -438,7 +438,11 @@ describe("廠商／客戶", () => {
 
   it("客戶統編非 8 碼 → 驗證錯誤", async () => {
     const res = await createCustomerAction(customer({ tax_id: "1234" }));
-    expect(res).toEqual({ ok: false, error: "統一編號應為 8 位數字。" });
+    expect(res).toEqual({
+      ok: false,
+      error: "統一編號應為 8 位數字。",
+      field: "tax_id",
+    });
     expect(recorded).toHaveLength(0);
   });
 
@@ -523,12 +527,16 @@ describe("客戶傳真／收信人／Email（#222）", () => {
     expect(recorded[0].payload).toMatchObject({ email: "a@b.com.tw" });
   });
 
-  it("Email 格式不符 → 驗證錯誤，不碰 DB", async () => {
+  it("Email 格式不符 → 驗證錯誤並指出 email 欄（B-05 欄位標紅），不碰 DB", async () => {
     const res = await createCustomerAction(customer({ email: "abc@" }));
     expect(res).toEqual({
       ok: false,
       error: "Email 格式不正確（多筆請以 ; 分隔）。",
+      field: "email",
     });
+    expect(recorded).toHaveLength(0);
+    const upd = await updateCustomerAction("c1", customer({ email: "abc@" }));
+    expect(upd).toMatchObject({ ok: false, field: "email" });
     expect(recorded).toHaveLength(0);
   });
 
@@ -547,6 +555,7 @@ describe("客戶傳真／收信人／Email（#222）", () => {
     expect(bad).toEqual({
       ok: false,
       error: "Email 格式不正確（多筆請以 ; 分隔）。",
+      field: "email",
     });
     expect(recorded).toHaveLength(0);
     const ok = await createVendorAction(vendor({ email: "" }));

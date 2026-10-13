@@ -1,6 +1,6 @@
 // 採購區（採購單 P → 進貨單 I → 進退單 PR）的查詢與轉單純函式 — SERVER ONLY。
 // 讀取走登入者 session（RLS：has_module('erp')）；查詢失敗回 { ok:false }（不 throw）。
-// 轉單邏輯（buildLinesFromSource）為純函式，另有單元測試。
+// 轉單邏輯（buildLinesFromSource、capReturnableByStock）為純函式，另有單元測試。
 import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
@@ -102,6 +102,57 @@ export function buildLinesFromSource(
   return out.filter((l) => l.line_type !== "discount" || l.amount !== 0);
 }
 
+/** 轉進退單時用來限制可退量的庫存現況（getReceiptReturnStockInfo 讀取）。 */
+export interface ReturnStockInfo {
+  /** 品項追蹤設定（依 item_id）；查無視為不追蹤庫存。 */
+  items: ReadonlyMap<string, { track_stock: boolean; track_serial: boolean }>;
+  /** 原入庫倉（＝進退出庫倉）目前庫存（依 item_id）。 */
+  stockQty: ReadonlyMap<string, number>;
+  /** 本進貨單入庫、目前仍在原入庫倉在庫的機號 id。 */
+  inStockSerialIds: ReadonlySet<string>;
+}
+
+/**
+ * 進退單預設數量（B-10）= min(原進貨數 − 已退數, 可退在庫量)，依進貨單行 id 回傳：
+ * - 追蹤機號（且該行有入庫機號）：該行入庫、目前仍在原入庫倉在庫的機號數
+ *   （已售出、已退、已調到其他倉的不算；進退過帳時 RPC 也只接受原倉在庫機號）；
+ * - 追蹤庫存（不追蹤機號，或舊資料該行沒有機號）：原入庫倉目前庫存，負數視為 0；
+ *   同品項多行共用庫存，依行序分配，不重複計算；
+ * - 不追蹤庫存（服務／費用等）：原進貨數 − 已退數。
+ * 折扣行不在此處理：buildLinesFromSource 依帶入品項金額比例分攤，數量減少時折扣跟著等比例減少。
+ */
+export function capReturnableByStock(
+  lines: (Pick<SourceLine, "id" | "line_type" | "item_id"> & {
+    serials?: { id: string }[] | null;
+  })[],
+  returnableByLineId: ReadonlyMap<string, number>,
+  info: ReturnStockInfo,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const stockLeft = new Map<string, number>();
+  for (const l of lines) {
+    if (l.line_type !== "item") continue;
+    const base = Math.max(0, Number(returnableByLineId.get(l.id) ?? 0));
+    const flags = l.item_id ? info.items.get(l.item_id) : undefined;
+    const serials = l.serials ?? [];
+    let qty = base;
+    if (flags?.track_serial && serials.length > 0) {
+      const inStock = serials.filter((s) =>
+        info.inStockSerialIds.has(s.id),
+      ).length;
+      qty = Math.min(base, inStock);
+    } else if (flags?.track_stock && l.item_id) {
+      const avail =
+        stockLeft.get(l.item_id) ??
+        Math.max(0, Number(info.stockQty.get(l.item_id) ?? 0));
+      qty = Math.min(base, avail);
+      stockLeft.set(l.item_id, avail - qty);
+    }
+    out.set(l.id, qty);
+  }
+  return out;
+}
+
 /** 多張採購單的到貨狀態（erp_purchase_progress；草稿 / 作廢單不在 view 中）。 */
 export async function getPurchaseProgressMap(
   docIds: string[],
@@ -187,6 +238,78 @@ export async function getReceiptReturnableQty(
     );
   }
   return { ok: true, data: remaining };
+}
+
+/**
+ * 轉進退單用的庫存現況（B-10）：品項追蹤設定、原入庫倉目前庫存、本進貨單入庫且仍在原倉的機號。
+ * 進退單出庫倉 = 原入庫倉，故庫存與機號都只看該倉。
+ */
+export async function getReceiptReturnStockInfo(
+  receipt: Pick<ErpDocumentWithLines, "id" | "warehouse_id" | "lines">,
+): Promise<ErpResult<ReturnStockInfo>> {
+  const itemIds = [
+    ...new Set(
+      receipt.lines
+        .filter((l) => l.line_type === "item" && l.item_id)
+        .map((l) => l.item_id as string),
+    ),
+  ];
+  const empty: ReturnStockInfo = {
+    items: new Map(),
+    stockQty: new Map(),
+    inStockSerialIds: new Set(),
+  };
+  if (itemIds.length === 0 || !receipt.warehouse_id) {
+    return { ok: true, data: empty };
+  }
+
+  const supabase = await getServerSupabase();
+  const [items, levels, serials] = await Promise.all([
+    supabase
+      .from("erp_items")
+      .select("id, track_stock, track_serial")
+      .in("id", itemIds),
+    supabase
+      .from("erp_stock_levels")
+      .select("item_id, qty")
+      .eq("warehouse_id", receipt.warehouse_id)
+      .in("item_id", itemIds),
+    supabase
+      .from("erp_serials")
+      .select("id")
+      .eq("in_doc_id", receipt.id)
+      .eq("status", "in_stock")
+      .eq("warehouse_id", receipt.warehouse_id),
+  ]);
+  const error = items.error ?? levels.error ?? serials.error;
+  if (error) return { ok: false, error: erpErrorMessage(error) };
+
+  return {
+    ok: true,
+    data: {
+      items: new Map(
+        (
+          (items.data ?? []) as {
+            id: string;
+            track_stock: boolean;
+            track_serial: boolean;
+          }[]
+        ).map((i) => [
+          i.id,
+          { track_stock: !!i.track_stock, track_serial: !!i.track_serial },
+        ]),
+      ),
+      stockQty: new Map(
+        ((levels.data ?? []) as { item_id: string; qty: number }[]).map((r) => [
+          r.item_id,
+          Number(r.qty),
+        ]),
+      ),
+      inStockSerialIds: new Set(
+        ((serials.data ?? []) as { id: string }[]).map((r) => r.id),
+      ),
+    },
+  };
 }
 
 export interface RelatedDocument {

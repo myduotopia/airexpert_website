@@ -4,7 +4,12 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("@/lib/supabase-server", () => ({ getServerSupabase: vi.fn() }));
 
 import { calcDocumentTotals } from "@/lib/erp/calc";
-import { buildLinesFromSource, todayIso } from "@/lib/erp/queries/purchasing";
+import {
+  buildLinesFromSource,
+  capReturnableByStock,
+  todayIso,
+  type ReturnStockInfo,
+} from "@/lib/erp/queries/purchasing";
 
 type Src = Parameters<typeof buildLinesFromSource>[0][number];
 
@@ -151,6 +156,156 @@ describe("buildLinesFromSource", () => {
     );
     expect(lines.filter((l) => l.line_type === "item")).toHaveLength(1);
     expect(new Set(lines.map((l) => l.key)).size).toBe(lines.length);
+  });
+});
+
+// B-10：轉進退單預設數量 = min(原進貨數 − 已退數, 可退在庫量)。
+describe("capReturnableByStock（進退預設數量扣除已售出／不在庫）", () => {
+  type CapLine = Parameters<typeof capReturnableByStock>[0][number];
+  const info = (p: Partial<ReturnStockInfo> = {}): ReturnStockInfo => ({
+    items: new Map(),
+    stockQty: new Map(),
+    inStockSerialIds: new Set(),
+    ...p,
+  });
+  const serialItem = { track_stock: true, track_serial: true };
+  const stockItem = { track_stock: true, track_serial: false };
+  const noStockItem = { track_stock: false, track_serial: false };
+
+  // I11510002：乾燥機進 2 台（T001、T002），T001 已售出。
+  const dryer: CapLine[] = [
+    {
+      id: "il-1",
+      line_type: "item",
+      item_id: "dryer",
+      serials: [{ id: "t001" }, { id: "t002" }],
+    },
+    { id: "il-2", line_type: "discount", item_id: null, serials: [] },
+  ];
+
+  it("追蹤機號：本進貨單入庫、仍在原倉的機號數（2 台售出 1 台 → 1）", () => {
+    const res = capReturnableByStock(
+      dryer,
+      new Map([["il-1", 2]]),
+      info({
+        items: new Map([["dryer", serialItem]]),
+        stockQty: new Map([["dryer", 5]]),
+        inStockSerialIds: new Set(["t002"]),
+      }),
+    );
+    expect(res.get("il-1")).toBe(1);
+  });
+
+  it("追蹤機號：已退 1 台、剩 1 台在庫 → 1（取較小值，不重複扣）", () => {
+    const res = capReturnableByStock(
+      dryer,
+      new Map([["il-1", 1]]),
+      info({
+        items: new Map([["dryer", serialItem]]),
+        inStockSerialIds: new Set(["t002"]),
+      }),
+    );
+    expect(res.get("il-1")).toBe(1);
+  });
+
+  it("追蹤機號：全數售出 → 0", () => {
+    const res = capReturnableByStock(
+      dryer,
+      new Map([["il-1", 2]]),
+      info({ items: new Map([["dryer", serialItem]]) }),
+    );
+    expect(res.get("il-1")).toBe(0);
+  });
+
+  it("追蹤庫存不追蹤機號：以原倉目前庫存為上限，負庫存視為 0", () => {
+    const lines: CapLine[] = [
+      { id: "a", line_type: "item", item_id: "filter", serials: [] },
+    ];
+    const cap = (stock: number) =>
+      capReturnableByStock(
+        lines,
+        new Map([["a", 5]]),
+        info({
+          items: new Map([["filter", stockItem]]),
+          stockQty: new Map([["filter", stock]]),
+        }),
+      ).get("a");
+    expect(cap(3)).toBe(3);
+    expect(cap(8)).toBe(5);
+    expect(cap(-2)).toBe(0);
+  });
+
+  it("同品項多行共用庫存：依行序分配，不重複計算", () => {
+    const lines: CapLine[] = [
+      { id: "a", line_type: "item", item_id: "filter", serials: [] },
+      { id: "b", line_type: "item", item_id: "filter", serials: [] },
+    ];
+    const res = capReturnableByStock(
+      lines,
+      new Map([
+        ["a", 3],
+        ["b", 2],
+      ]),
+      info({
+        items: new Map([["filter", stockItem]]),
+        stockQty: new Map([["filter", 4]]),
+      }),
+    );
+    expect([res.get("a"), res.get("b")]).toEqual([3, 1]);
+  });
+
+  it("追蹤機號但該行沒有入庫機號（舊資料）→ 改以原倉庫存為上限", () => {
+    const lines: CapLine[] = [
+      { id: "a", line_type: "item", item_id: "dryer", serials: [] },
+    ];
+    const res = capReturnableByStock(
+      lines,
+      new Map([["a", 2]]),
+      info({
+        items: new Map([["dryer", serialItem]]),
+        stockQty: new Map([["dryer", 1]]),
+      }),
+    );
+    expect(res.get("a")).toBe(1);
+  });
+
+  it("不追蹤庫存：維持原數量 − 已退", () => {
+    const lines: CapLine[] = [
+      { id: "s", line_type: "item", item_id: "svc", serials: [] },
+    ];
+    const res = capReturnableByStock(
+      lines,
+      new Map([["s", 2]]),
+      info({ items: new Map([["svc", noStockItem]]) }),
+    );
+    expect(res.get("s")).toBe(2);
+  });
+
+  it("數量減少時折扣依比例跟著調整（2 台 −1,000 → 退 1 台 −500）", () => {
+    const src: Src[] = [
+      line({
+        id: "il-1",
+        line_type: "item",
+        item_id: "dryer",
+        qty: 2,
+        unit_price: 30000,
+        amount: 60000,
+      }),
+      line({ id: "il-2", line_type: "discount", amount: -1000 }),
+    ];
+    const capped = capReturnableByStock(
+      dryer,
+      new Map([["il-1", 2]]),
+      info({
+        items: new Map([["dryer", serialItem]]),
+        inStockSerialIds: new Set(["t002"]),
+      }),
+    );
+    const lines = buildLinesFromSource(src, capped);
+    expect(lines.map((l) => [l.line_type, l.qty, l.amount])).toEqual([
+      ["item", 1, 0],
+      ["discount", 0, -500],
+    ]);
   });
 });
 

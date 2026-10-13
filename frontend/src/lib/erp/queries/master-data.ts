@@ -105,6 +105,7 @@ export interface Paged<T> {
 }
 
 // ── 輸入正規化（倉庫／廠商／客戶；品項見 erp/items/_lib/rules.ts） ──
+// 廠商／客戶的驗證錯誤另帶 field（欄位 key），表單據此把錯誤標在該欄（紅框＋aria-invalid，B-05）。
 
 export interface WarehouseInput {
   code: string;
@@ -153,17 +154,22 @@ export function normalizeVendorInput(
   input: VendorInput,
 ):
   | { ok: true; row: Omit<ErpVendor, "id" | "created_at" | "updated_at"> }
-  | { ok: false; error: string } {
+  | { ok: false; error: string; field?: keyof VendorInput } {
   const code = (input.code ?? "").trim();
   const name = (input.name ?? "").trim();
-  if (!code) return { ok: false, error: "請填寫廠商代碼。" };
-  if (!name) return { ok: false, error: "請填寫廠商名稱。" };
+  if (!code) return { ok: false, error: "請填寫廠商代碼。", field: "code" };
+  if (!name) return { ok: false, error: "請填寫廠商名稱。", field: "name" };
   const currency = (input.currency ?? "").trim().toUpperCase() || "TWD";
   if (!/^[A-Z]{3}$/.test(currency)) {
-    return { ok: false, error: "幣別請填 3 碼代號（例：TWD、USD）。" };
+    return {
+      ok: false,
+      error: "幣別請填 3 碼代號（例：TWD、USD）。",
+      field: "currency",
+    };
   }
   const email = normalizeEmailList(input.email);
-  if (!email.ok) return { ok: false, error: EMAIL_FORMAT_MESSAGE };
+  if (!email.ok)
+    return { ok: false, error: EMAIL_FORMAT_MESSAGE, field: "email" };
   return {
     ok: true,
     row: {
@@ -209,15 +215,18 @@ export interface CustomerInput {
 
 export function normalizeCustomerInput(
   input: CustomerInput,
-): { ok: true; row: Omit<ErpCustomer, "id"> } | { ok: false; error: string } {
+):
+  | { ok: true; row: Omit<ErpCustomer, "id"> }
+  | { ok: false; error: string; field?: keyof CustomerInput } {
   const name = (input.name ?? "").trim();
-  if (!name) return { ok: false, error: "請填寫客戶名稱。" };
+  if (!name) return { ok: false, error: "請填寫客戶名稱。", field: "name" };
   const tax_id = cleanText(input.tax_id);
   if (tax_id && !/^\d{8}$/.test(tax_id)) {
-    return { ok: false, error: "統一編號應為 8 位數字。" };
+    return { ok: false, error: "統一編號應為 8 位數字。", field: "tax_id" };
   }
   const email = normalizeEmailList(input.email);
-  if (!email.ok) return { ok: false, error: EMAIL_FORMAT_MESSAGE };
+  if (!email.ok)
+    return { ok: false, error: EMAIL_FORMAT_MESSAGE, field: "email" };
   const salesRep = normalizeEmployeeRef(input.sales_rep, input.sales_rep_id);
   return {
     ok: true,

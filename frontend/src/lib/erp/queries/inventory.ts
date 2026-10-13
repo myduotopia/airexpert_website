@@ -5,9 +5,10 @@ import "server-only";
 
 import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
-import type {
-  StockLevelRow,
-  StockMatrixItem,
+import {
+  latestPostedDoc,
+  type StockLevelRow,
+  type StockMatrixItem,
 } from "@/app/admin/(protected)/erp/inventory/_lib/inventory-logic";
 import type {
   DocStatus,
@@ -108,6 +109,8 @@ export interface SerialListRow {
   customer: { id: string; name: string } | null;
   in_doc: SerialDocRef | null;
   out_doc: SerialDocRef | null;
+  /** 在庫機號的最後異動（已過帳單據中最晚的一張，B-06）；非在庫一律 null。 */
+  last_move: SerialDocRef | null;
 }
 
 export interface ListSerialsParams {
@@ -160,12 +163,63 @@ export async function listSerials(params: ListSerialsParams): Promise<{
     .order("id")
     .range(start, start + INVENTORY_PAGE_SIZE - 1);
   if (error) throw new Error(`讀取機號失敗：${error.message}`);
+  const rows = (data ?? []) as unknown as Omit<SerialListRow, "last_move">[];
+  const lastMoves = await getSerialLastMoves(
+    supabase,
+    rows.filter((r) => r.status === "in_stock").map((r) => r.id),
+  );
   return {
-    rows: (data ?? []) as unknown as SerialListRow[],
+    rows: rows.map((r) => ({ ...r, last_move: lastMoves.get(r.id) ?? null })),
     total: count ?? 0,
     page,
     pageSize: INVENTORY_PAGE_SIZE,
   };
+}
+
+type SerialMoveDoc = SerialDocRef & { posted_at: string | null };
+
+/**
+ * 機號的最後異動（B-06）：經 erp_document_line_serials 找出每台機號出現過的單據，
+ * 取已過帳中 posted_at 最晚的一張（草稿、作廢不算）。只查本頁的在庫機號。
+ */
+async function getSerialLastMoves(
+  supabase: Awaited<ReturnType<typeof getServerSupabase>>,
+  serialIds: string[],
+): Promise<Map<string, SerialDocRef>> {
+  const out = new Map<string, SerialDocRef>();
+  if (serialIds.length === 0) return out;
+  const links = await fetchAll<{
+    serial_id: string;
+    line: { document: SerialMoveDoc | null } | null;
+  }>("機號異動", (from, to) =>
+    supabase
+      .from("erp_document_line_serials")
+      .select(
+        "serial_id, line:line_id(document:document_id(id, doc_type, doc_no, status, posted_at))",
+      )
+      .in("serial_id", serialIds)
+      .order("serial_id")
+      .order("line_id")
+      .range(from, to),
+  );
+  const bySerial = new Map<string, (SerialMoveDoc | null)[]>();
+  for (const l of links) {
+    const list = bySerial.get(l.serial_id) ?? [];
+    list.push(l.line?.document ?? null);
+    bySerial.set(l.serial_id, list);
+  }
+  for (const [serialId, docs] of bySerial) {
+    const last = latestPostedDoc(docs);
+    if (last) {
+      out.set(serialId, {
+        id: last.id,
+        doc_type: last.doc_type,
+        doc_no: last.doc_no,
+        status: last.status,
+      });
+    }
+  }
+  return out;
 }
 
 // ── 庫存異動明細 ─────────────────────────────────────────────

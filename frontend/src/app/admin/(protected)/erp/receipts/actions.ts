@@ -7,7 +7,9 @@ import { newDraftDocument } from "@/lib/erp/draft";
 import { ensureErp } from "@/lib/erp/guard";
 import {
   buildLinesFromSource,
+  capReturnableByStock,
   getReceiptReturnableQty,
+  getReceiptReturnStockInfo,
   todayIso,
 } from "@/lib/erp/queries/purchasing";
 import type { DraftDocument } from "@/lib/erp/types";
@@ -47,6 +49,8 @@ export async function deleteReceiptDraftAction(
 /**
  * 「轉進退單」：以已過帳進貨單各行的可退量建立進退單草稿
  * （出庫倉 = 原入庫倉、source_doc_id / source_line_id 指回進貨單）。機號於進退單上勾選。
+ * 預設數量 = min(原進貨數 − 已退數, 可退在庫量)（B-10，規則見 capReturnableByStock）：
+ * 已售出、已調出原倉的不帶入，避免預設數量與可選機號數不符。
  */
 export async function convertReceiptToReturnAction(
   receiptId: string,
@@ -61,9 +65,23 @@ export async function convertReceiptToReturnAction(
   const returnable = await getReceiptReturnableQty(receipt);
   if (!returnable.ok) return returnable;
 
-  const lines = buildLinesFromSource(receipt.lines, returnable.data);
+  const stock = await getReceiptReturnStockInfo(receipt);
+  if (!stock.ok) return stock;
+  const capped = capReturnableByStock(
+    receipt.lines,
+    returnable.data,
+    stock.data,
+  );
+
+  const lines = buildLinesFromSource(receipt.lines, capped);
   if (lines.length === 0) {
-    return { ok: false, error: "此進貨單已全數退回，無可退數量。" };
+    const anyNotReturned = [...returnable.data.values()].some((q) => q > 0);
+    return {
+      ok: false,
+      error: anyNotReturned
+        ? "此進貨單的品項已無在庫可退（已售出或已調出原入庫倉）。"
+        : "此進貨單已全數退回，無可退數量。",
+    };
   }
 
   const draft = newDraftDocument("PR", todayIso(), {
