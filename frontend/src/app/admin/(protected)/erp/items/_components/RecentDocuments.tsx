@@ -16,7 +16,10 @@ const COLUMNS: Column<RecentDocumentRow>[] = [
       <span className="font-mono text-[13px]">{d.doc_no ?? "（草稿）"}</span>
     ),
   },
-  { header: "狀態", cell: (d) => <DocStatusBadge status={d.status} /> },
+  {
+    header: "狀態",
+    cell: (d) => <DocStatusBadge status={d.status} docType={d.doc_type} />,
+  },
   {
     header: "金額",
     className: "text-right",

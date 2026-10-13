@@ -1,6 +1,7 @@
 // 銷售單據明細頁（server component，報價 / 銷貨 / 銷退共用）：
 // 表頭資訊、明細（含機號）、合計；銷貨單另顯示每行成本毛利（僅畫面）與保養卡機台連結；
 // 來源單據與衍生單據連結；動作列（SalesDocActions）。
+import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DocStatusBadge } from "@/components/erp/DocStatusBadge";
@@ -9,6 +10,8 @@ import { rocDate, rocDateTime } from "@/lib/admin/minguo";
 import { computeSubtotals, subtotalLabel } from "@/lib/erp/calc";
 import { getDocumentWithLines } from "@/lib/erp/documents";
 import { formatQty } from "@/lib/erp/format";
+import { salePaymentRows } from "@/lib/erp/print";
+import { getSaleDocumentBalance } from "@/lib/erp/queries/print";
 import {
   listItemOptions,
   listWarehouseOptions,
@@ -62,19 +65,23 @@ export async function SalesDocDetail({
 
   const derivedType: SalesDocType | null =
     docType === "Q" ? "S" : docType === "S" ? "SR" : null;
-  const [items, warehouses, source, derived, machineLinks] = await Promise.all([
-    listItemOptions({ includeInactive: true }),
-    listWarehouseOptions({ includeInactive: true }),
-    doc.source_doc_id ? getDocumentBrief(doc.source_doc_id) : null,
-    derivedType ? listDerivedDocuments(doc.id, derivedType) : [],
-    docType === "S" && !isDraft
-      ? listMachineLinks(doc.lines.map((l) => l.id))
-      : [],
-  ]);
+  const [items, warehouses, source, derived, machineLinks, balance] =
+    await Promise.all([
+      listItemOptions({ includeInactive: true }),
+      listWarehouseOptions({ includeInactive: true }),
+      doc.source_doc_id ? getDocumentBrief(doc.source_doc_id) : null,
+      derivedType ? listDerivedDocuments(doc.id, derivedType) : [],
+      docType === "S" && !isDraft
+        ? listMachineLinks(doc.lines.map((l) => l.id))
+        : [],
+      // 已收款／未收餘額（#241 A-7）：與列印同一來源；讀取失敗只是不顯示，不擋整頁。
+      getSaleDocumentBalance(doc),
+    ]);
   const itemById = new Map(items.map((i) => [i.id, i]));
   const warehouse = warehouses.find((w) => w.id === doc.warehouse_id);
   const margins = showCost ? calcSaleMargins(doc) : null;
   const machinesBySerial = new Map(machineLinks.map((m) => [m.serial_id, m]));
+  const paymentRows = salePaymentRows(doc, balance.ok ? balance.data : null);
 
   const info: [string, React.ReactNode][] = [
     ["客戶", doc.party_name ?? "—"],
@@ -113,7 +120,12 @@ export async function SalesDocDetail({
       ),
     ]);
   }
-  if (doc.posted_at) info.push(["過帳時間", rocDateTime(doc.posted_at)]);
+  if (doc.posted_at) {
+    info.push([
+      docType === "Q" ? "確認時間" : "過帳時間",
+      rocDateTime(doc.posted_at),
+    ]);
+  }
 
   const colCount = showCost ? 8 : 6;
   const subtotals = computeSubtotals(doc.lines);
@@ -137,10 +149,11 @@ export async function SalesDocDetail({
         <h2 className="text-ink text-[20px] font-bold">
           {label}{" "}
           <span className="font-mono">
-            {doc.doc_no ?? "（草稿，過帳時取號）"}
+            {doc.doc_no ??
+              `（草稿，${docType === "Q" ? "確認" : "過帳"}時取號）`}
           </span>
         </h2>
-        <DocStatusBadge status={doc.status} />
+        <DocStatusBadge status={doc.status} docType={docType} />
       </div>
 
       <div className="mb-6">
@@ -387,6 +400,20 @@ export async function SalesDocDetail({
                 currency={doc.currency}
               />
             </dd>
+            {paymentRows?.map((r, i) => (
+              <Fragment key={r.label}>
+                <dt
+                  className={`text-text-muted ${i === 0 ? "border-border mt-1 border-t pt-1" : ""}`}
+                >
+                  {r.label}
+                </dt>
+                <dd
+                  className={`text-right ${i === 0 ? "border-border mt-1 border-t pt-1" : ""}`}
+                >
+                  <MoneyText value={r.amount} currency="TWD" />
+                </dd>
+              </Fragment>
+            ))}
           </dl>
         </div>
       </section>
@@ -445,7 +472,7 @@ export async function SalesDocDetail({
                   value={Number(d.total_amount)}
                   currency={d.currency}
                 />
-                <DocStatusBadge status={d.status} />
+                <DocStatusBadge status={d.status} docType={derivedType} />
               </li>
             ))}
           </ul>

@@ -96,6 +96,7 @@ export async function SalesDocList({
       <DocListFilters
         key={`${p.q}|${p.status}|${p.from}|${p.to}`}
         basePath={basePath}
+        docType={docType}
         initial={{ q: p.q, status: p.status, from: p.from, to: p.to }}
       />
 
@@ -149,7 +150,7 @@ export async function SalesDocList({
                   />
                 </td>
                 <td className="px-3 py-2">
-                  <DocStatusBadge status={r.status} />
+                  <DocStatusBadge status={r.status} docType={docType} />
                 </td>
               </tr>
             ))}

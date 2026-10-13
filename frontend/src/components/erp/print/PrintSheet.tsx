@@ -1,7 +1,7 @@
 // 列印頁共用版面（server components）：外框 + 工具列、A4 單頁（公司抬頭 / 單據名稱 / 頁次 / 浮水印）、
 // 客戶廠商資料格、簽名欄。樣式見 PrintStyles。
 import type { ReactNode } from "react";
-import { COMPANY_INFO } from "@/lib/erp/print";
+import { COMPANY_INFO, companyContactLine } from "@/lib/erp/print";
 import { PrintToolbar } from "./PrintToolbar";
 
 export function PrintShell({
@@ -59,10 +59,7 @@ export function PrintSheet({
           <img src={logoUrl} alt="" className="erp-logo" />
           <div>
             <div className="erp-company-name">{COMPANY_INFO.name}</div>
-            <div className="erp-company-contact">
-              服務專線 {COMPANY_INFO.phone}　傳真 {COMPANY_INFO.fax}
-              {COMPANY_INFO.line}
-            </div>
+            <div className="erp-company-contact">{companyContactLine()}</div>
           </div>
         </div>
         <div className="erp-head-right">

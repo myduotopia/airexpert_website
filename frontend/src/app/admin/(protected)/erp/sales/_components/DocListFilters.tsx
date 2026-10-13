@@ -3,19 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { RocDateInput } from "@/components/erp/RocDateInput";
-import { DOC_STATUS_LABEL } from "@/components/erp/DocStatusBadge";
 import {
   ERP_BUTTON_SECONDARY,
   ERP_INPUT,
   ERP_SELECT,
 } from "@/components/erp/styles";
-import { DOC_STATUSES } from "@/lib/erp/types";
+import { docStatusLabel } from "@/lib/erp/display";
+import { DOC_STATUSES, type DocType } from "@/lib/erp/types";
 
 export function DocListFilters({
   basePath,
+  docType,
   initial,
 }: {
   basePath: string;
+  /** 單別：狀態選項文字依單別（報價單「已確認」，#241 A-5）。 */
+  docType: DocType;
   initial: { q: string; status: string; from: string; to: string };
 }) {
   const router = useRouter();
@@ -70,7 +73,7 @@ export function DocListFilters({
           <option value="">全部</option>
           {DOC_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {DOC_STATUS_LABEL[s]}
+              {docStatusLabel(s, docType)}
             </option>
           ))}
         </select>
