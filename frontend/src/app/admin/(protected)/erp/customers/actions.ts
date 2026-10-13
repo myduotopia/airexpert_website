@@ -15,12 +15,12 @@ import {
 
 export type CustomerActionResult =
   | { ok: true; id: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; field?: keyof CustomerInput };
 
 /** 建立結果另帶 Picker 選項（建單時就地新增 #218：存檔後直接選取並加入選單）。 */
 export type CreateCustomerResult =
   | { ok: true; id: string; option: CustomerOption }
-  | { ok: false; error: string };
+  | { ok: false; error: string; field?: keyof CustomerInput };
 
 function revalidateCustomers(id?: string) {
   revalidatePath("/admin/erp/customers");

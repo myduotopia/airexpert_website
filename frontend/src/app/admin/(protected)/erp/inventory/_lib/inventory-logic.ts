@@ -44,6 +44,47 @@ export function docHref(docType: DocType, id: string): string {
   return `/admin/erp/${DOC_ROUTE_SEGMENT[docType]}/${id}`;
 }
 
+// ── 機號清單「出庫單」欄（B-06） ─────────────────────────────
+// erp_serials.out_doc_id 依設計在銷退（SR）過帳時保留（0020 註解：SR 不改 out_doc_id）：
+// 作廢銷退靠它把機號還原為「已售出」，作廢原銷貨單也以它驗證機號。為不動帳務與作廢邏輯，
+// 只在顯示層處理：在庫機號不顯示出庫單，改顯示最後異動（例：銷退單、調撥單）。
+
+export interface SerialDocLike {
+  id: string;
+  doc_type: DocType;
+  doc_no: string | null;
+  status: DocStatus;
+}
+
+/** 已過帳（非草稿、非作廢）中 posted_at 最晚的單據；沒有則 null。 */
+export function latestPostedDoc<
+  T extends SerialDocLike & { posted_at: string | null },
+>(docs: (T | null | undefined)[]): T | null {
+  let best: T | null = null;
+  for (const d of docs) {
+    if (!d || d.status !== "posted" || !d.posted_at) continue;
+    if (!best || d.posted_at > (best.posted_at as string)) best = d;
+  }
+  return best;
+}
+
+/**
+ * 機號清單「出庫單」欄要顯示什麼：
+ * - 非在庫（已售出／已退廠／已盤虧）→ 出庫單（out_doc）
+ * - 在庫 → 不顯示出庫單（銷退回庫時 out_doc 仍是原銷貨單，易誤解為已出庫），
+ *   改顯示最後異動；最後異動就是入庫單本身（從未異動）時不顯示。
+ */
+export function serialDocColumn<D extends SerialDocLike>(
+  serial: { status: SerialStatus; in_doc: D | null; out_doc: D | null },
+  lastMove: D | null,
+): { kind: "out" | "last"; doc: D } | null {
+  if (serial.status !== "in_stock") {
+    return serial.out_doc ? { kind: "out", doc: serial.out_doc } : null;
+  }
+  if (!lastMove || lastMove.id === serial.in_doc?.id) return null;
+  return { kind: "last", doc: lastMove };
+}
+
 /** 數量取 3 位（numeric(12,3)），避免浮點累加誤差。 */
 export function roundQty(n: number): number {
   return roundHalfAwayFromZero(Number(n) || 0, 3);

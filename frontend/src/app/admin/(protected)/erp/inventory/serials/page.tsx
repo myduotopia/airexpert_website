@@ -4,7 +4,11 @@ import { ERP_INPUT, ERP_SELECT } from "@/components/erp/styles";
 import { DOC_TYPE_LABEL } from "@/lib/erp/doc-no";
 import { formatMoney } from "@/lib/erp/format";
 import { listWarehouseOptions } from "@/lib/erp/queries/pickers";
-import { listSerials, type SerialDocRef } from "@/lib/erp/queries/inventory";
+import {
+  listSerials,
+  type SerialDocRef,
+  type SerialListRow,
+} from "@/lib/erp/queries/inventory";
 import type { SerialStatus } from "@/lib/erp/types";
 import {
   InventoryShell,
@@ -14,7 +18,11 @@ import {
   TH,
 } from "../_components/InventoryShell";
 import { Pager } from "../_components/Pager";
-import { docHref, SERIAL_STATUS_LABEL } from "../_lib/inventory-logic";
+import {
+  docHref,
+  SERIAL_STATUS_LABEL,
+  serialDocColumn,
+} from "../_lib/inventory-logic";
 import {
   firstParam,
   parseEnum,
@@ -49,6 +57,24 @@ function DocLink({ doc }: { doc: SerialDocRef | null }) {
   );
 }
 
+/**
+ * 出庫單欄（B-06）：非在庫顯示出庫單；在庫不顯示出庫單（銷退回庫時 DB 仍保留原銷貨單供作廢還原），
+ * 改以「最後異動」標示回庫／調撥的單據。
+ */
+function OutDocCell({ serial }: { serial: SerialListRow }) {
+  const col = serialDocColumn(serial, serial.last_move);
+  if (!col) return <span className="text-text-muted">—</span>;
+  if (col.kind === "out") return <DocLink doc={col.doc} />;
+  return (
+    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+      <span className="text-text-muted text-[12px]">
+        最後異動・{DOC_TYPE_LABEL[col.doc.doc_type]}
+      </span>
+      <DocLink doc={col.doc} />
+    </span>
+  );
+}
+
 export default async function SerialsPage({
   searchParams,
 }: {
@@ -70,7 +96,7 @@ export default async function SerialsPage({
   return (
     <InventoryShell
       active="serials"
-      description="逐台機號的狀態、所在倉庫或客戶，以及入庫 / 出庫單據。"
+      description="逐台機號的狀態、所在倉庫或客戶，以及入庫 / 出庫單據；在庫機號顯示最後異動（如銷退、調撥）。"
     >
       <form
         method="get"
@@ -133,7 +159,7 @@ export default async function SerialsPage({
               <th className={TH}>狀態</th>
               <th className={TH}>所在倉庫 / 客戶</th>
               <th className={TH}>入庫單</th>
-              <th className={TH}>出庫單</th>
+              <th className={TH}>出庫單 / 最後異動</th>
               <th className={`${TH} text-right`}>進貨成本</th>
               <th className={TH}>保養卡</th>
             </tr>
@@ -180,7 +206,7 @@ export default async function SerialsPage({
                   <DocLink doc={s.in_doc} />
                 </td>
                 <td className={TD}>
-                  <DocLink doc={s.out_doc} />
+                  <OutDocCell serial={s} />
                 </td>
                 <td className={`${TD} text-right tabular-nums`}>
                   {formatMoney(

@@ -76,12 +76,22 @@ export function MasterHeader({
 }
 
 /** 表單欄位外框（label + 控制項）。 */
+/** 欄位驗證錯誤時的紅框（輸入框設 aria-invalid="true" 即套用；聚焦時仍維持紅框）。 */
+export const INPUT_INVALID =
+  "aria-[invalid=true]:border-red-500 aria-[invalid=true]:focus:border-red-500";
+
+/** 欄位錯誤訊息的 id（給輸入框 aria-describedby 指向）。 */
+export function fieldErrorId(inputId: string): string {
+  return `${inputId}-error`;
+}
+
 export function Field({
   label,
   htmlFor,
   required,
   wide,
   hint,
+  error,
   children,
 }: {
   label: string;
@@ -89,6 +99,8 @@ export function Field({
   required?: boolean;
   wide?: boolean;
   hint?: ReactNode;
+  /** 此欄的驗證錯誤：顯示在欄位下方，id 為 fieldErrorId(htmlFor)，輸入框需自行設 aria-invalid／aria-describedby。 */
+  error?: string | null;
   children: ReactNode;
 }) {
   return (
@@ -98,6 +110,15 @@ export function Field({
         {required && <span className="text-red-500"> *</span>}
       </label>
       {children}
+      {error && (
+        <p
+          id={htmlFor ? fieldErrorId(htmlFor) : undefined}
+          role="alert"
+          className="text-[13px] text-red-600"
+        >
+          {error}
+        </p>
+      )}
       {hint && <p className="text-text-muted text-[12px]">{hint}</p>}
     </div>
   );

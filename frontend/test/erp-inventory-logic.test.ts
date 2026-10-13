@@ -6,10 +6,13 @@ import {
   computeRunningBalance,
   docHref,
   isLowStock,
+  latestPostedDoc,
   normalizeStockDocLines,
+  serialDocColumn,
   sumQty,
   validateStockDocDraft,
   validateStockDocForPost,
+  type SerialDocLike,
   type StockDocForPost,
   type StockDocItemInfo,
   type StockMatrixItem,
@@ -419,5 +422,91 @@ describe("validateStockDocForPost", () => {
         items,
       ),
     ).toBe("此單據已不是草稿，無法過帳。");
+  });
+});
+
+// B-06：銷退後機號回到在庫，但 out_doc_id 依設計保留（作廢銷退時據以還原；SR 不改 out_doc_id），
+// 機號清單的「出庫單」欄改以狀態決定：在庫不顯示出庫單，改顯示最後異動（不是入庫單本身時）。
+describe("latestPostedDoc", () => {
+  const doc = (
+    id: string,
+    doc_type: "I" | "S" | "SR" | "T",
+    status: "draft" | "posted" | "voided",
+    posted_at: string | null,
+  ) => ({ id, doc_type, doc_no: id.toUpperCase(), status, posted_at });
+
+  it("取已過帳中 posted_at 最晚的一張；忽略草稿、作廢與 null", () => {
+    expect(
+      latestPostedDoc([
+        doc("i1", "I", "posted", "2026-09-01T00:00:00Z"),
+        doc("sr1", "SR", "posted", "2026-09-20T00:00:00Z"),
+        doc("s1", "S", "posted", "2026-09-10T00:00:00Z"),
+        doc("sr2", "SR", "voided", "2026-09-25T00:00:00Z"),
+        doc("t9", "T", "draft", null),
+        null,
+      ])?.id,
+    ).toBe("sr1");
+  });
+
+  it("沒有已過帳單據 → null", () => {
+    expect(latestPostedDoc([])).toBeNull();
+    expect(latestPostedDoc([doc("t9", "T", "draft", null)])).toBeNull();
+  });
+});
+
+describe("serialDocColumn（機號清單出庫單欄）", () => {
+  const I: SerialDocLike = {
+    id: "i1",
+    doc_type: "I",
+    doc_no: "I1",
+    status: "posted",
+  };
+  const S: SerialDocLike = {
+    id: "s1",
+    doc_type: "S",
+    doc_no: "S1",
+    status: "posted",
+  };
+  const SR: SerialDocLike = {
+    id: "sr1",
+    doc_type: "SR",
+    doc_no: "SR1",
+    status: "posted",
+  };
+
+  it("已售出 → 顯示出庫單", () => {
+    expect(
+      serialDocColumn({ status: "sold", in_doc: I, out_doc: S }, SR),
+    ).toEqual({ kind: "out", doc: S });
+  });
+
+  it("銷退回庫（在庫但 out_doc 仍是原銷貨單）→ 不顯示出庫單，改顯示最後異動 SR", () => {
+    expect(
+      serialDocColumn({ status: "in_stock", in_doc: I, out_doc: S }, SR),
+    ).toEqual({ kind: "last", doc: SR });
+  });
+
+  it("在庫且最後異動就是入庫單 → 不顯示", () => {
+    expect(
+      serialDocColumn({ status: "in_stock", in_doc: I, out_doc: null }, I),
+    ).toBeNull();
+    expect(
+      serialDocColumn({ status: "in_stock", in_doc: I, out_doc: null }, null),
+    ).toBeNull();
+  });
+
+  it("在庫且查不到最後異動 → 不顯示原出庫單", () => {
+    expect(
+      serialDocColumn({ status: "in_stock", in_doc: I, out_doc: S }, null),
+    ).toBeNull();
+  });
+
+  it("已退廠／已盤虧沒有出庫單 → null", () => {
+    expect(
+      serialDocColumn(
+        { status: "returned_to_vendor", in_doc: I, out_doc: null },
+        null,
+      ),
+    ).toBeNull();
   });
 });
