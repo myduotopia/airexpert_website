@@ -58,6 +58,7 @@ export interface PaymentListRow extends Pick<
   ErpPayment,
   | "id"
   | "direction"
+  | "kind"
   | "doc_no"
   | "pay_date"
   | "customer_id"
@@ -74,7 +75,9 @@ export interface PaymentListRow extends Pick<
   party_code: string | null;
   party_name: string | null;
   allocated: number;
-  /** 未沖銷餘額（預收 / 預付）；作廢為 0。 */
+  /** 預收（預付）被退款單動用的金額（#249）；退款單本身為 0。 */
+  refunded: number;
+  /** 未沖銷餘額（預收 / 預付）= 金額 − 沖銷 − 已退款；作廢與退款單為 0。 */
   unallocated: number;
 }
 
@@ -89,26 +92,49 @@ export interface ListPaymentsParams {
   page?: number;
 }
 
+// erp_refund_sources 有兩個 FK 指向 erp_payments（refund_id、source_payment_id），embed 需以欄位名指定。
+// 退款單作廢時其來源列即刪除，故現存來源列皆屬有效退款。
 const PAYMENT_LIST_COLUMNS =
-  "id, direction, doc_no, pay_date, customer_id, vendor_id, method, amount, check_no, check_due_date, bank, check_status, status, void_reason, created_at, customer:mx_customers(code, name), vendor:erp_vendors(code, name), erp_payment_allocations(amount)";
+  "id, direction, kind, doc_no, pay_date, customer_id, vendor_id, method, amount, check_no, check_due_date, bank, check_status, status, void_reason, created_at, customer:mx_customers(code, name), vendor:erp_vendors(code, name), erp_payment_allocations(amount), refunded_by:erp_refund_sources!source_payment_id(amount)";
 
-type RawPayment = PaymentListRow & {
+type RawPayment = Omit<PaymentListRow, "kind" | "refunded"> & {
+  kind?: PaymentListRow["kind"] | null;
   customer?: PartyRef | PartyRef[] | null;
   vendor?: PartyRef | PartyRef[] | null;
   erp_payment_allocations?: { amount: number }[] | null;
+  refunded_by?: { amount: number }[] | null;
 };
 
-function toListRow(raw: RawPayment): PaymentListRow {
-  const allocated = roundCents(
-    (raw.erp_payment_allocations ?? []).reduce(
-      (s, a) => s + (Number(a.amount) || 0),
-      0,
-    ),
+function sumAmounts(rows: { amount: number }[] | null | undefined): number {
+  return roundCents(
+    (rows ?? []).reduce((s, a) => s + (Number(a.amount) || 0), 0),
   );
+}
+
+/**
+ * 收付款的未沖銷餘額（預收 / 預付，#249）：金額 − 沖銷 − 已被退款動用；作廢與退款單為 0。
+ * 沖抵單（金額 0）沖銷合計為負時，餘額即為轉入的預收。
+ */
+export function paymentUnallocated(p: {
+  status: string;
+  kind?: string | null;
+  amount: number;
+  allocated: number;
+  refunded: number;
+}): number {
+  if (p.status !== "posted" || (p.kind ?? "payment") !== "payment") return 0;
+  return roundCents(Number(p.amount) - p.allocated - p.refunded);
+}
+
+function toListRow(raw: RawPayment): PaymentListRow {
+  const allocated = sumAmounts(raw.erp_payment_allocations);
+  const refunded = sumAmounts(raw.refunded_by);
+  const kind = raw.kind ?? "payment";
   const party = partyOf(raw);
   return {
     id: raw.id,
     direction: raw.direction,
+    kind,
     doc_no: raw.doc_no,
     pay_date: raw.pay_date,
     customer_id: raw.customer_id,
@@ -124,8 +150,14 @@ function toListRow(raw: RawPayment): PaymentListRow {
     party_code: party?.code ?? null,
     party_name: party?.name ?? null,
     allocated,
-    unallocated:
-      raw.status === "posted" ? roundCents(Number(raw.amount) - allocated) : 0,
+    refunded,
+    unallocated: paymentUnallocated({
+      status: raw.status,
+      kind,
+      amount: Number(raw.amount),
+      allocated,
+      refunded,
+    }),
   };
 }
 
@@ -205,14 +237,70 @@ export interface PaymentAllocationDetail {
   doc_date: string | null;
 }
 
+/** 退款與預收來源的連結（#249）：退款單看「退自哪些收付款」，收付款看「被哪些退款單動用」。 */
+export interface RefundLinkDetail {
+  id: string;
+  amount: number;
+  created_at: string;
+  /** 對方（來源收付款或退款單）。 */
+  payment_id: string;
+  doc_no: string | null;
+  pay_date: string | null;
+  /** 對方是否為沖抵單（金額 0）；僅來源有意義。 */
+  offset: boolean;
+}
+
 export interface PaymentDetail extends PaymentListRow {
   note: string | null;
   voided_at: string | null;
   created_at: string;
   allocations: PaymentAllocationDetail[];
+  /** 退款單：扣自哪些收付款的預收（預付）。 */
+  refundSources: RefundLinkDetail[];
+  /** 收付款：預收（預付）被哪些退款單動用。 */
+  refundedBy: RefundLinkDetail[];
+}
+
+type RawPaymentRef = {
+  id: string;
+  doc_no: string | null;
+  pay_date: string;
+  amount: number;
+};
+
+type RawRefundLink = {
+  id: string;
+  amount: number;
+  created_at: string;
+  other?: RawPaymentRef | RawPaymentRef[] | null;
+};
+
+function toRefundLinks(
+  rows: RawRefundLink[] | null | undefined,
+): RefundLinkDetail[] {
+  return (rows ?? [])
+    .map((r) => {
+      const o = Array.isArray(r.other) ? r.other[0] : r.other;
+      return {
+        id: r.id,
+        amount: Number(r.amount),
+        created_at: r.created_at,
+        payment_id: o?.id ?? "",
+        doc_no: o?.doc_no ?? null,
+        pay_date: o?.pay_date ?? null,
+        offset: o ? Number(o.amount) === 0 : false,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (a.pay_date ?? "").localeCompare(b.pay_date ?? "") ||
+        (a.doc_no ?? "").localeCompare(b.doc_no ?? ""),
+    );
 }
 
 type RawDetail = Omit<RawPayment, "erp_payment_allocations"> & {
+  refund_sources?: RawRefundLink[] | null;
+  refunded_links?: RawRefundLink[] | null;
   note: string | null;
   voided_at: string | null;
   created_at: string;
@@ -248,7 +336,7 @@ export async function getPaymentDetail(
   const { data, error } = await supabase
     .from("erp_payments")
     .select(
-      "id, direction, doc_no, pay_date, customer_id, vendor_id, method, amount, check_no, check_due_date, bank, check_status, status, void_reason, voided_at, note, created_at, customer:mx_customers(code, name), vendor:erp_vendors(code, name), erp_payment_allocations(id, amount, created_at, document_id, document:erp_documents(doc_no, doc_type, doc_date))",
+      "id, direction, kind, doc_no, pay_date, customer_id, vendor_id, method, amount, check_no, check_due_date, bank, check_status, status, void_reason, voided_at, note, created_at, customer:mx_customers(code, name), vendor:erp_vendors(code, name), erp_payment_allocations(id, amount, created_at, document_id, document:erp_documents(doc_no, doc_type, doc_date)), refund_sources:erp_refund_sources!refund_id(id, amount, created_at, other:erp_payments!source_payment_id(id, doc_no, pay_date, amount)), refunded_links:erp_refund_sources!source_payment_id(id, amount, created_at, other:erp_payments!refund_id(id, doc_no, pay_date, amount))",
     )
     .eq("id", id)
     .maybeSingle();
@@ -272,12 +360,108 @@ export async function getPaymentDetail(
   return {
     ok: true,
     data: {
-      ...toListRow(raw),
+      // 被退款金額由 refunded_links 加總（同一關聯不重複 embed）
+      ...toListRow({ ...raw, refunded_by: raw.refunded_links ?? [] }),
       note: raw.note,
       voided_at: raw.voided_at,
       created_at: raw.created_at,
       allocations,
+      refundSources: toRefundLinks(raw.refund_sources),
+      refundedBy: toRefundLinks(raw.refunded_links),
     },
+  };
+}
+
+// ── 預收（預付）來源（退款用，#249） ─────────────────────────
+
+export interface PrepaidSource {
+  id: string;
+  doc_no: string | null;
+  pay_date: string;
+  amount: number;
+  /** 目前可退（未沖銷、未被退款）的餘額。 */
+  available: number;
+}
+
+export interface PrepaidSummary {
+  /** 預收（預付）合計 = Σ available。 */
+  total: number;
+  /** 依日期先後（退款扣減順序）排列、available > 0 的收付款。 */
+  sources: PrepaidSource[];
+}
+
+/** 由收付款列算出可退來源（純函式）：只取有效的收付款、available > 0，依日期、單號排序。 */
+export function summarizePrepaid(
+  rows: {
+    id: string;
+    doc_no: string | null;
+    pay_date: string;
+    amount: number;
+    status: string;
+    kind?: string | null;
+    allocated: number;
+    refunded: number;
+  }[],
+): PrepaidSummary {
+  const sources = rows
+    .map((r) => ({
+      id: r.id,
+      doc_no: r.doc_no,
+      pay_date: r.pay_date,
+      amount: Number(r.amount),
+      available: paymentUnallocated(r),
+    }))
+    .filter((r) => r.available > 0)
+    .sort(
+      (a, b) =>
+        a.pay_date.localeCompare(b.pay_date) ||
+        (a.doc_no ?? "").localeCompare(b.doc_no ?? "") ||
+        a.id.localeCompare(b.id),
+    );
+  return {
+    total: roundCents(sources.reduce((s, r) => s + r.available, 0)),
+    sources,
+  };
+}
+
+/** 對象目前可退款的預收（預付）與來源明細（退款表單選完對象後呼叫）。 */
+export async function getPrepaidSummary(
+  direction: PaymentDirection,
+  partyId: string,
+): Promise<ErpResult<PrepaidSummary>> {
+  const denied = await ensureErp();
+  if (denied) return denied;
+  if (!partyId) return { ok: true, data: { total: 0, sources: [] } };
+  const supabase = await getServerSupabase();
+  const { data, error } = await fetchAllRows<RawPayment>((from, to) =>
+    supabase
+      .from("erp_payments")
+      .select(
+        "id, kind, doc_no, pay_date, amount, status, erp_payment_allocations(amount), refunded_by:erp_refund_sources!source_payment_id(amount)",
+      )
+      .eq("direction", direction)
+      .eq(direction === "in" ? "customer_id" : "vendor_id", partyId)
+      .eq("status", "posted")
+      .eq("kind", "payment")
+      .order("pay_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+  if (error) return { ok: false, error: erpErrorMessage(error) };
+  return {
+    ok: true,
+    data: summarizePrepaid(
+      data.map((r) => ({
+        id: r.id,
+        doc_no: r.doc_no,
+        pay_date: r.pay_date,
+        amount: Number(r.amount),
+        status: r.status,
+        kind: r.kind,
+        allocated: sumAmounts(r.erp_payment_allocations),
+        refunded: sumAmounts(r.refunded_by),
+      })),
+    ),
   };
 }
 
@@ -434,7 +618,7 @@ export async function getStatementData(params: {
   const DOC_COLS =
     "id, doc_type, doc_no, doc_date, total_twd, status, invoice_no, note";
   const PAY_COLS =
-    "id, doc_no, pay_date, method, amount, check_no, check_due_date, status, note";
+    "id, kind, doc_no, pay_date, method, amount, check_no, check_due_date, status, note";
 
   const docsBase = () =>
     supabase

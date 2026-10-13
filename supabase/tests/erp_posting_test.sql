@@ -765,7 +765,7 @@ do $$
 declare f text;
 begin
   foreach f in array array['erp_post_document(uuid)','erp_void_document(uuid,text)','erp_post_payment(jsonb)',
-                           'erp_allocate_payment(uuid,jsonb)','erp_void_payment(uuid,text)'] loop
+                           'erp_allocate_payment(uuid,jsonb)','erp_void_payment(uuid,text)','erp_post_refund(jsonb)'] loop
     assert (select prosecdef and array_to_string(proconfig, ',') like '%search_path=public, pg_temp%'
               from pg_proc where oid = f::regprocedure), format('%s 應為 security definer + search_path', f);
     assert has_function_privilege('authenticated', f, 'execute'), format('%s 應開放 authenticated', f);
@@ -829,6 +829,10 @@ select erp_test.expect_error($q$insert into erp_payments (direction, pay_date, c
 select erp_test.expect_error($q$update erp_payments set amount = 1$q$, '42501');
 select erp_test.expect_error($q$update erp_payments set status = 'posted'$q$, '42501');
 select erp_test.expect_error($q$delete from erp_payments$q$, '42501');
+-- 0029：kind 與退款來源只能經 RPC 寫入
+select erp_test.expect_error($q$update erp_payments set kind = 'refund'$q$, '42501');
+select erp_test.expect_error($q$insert into erp_refund_sources (refund_id, source_payment_id, amount) select id, id, 1 from erp_payments limit 1$q$, '42501');
+select erp_test.expect_error($q$delete from erp_refund_sources$q$, '42501');
 -- 9.5 avg_cost 只能由過帳寫入
 select erp_test.expect_error($q$update erp_items set avg_cost = 1$q$, '42501');
 select erp_test.expect_error($q$insert into erp_items (code, name, kind, avg_cost) values ('HACK', 'x', 'part', 1)$q$, '42501');
@@ -1027,6 +1031,236 @@ begin
   perform erp_post_document('00000000-0000-0000-0000-00000000e0a8');
   assert (select status from erp_documents where id = '00000000-0000-0000-0000-00000000e0a8') = 'posted', '作廢後可再退';
   raise notice 'ok  銷退累計金額上限（0028）';
+end $$;
+
+-- ============================================================
+-- 11) 0 元沖抵單、溢收轉預收、退款單（#249，0029）——#238 §4 N-2 完整重現
+--     S 321,300 收 20,000（沖 S）→ 全退 SR 7,650 + 313,650；另 S3 10,500 未收 → 客戶淨額 −9,500
+-- ============================================================
+insert into mx_customers (id, name, code) values ('00000000-0000-0000-0000-00000000d238', '兆泰測試', 'KK897');
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e238', 'S', '2026-10-01', '00000000-0000-0000-0000-00000000d238', erp_test.main(), 'exempt'),
+  ('00000000-0000-0000-0000-00000000e23b', 'S', '2026-10-02', '00000000-0000-0000-0000-00000000d238', erp_test.main(), 'exempt');
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-0000f2380001', '00000000-0000-0000-0000-00000000e238', 1, 'item', '00000000-0000-0000-0000-00000000c004', 2, 160650),
+  ('00000000-0000-0000-0000-0000f23b0001', '00000000-0000-0000-0000-00000000e23b', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 10500);
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, source_doc_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e239', 'SR', '2026-10-05', '00000000-0000-0000-0000-00000000d238', erp_test.main(), '00000000-0000-0000-0000-00000000e238', 'exempt'),
+  ('00000000-0000-0000-0000-00000000e23a', 'SR', '2026-10-05', '00000000-0000-0000-0000-00000000d238', erp_test.main(), '00000000-0000-0000-0000-00000000e238', 'exempt');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price, source_line_id) values
+  ('00000000-0000-0000-0000-00000000e239', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 7650,   '00000000-0000-0000-0000-0000f2380001'),
+  ('00000000-0000-0000-0000-00000000e23a', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 313650, '00000000-0000-0000-0000-0000f2380001');
+
+do $$
+declare v jsonb; pb record;
+begin
+  perform erp_post_document('00000000-0000-0000-0000-00000000e238');
+  perform erp_post_document('00000000-0000-0000-0000-00000000e23b');
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-03","customer_id":"00000000-0000-0000-0000-00000000d238","method":"transfer","amount":20000,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e238","amount":20000}]}');
+  perform set_config('erp_test.rc238', v->>'id', true);
+  perform erp_post_document('00000000-0000-0000-0000-00000000e239');
+  perform erp_post_document('00000000-0000-0000-0000-00000000e23a');
+
+  -- 重現：應收 −9,500、預收 0
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.balance = -9500 and pb.unallocated = 0, format('沖抵前 %s', pb);
+  assert (select outstanding from erp_document_balances where document_id = '00000000-0000-0000-0000-00000000e238') = 301300, 'S 未沖 301,300';
+  raise notice 'ok  #238 重現：應收 −9,500、預收 0';
+end $$;
+
+-- 金額為負：擋
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"other","amount":-1}')$q$, 'validation');
+-- 金額 0 但沒有沖銷：擋
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"other","amount":0}')$q$, 'validation');
+-- 金額 0 但沒有負數單據（只沖 S）：擋
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e23b","amount":10500}]}')$q$, 'validation');
+-- 不可憑空產生預收：只沖 SR（S、S3 仍未沖清）→ 擋
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e239","amount":-7650}]}')$q$, 'validation');
+-- 不可憑空產生預收：SR 全部 + S，但 S3 未沖 → 擋（訊息列出 S3）
+do $$
+declare v_detail text;
+begin
+  begin
+    perform erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e239","amount":-7650},{"document_id":"00000000-0000-0000-0000-00000000e23a","amount":-313650},{"document_id":"00000000-0000-0000-0000-00000000e238","amount":301300}]}');
+    raise exception '預期 validation 但成功';
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    assert sqlerrm = 'validation' and v_detail like '%須先沖清所有未結銷貨單%' and v_detail like '%S11510002%',
+      format('R3 訊息 %s / %s', sqlerrm, v_detail);
+  end;
+end $$;
+-- 沖抵合計為正（> 金額 0）：超沖
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e239","amount":-7650},{"document_id":"00000000-0000-0000-0000-00000000e23b","amount":10500}]}')$q$, 'over_allocation');
+-- 沒有預收時不能退款（SR 的負數餘額不能直接退）
+select erp_test.expect_error($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"transfer","amount":1}')$q$, 'over_allocation');
+
+do $$
+declare v jsonb; pb record; p record;
+begin
+  assert (select count(*) from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d238') = 1, '失敗的沖抵單不應留下';
+
+  -- 0 元沖抵：SR 7,650 + SR 313,650 沖 S 301,300 + S3 10,500，合計 −9,500 → 預收 9,500
+  -- 傳入 check 也會被正規化為 other、不存票號
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"check","check_no":"X","check_due_date":"2026-11-01","bank":"B","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e239","amount":-7650},{"document_id":"00000000-0000-0000-0000-00000000e23a","amount":-313650},{"document_id":"00000000-0000-0000-0000-00000000e238","amount":301300},{"document_id":"00000000-0000-0000-0000-00000000e23b","amount":10500}]}');
+  perform set_config('erp_test.offset238', v->>'id', true);
+  select * into p from erp_payments where id = (v->>'id')::uuid;
+  assert p.amount = 0 and p.kind = 'payment' and p.method = 'other' and p.check_no is null and p.bank is null
+     and p.check_status is null and p.doc_no like 'RC11510%', format('沖抵單 %s', row_to_json(p));
+
+  assert not exists (select 1 from erp_document_balances where customer_id = '00000000-0000-0000-0000-00000000d238' and outstanding <> 0),
+    '沖抵後所有單據沖清';
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.balance = 0 and pb.unallocated = 9500, format('沖抵後應收 0、預收 9,500：%s', pb);
+  -- 原收款與其沖銷不動
+  assert (select sum(amount) from erp_payment_allocations where payment_id = current_setting('erp_test.rc238')::uuid) = 20000, 'RC 沖銷不變';
+  raise notice 'ok  0 元沖抵 → 應收 0、預收 9,500';
+end $$;
+
+-- 沖抵單已無可沖額度；補沖銷消耗預收不受 R3 限制（另見下方）
+-- 退款：方式需為匯款／現金／支票；金額需 > 0；超過預收擋
+select erp_test.expect_error($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"other","amount":100}')$q$, 'validation');
+select erp_test.expect_error($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"transfer","amount":0}')$q$, 'validation');
+select erp_test.expect_error($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"check","amount":100}')$q$, 'validation');
+select erp_test.expect_error($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-13","vendor_id":"00000000-0000-0000-0000-00000000b001","method":"cash","amount":100}')$q$, 'validation');
+select erp_test.expect_error($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"transfer","amount":9500.01}')$q$, 'over_allocation');
+
+do $$
+declare v jsonb; pb record; r record;
+begin
+  -- 退款 9,500 → 預收 0
+  v := erp_post_refund('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"transfer","amount":9500,"bank":"台灣銀行","note":"退還溢收"}');
+  assert v->>'doc_no' = 'RF11510001', format('RF 單號 %s', v);
+  perform set_config('erp_test.rf238', v->>'id', true);
+  select * into r from erp_payments where id = (v->>'id')::uuid;
+  assert r.kind = 'refund' and r.direction = 'in' and r.amount = 9500 and r.status = 'posted', format('退款單 %s', row_to_json(r));
+  assert (select count(*) from erp_refund_sources where refund_id = r.id) = 1
+     and (select source_payment_id from erp_refund_sources where refund_id = r.id) = current_setting('erp_test.offset238')::uuid,
+    '退款來源 = 沖抵單';
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.balance = 0 and pb.unallocated = 0, format('退款後預收 0：%s', pb);
+  raise notice 'ok  退款 9,500 → 預收 0';
+end $$;
+
+-- 預收已用完：再退 1 元擋；退款單不能沖銷；沖抵單已退款不能作廢；沖抵單無額度可補沖
+select erp_test.expect_error($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"cash","amount":1}')$q$, 'over_allocation');
+select erp_test.expect_error(format($q$select erp_allocate_payment(%L, '[{"document_id":"00000000-0000-0000-0000-00000000e23b","amount":1}]')$q$, current_setting('erp_test.rf238')), 'validation');
+select erp_test.expect_error(format($q$select erp_void_payment(%L, '測試')$q$, current_setting('erp_test.offset238')), 'has_dependents');
+-- 有沖抵單沖銷的 S / SR 不可作廢
+select erp_test.expect_error($q$select erp_void_document('00000000-0000-0000-0000-00000000e23a', '測試')$q$, 'has_dependents');
+
+do $$
+declare pb record;
+begin
+  -- 作廢退款單 → 預收還原 9,500
+  perform erp_void_payment(current_setting('erp_test.rf238')::uuid, '退款取消');
+  assert (select count(*) from erp_refund_sources where refund_id = current_setting('erp_test.rf238')::uuid) = 0, '退款來源刪除';
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.balance = 0 and pb.unallocated = 9500, format('作廢退款後預收 9,500：%s', pb);
+
+  -- 作廢沖抵單 → 回到沖抵前：應收 −9,500、預收 0
+  perform erp_void_payment(current_setting('erp_test.offset238')::uuid, '沖抵重做');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.balance = -9500 and pb.unallocated = 0, format('作廢沖抵後 %s', pb);
+  assert (select outstanding from erp_document_balances where document_id = '00000000-0000-0000-0000-00000000e238') = 301300, 'S 還原';
+  assert (select outstanding from erp_document_balances where document_id = '00000000-0000-0000-0000-00000000e23a') = -313650, 'SR 還原';
+  raise notice 'ok  作廢退款 / 沖抵單後還原';
+end $$;
+select erp_test.expect_error(format($q$select erp_void_payment(%L, '再一次')$q$, current_setting('erp_test.rf238')), 'not_posted');
+
+-- 補沖銷產生預收也適用 R3；FIFO 退款橫跨多張來源
+do $$
+declare v jsonb; pid uuid; pb record; n int;
+begin
+  -- 0 元沖抵只沖 SR 7,650 對 S3 7,650（合計 0，不產生預收；S3 剩 2,850）
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d238","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e239","amount":-7650},{"document_id":"00000000-0000-0000-0000-00000000e23b","amount":7650}]}');
+  pid := (v->>'id')::uuid;
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.unallocated = 0 and pb.balance = -9500, format('純沖抵不產生預收 %s', pb);
+  -- 補沖銷：SR2 −313,650 沖 S 301,300 + S3 2,850 → 本次合計 −9,500，S 全清 → 預收 9,500
+  perform erp_allocate_payment(pid, '[{"document_id":"00000000-0000-0000-0000-00000000e23a","amount":-313650},{"document_id":"00000000-0000-0000-0000-00000000e238","amount":301300},{"document_id":"00000000-0000-0000-0000-00000000e23b","amount":2850}]');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.unallocated = 9500 and pb.balance = 0, format('補沖銷後 %s', pb);
+  assert (select amount - (select sum(amount) from erp_payment_allocations where payment_id = pid) from erp_payments where id = pid) = 9500,
+    '預收掛在沖抵單上';
+
+  -- 另收一筆預收 1,000（較晚）→ 退款 10,000：先扣沖抵單 9,500，再扣 RC 500
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-14","customer_id":"00000000-0000-0000-0000-00000000d238","method":"cash","amount":1000}');
+  v := erp_post_refund('{"direction":"in","pay_date":"2026-10-15","customer_id":"00000000-0000-0000-0000-00000000d238","method":"check","amount":10000,"check_no":"RF-CHK","check_due_date":"2026-10-30","bank":"一銀"}');
+  assert (select check_status from erp_payments where id = (v->>'id')::uuid) = 'pending', '退款支票預設 pending';
+  select count(*) into n from erp_refund_sources where refund_id = (v->>'id')::uuid;
+  assert n = 2, format('退款來源 2 筆，得 %s', n);
+  assert (select amount from erp_refund_sources where refund_id = (v->>'id')::uuid and source_payment_id = pid) = 9500, 'FIFO 先扣沖抵單';
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.unallocated = 500, format('剩預收 500：%s', pb);
+  -- 被部分退款的 RC 補沖銷：可用額度只剩 500（1,000 − 退 500）
+  perform set_config('erp_test.rc_late', (select id::text from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d238' and pay_date = '2026-10-14'), true);
+  raise notice 'ok  補沖銷轉預收 / FIFO 退款';
+end $$;
+
+-- 新銷貨 600：被退款 500 的 RC（1,000）只剩 500 可沖 → 沖 600 超過
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e23c', 'S', '2026-10-16', '00000000-0000-0000-0000-00000000d238', erp_test.main(), 'exempt');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-00000000e23c', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 600);
+select erp_post_document('00000000-0000-0000-0000-00000000e23c');
+select erp_test.expect_error(format($q$select erp_allocate_payment(%L, '[{"document_id":"00000000-0000-0000-0000-00000000e23c","amount":600}]')$q$, current_setting('erp_test.rc_late')), 'over_allocation');
+do $$
+declare pb record;
+begin
+  perform erp_allocate_payment(current_setting('erp_test.rc_late')::uuid, '[{"document_id":"00000000-0000-0000-0000-00000000e23c","amount":500}]');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d238';
+  assert pb.unallocated = 0 and pb.balance = 100, format('沖 500 後 %s', pb);
+  raise notice 'ok  被退款的收款可沖額度扣除已退款';
+end $$;
+
+-- 付款端比照：0 元沖抵（PR 沖 I）、廠商退款 VR
+insert into erp_vendors (id, code, name) values ('00000000-0000-0000-0000-00000000b249', 'V249', '退款測試廠商');
+insert into erp_documents (id, doc_type, doc_date, vendor_id, warehouse_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e249', 'I', '2026-10-01', '00000000-0000-0000-0000-00000000b249', erp_test.main(), 'exempt');
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-0000f2490001', '00000000-0000-0000-0000-00000000e249', 1, 'item', '00000000-0000-0000-0000-00000000c003', 10, 1000);
+insert into erp_documents (id, doc_type, doc_date, vendor_id, warehouse_id, source_doc_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e24a', 'PR', '2026-10-05', '00000000-0000-0000-0000-00000000b249', erp_test.main(), '00000000-0000-0000-0000-00000000e249', 'exempt');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price, source_line_id) values
+  ('00000000-0000-0000-0000-00000000e24a', 1, 'item', '00000000-0000-0000-0000-00000000c003', 10, 1000, '00000000-0000-0000-0000-0000f2490001');
+
+do $$
+declare v jsonb; pb record;
+begin
+  perform erp_post_document('00000000-0000-0000-0000-00000000e249');
+  -- 付 3,000（沖 I）→ 全數退貨 PR 10,000 → 淨額 −3,000（預付 0、應付 −3,000）
+  v := erp_post_payment('{"direction":"out","pay_date":"2026-10-02","vendor_id":"00000000-0000-0000-0000-00000000b249","method":"transfer","amount":3000,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e249","amount":3000}]}');
+  perform erp_post_document('00000000-0000-0000-0000-00000000e24a');
+  select * into pb from erp_party_balances where party_type = 'vendor' and party_id = '00000000-0000-0000-0000-00000000b249';
+  assert pb.balance = -3000 and pb.unallocated = 0, format('付款端沖抵前 %s', pb);
+  -- 0 元沖抵：PR −10,000 沖 I 7,000 → 預付 3,000
+  v := erp_post_payment('{"direction":"out","pay_date":"2026-10-13","vendor_id":"00000000-0000-0000-0000-00000000b249","method":"transfer","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e24a","amount":-10000},{"document_id":"00000000-0000-0000-0000-00000000e249","amount":7000}]}');
+  assert v->>'doc_no' like 'PM11510%', format('付款沖抵單號 %s', v);
+  select * into pb from erp_party_balances where party_type = 'vendor' and party_id = '00000000-0000-0000-0000-00000000b249';
+  assert pb.balance = 0 and pb.unallocated = 3000, format('付款端沖抵後 %s', pb);
+  -- 廠商退款 3,000 → 預付 0
+  v := erp_post_refund('{"direction":"out","pay_date":"2026-10-13","vendor_id":"00000000-0000-0000-0000-00000000b249","method":"transfer","amount":3000}');
+  assert v->>'doc_no' = 'VR11510001', format('VR 單號 %s', v);
+  select * into pb from erp_party_balances where party_type = 'vendor' and party_id = '00000000-0000-0000-0000-00000000b249';
+  assert pb.balance = 0 and pb.unallocated = 0, format('廠商退款後 %s', pb);
+  raise notice 'ok  付款端 0 元沖抵 / 廠商退款';
+end $$;
+select erp_test.expect_error($q$select erp_post_refund('{"direction":"out","pay_date":"2026-10-13","vendor_id":"00000000-0000-0000-0000-00000000b249","method":"cash","amount":1}')$q$, 'over_allocation');
+
+-- 未授權：退款 RPC forbidden；anon 無執行權限、看不到退款來源
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated"}';
+select erp_test.expect_error($q$select erp_post_refund('{}'::jsonb)$q$, 'forbidden');
+do $$ begin
+  assert (select count(*) from erp_refund_sources) = 0, '未授權者看不到退款來源';
+end $$;
+set local role anon;
+select erp_test.expect_error($q$select erp_post_refund('{}'::jsonb)$q$, '42501');
+select erp_test.expect_error($q$select * from erp_refund_sources$q$, '42501');
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
+do $$ begin
+  assert (select count(*) from erp_refund_sources) > 0, 'erp 使用者看得到退款來源';
+  raise notice 'ok  退款權限';
 end $$;
 
 reset role;

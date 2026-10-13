@@ -14,6 +14,7 @@ import type {
   PaymentPayload,
   PostDocumentResult,
   PostPaymentResult,
+  RefundPayload,
   VoidDocumentResult,
 } from "./types";
 
@@ -66,14 +67,15 @@ export async function voidDocument(
   return { ok: true, data: { warnings: res.data?.warnings ?? [] } };
 }
 
-/** 建立收款 / 付款並沖銷（erp_post_payment）。 */
+/** 建立收款 / 付款並沖銷（erp_post_payment）；金額 0 為沖抵單（#249）。 */
 export async function postPayment(
   payload: PaymentPayload,
 ): Promise<ErpResult<PostPaymentResult>> {
-  if (!(Number(payload.amount) > 0)) {
-    return { ok: false, error: "金額需大於 0。" };
+  if (!(Number(payload.amount) >= 0)) {
+    return { ok: false, error: "金額不可為負數。" };
   }
   if (
+    Number(payload.amount) > 0 &&
     payload.method === "check" &&
     (!payload.check_no?.trim() || !payload.check_due_date)
   ) {
@@ -82,6 +84,22 @@ export async function postPayment(
   return callRpc<PostPaymentResult>("erp_post_payment", {
     p_payment: { ...payload, allocations: payload.allocations ?? [] },
   });
+}
+
+/** 退款（erp_post_refund，#249）：從預收（預付）退款給客戶／廠商退還預付。 */
+export async function postRefund(
+  payload: RefundPayload,
+): Promise<ErpResult<PostPaymentResult>> {
+  if (!(Number(payload.amount) > 0)) {
+    return { ok: false, error: "退款金額需大於 0。" };
+  }
+  if (
+    payload.method === "check" &&
+    (!payload.check_no?.trim() || !payload.check_due_date)
+  ) {
+    return { ok: false, error: "支票需填寫票號與票期。" };
+  }
+  return callRpc<PostPaymentResult>("erp_post_refund", { p_refund: payload });
 }
 
 /** 對既有收付款補沖銷（erp_allocate_payment）。 */

@@ -531,10 +531,24 @@ export function countLowStock(
 export interface CheckDueInput {
   id: string;
   direction: "in" | "out";
+  /** payment（預設）／refund（#249）。 */
+  kind?: string | null;
   method: string;
   status: string;
   check_status: string | null;
   check_due_date: string | null;
+}
+
+/**
+ * 到期支票的收／開票別：收款收票、付款開票；退款反向（#249：退款給客戶是我方開票、廠商退款是收票）。
+ */
+export function checkFlowLabel(c: {
+  direction: "in" | "out";
+  kind?: string | null;
+}): string {
+  const refund = c.kind === "refund";
+  const incoming = (c.direction === "in") !== refund;
+  return `${incoming ? "收票" : "開票"}${refund ? "（退款）" : ""}`;
 }
 
 /** 到期支票：已過帳、支票、未兌現（pending）、到期日在 [today, today+days]；依到期日排序。 */

@@ -60,7 +60,7 @@ export function AllocateMorePanel({
       setError("請勾選要沖銷的單據。");
       return;
     }
-    const bad = validateAllocations(capacity, rows, docs);
+    const bad = validateAllocations(capacity, rows, docs, direction);
     if (bad) {
       setError(bad);
       return;

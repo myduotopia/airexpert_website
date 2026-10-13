@@ -287,12 +287,12 @@ describe("collectPaymentFormErrors / collectAllocationErrors", () => {
   it("表頭錯誤全部列出；validatePaymentForm 仍回第一條", () => {
     const bad = payForm({
       party_id: null,
-      amount: 0,
+      amount: -5,
       method: "check",
     });
     expect(collectPaymentFormErrors(bad)).toEqual([
       "請選擇客戶。",
-      "金額需大於 0。",
+      "金額不可為負數。",
       "支票需填寫票號。",
       "支票需填寫到期日（票期）。",
       "支票需填寫銀行。",

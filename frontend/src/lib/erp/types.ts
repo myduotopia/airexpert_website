@@ -43,6 +43,8 @@ export type PaymentDirection = "in" | "out";
 export type PaymentMethod = "cash" | "transfer" | "check" | "other";
 export type CheckStatus = "pending" | "cleared" | "bounced";
 export type PaymentStatus = "posted" | "voided";
+/** payment = 收款／付款（金額 0 為沖抵單）；refund = 退款（#249：in 退款給客戶 RF、out 廠商退款 VR）。 */
+export type PaymentKind = "payment" | "refund";
 
 /** 客戶（ERP 需先分辨客戶或廠商時用）。 */
 export type PartyType = "customer" | "vendor";
@@ -239,6 +241,7 @@ export interface ErpStockMove {
 export interface ErpPayment {
   id: string;
   direction: PaymentDirection;
+  kind: PaymentKind;
   doc_no: string | null;
   pay_date: string;
   customer_id: string | null;
@@ -330,6 +333,21 @@ export interface PaymentPayload {
   check_status?: CheckStatus | null;
   note?: string | null;
   allocations: PaymentAllocationInput[];
+}
+
+/** erp_post_refund 的 payload（jsonb，#249）。依日期先後自動扣減預收（預付）來源。 */
+export interface RefundPayload {
+  direction: PaymentDirection;
+  pay_date: string;
+  customer_id?: string | null;
+  vendor_id?: string | null;
+  method: PaymentMethod;
+  amount: number;
+  check_no?: string | null;
+  check_due_date?: string | null;
+  bank?: string | null;
+  check_status?: CheckStatus | null;
+  note?: string | null;
 }
 
 export interface PostPaymentResult {

@@ -5,7 +5,9 @@
 //   * 單據：S、I 為 +；SR、PR 為 −（輸入的 total_twd 不論正負，一律依單別定號，
 //     因此 erp_documents 原始值或 erp_document_balances 已帶負號的值皆可直接傳入）。
 //   * 收付款：amount 一律減少餘額（收款減應收、付款減應付）。
-//   * 期初 = 起日前已過帳單據合計 − 起日前已過帳收付款合計；期末 = 期初 + 本期單據 − 本期收付款。
+//     退款單（kind = refund，#249）反向：退款給客戶／廠商退還預付會增加餘額，收付款欄以負數列示。
+//     沖抵單（金額 0）列出但不影響餘額。
+//   * 期初 = 起日前已過帳單據合計 − 起日前已過帳收付款（含退款負數）合計；期末 = 期初 + 本期單據 − 本期收付款。
 //   * 作廢（status ≠ posted）不列入；草稿單據亦不列入。
 import { rocDate } from "@/lib/admin/minguo";
 import type { DocType, PartyType, PaymentMethod } from "./types";
@@ -25,6 +27,8 @@ export interface StatementDocInput {
 
 export interface StatementPaymentInput {
   id: string;
+  /** payment（預設）／refund（#249）。 */
+  kind?: string | null;
   doc_no: string | null;
   pay_date: string;
   method: PaymentMethod;
@@ -46,7 +50,7 @@ export interface StatementRow {
   description: string;
   /** 單據金額（SR / PR 為負）；收付款列為 null。 */
   charge: number | null;
-  /** 收付款金額（正數，減少餘額）；單據列為 null。 */
+  /** 收付款金額（正數減少餘額；退款單為負數、增加餘額）；單據列為 null。 */
   payment: number | null;
   /** 此列之後的累計餘額。 */
   balance: number;
@@ -86,6 +90,15 @@ function isPosted(status: string | null | undefined): boolean {
   return status == null || status === "posted";
 }
 
+/** 收付款對餘額的減項：收款／付款為 +amount、退款單為 −amount（#249）。 */
+export function signedPaymentAmount(p: {
+  kind?: string | null;
+  amount: number;
+}): number {
+  const abs = Math.abs(Number(p.amount) || 0);
+  return p.kind === "refund" ? -abs : abs;
+}
+
 function docDescription(d: StatementDocInput): string {
   const parts = [DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type];
   if (d.invoice_no?.trim()) parts.push(`發票 ${d.invoice_no.trim()}`);
@@ -97,9 +110,15 @@ function paymentDescription(
   p: StatementPaymentInput,
   partyType: PartyType,
 ): string {
-  const parts = [
-    `${partyType === "vendor" ? "付款" : "收款"}（${PAYMENT_METHOD_LABEL[p.method] ?? p.method}）`,
-  ];
+  const method = PAYMENT_METHOD_LABEL[p.method] ?? p.method;
+  const vendor = partyType === "vendor";
+  const head =
+    p.kind === "refund"
+      ? `${vendor ? "廠商退款" : "退款"}（${method}）`
+      : roundCents(Number(p.amount) || 0) === 0
+        ? `沖抵（以${vendor ? "進退沖抵進貨" : "銷退沖抵銷貨"}）`
+        : `${vendor ? "付款" : "收款"}（${method}）`;
+  const parts = [head];
   if (p.method === "check") {
     if (p.check_no?.trim()) parts.push(`票號 ${p.check_no.trim()}`);
     if (p.check_due_date) parts.push(`票期 ${rocDate(p.check_due_date)}`);
@@ -134,7 +153,7 @@ export function buildStatement(input: {
   }
   for (const p of input.openingPayments) {
     if (isPosted(p.status) && p.pay_date < from) {
-      opening -= Math.abs(Number(p.amount) || 0);
+      opening -= signedPaymentAmount(p);
     }
   }
   opening = roundCents(opening);
@@ -167,7 +186,7 @@ export function buildStatement(input: {
       method: p.method,
       description: paymentDescription(p, partyType),
       charge: null,
-      payment: Math.abs(Number(p.amount) || 0),
+      payment: signedPaymentAmount(p),
     });
   }
 

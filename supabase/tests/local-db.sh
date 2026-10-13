@@ -100,6 +100,11 @@ psql_run -1 < "$ROOT/migrations/0027_employees.sql"
 echo "==> 重跑 0028（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0028_sales_return_amount_cap.sql"
 
+# 0029 以 0020 為底 create or replace 收付款函式（erp_allocate_payment／erp_post_payment／erp_void_payment）、
+# erp_next_doc_no 與 erp_party_balances；重跑 0020 會蓋回舊版，故需在 0020 之後、放最後重跑。
+echo "==> 重跑 0029（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0029_payment_offset_refund.sql"
+
 echo "==> 執行 erp_posting_test.sql"
 psql_run < "$ROOT/tests/erp_posting_test.sql"
 

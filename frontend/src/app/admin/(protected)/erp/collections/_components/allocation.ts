@@ -1,6 +1,12 @@
 // 收付款表單的純計算（client / server / 測試共用）：沖銷預設值、剩餘預收付、表單驗證。
 // 驗證有 collect*（一次列出所有錯誤，表單用）與 validate*（第一條，server action 用）兩種。
 // DB 端 erp_allocate_payment 仍會以同樣規則把關（over_allocation），這裡只是即時提示與提早擋下。
+//
+// 沖銷規則（#249，與 0029 migration 相同）：
+//   R1 每列與未沖餘額同號、不超過其絕對值；
+//   R2 沖銷合計 ≤ 可沖額度（新增 = 金額；補沖銷 = 目前預收／預付餘額）——退貨單的負數會增加額度；
+//   R3 沖銷合計為負（退貨貸項轉為預收／預付）時，須先沖清所有未結的正數單據，不可憑空產生預收；
+//   R4 金額 0 = 沖抵單：至少要勾一張退貨單（負數），方式一律存「其他」、不帶票號銀行。
 import type {
   CheckStatus,
   PaymentAllocationInput,
@@ -55,6 +61,15 @@ export const DIRECTION_META: Record<
     basePath: string;
     unallocatedLabel: string;
     docTypes: readonly string[];
+    /** 正數單據（銷貨／進貨）。 */
+    debitLabel: string;
+    /** 退貨單（銷退／進退，負數）。 */
+    creditLabel: string;
+    /** 退款單名稱（#249）：客戶退款（RF）／廠商退款（VR）。 */
+    refundLabel: string;
+    /** 列表頁的退款入口文字。 */
+    refundAction: string;
+    refundPath: string;
   }
 > = {
   in: {
@@ -63,6 +78,11 @@ export const DIRECTION_META: Record<
     basePath: "/admin/erp/collections",
     unallocatedLabel: "預收",
     docTypes: ["S", "SR"],
+    debitLabel: "銷貨",
+    creditLabel: "銷退",
+    refundLabel: "客戶退款",
+    refundAction: "退款給客戶",
+    refundPath: "/admin/erp/collections/refunds/new",
   },
   out: {
     label: "付款",
@@ -70,8 +90,18 @@ export const DIRECTION_META: Record<
     basePath: "/admin/erp/disbursements",
     unallocatedLabel: "預付",
     docTypes: ["I", "PR"],
+    debitLabel: "進貨",
+    creditLabel: "進退",
+    refundLabel: "廠商退款",
+    refundAction: "廠商退款",
+    refundPath: "/admin/erp/disbursements/refunds/new",
   },
 };
+
+/** 金額為 0 的收付款 = 沖抵單（#249）：只以退貨單沖抵單據，不收付現金。 */
+export function isOffsetAmount(amount: number): boolean {
+  return roundCents(Number(amount) || 0) === 0;
+}
 
 /**
  * 詳情頁是否顯示「補沖銷」（#241 A-8）：已過帳且未沖銷餘額（預收／預付，取到分）> 0。
@@ -99,6 +129,41 @@ export function remainingAmount(amount: number, rows: AllocationRow[]): number {
 }
 
 /**
+ * 依勾選狀態重新計算全部已勾選列的預設沖銷金額（#249：結果與勾選順序無關）。
+ * 1. 已勾選的退貨單（未沖餘額為負）整張沖銷，其貸項加入可沖額度；
+ * 2. 再依 docs 的順序（日期舊 → 新）分配給已勾選的一般單據：min(未沖餘額, 剩餘額度)，額度不足為 0。
+ * 未勾選列金額為 0。回傳與 docs 同順序的完整列（勾選或取消時呼叫；手動改過的金額會重設為預設值）。
+ */
+export function distributeAllocations(
+  docs: OutstandingDoc[],
+  rows: AllocationRow[],
+  capacity: number,
+): AllocationRow[] {
+  const selected = new Set(
+    rows.filter((r) => r.selected).map((r) => r.document_id),
+  );
+  const amounts = new Map<string, number>();
+  let pool = roundCents(Number(capacity) || 0);
+  for (const d of docs) {
+    if (!selected.has(d.document_id) || !(d.outstanding < 0)) continue;
+    const amt = roundCents(d.outstanding);
+    amounts.set(d.document_id, amt);
+    pool = roundCents(pool - amt);
+  }
+  for (const d of docs) {
+    if (!selected.has(d.document_id) || d.outstanding < 0) continue;
+    const amt = defaultAllocation(d.outstanding, pool);
+    amounts.set(d.document_id, amt);
+    pool = roundCents(pool - amt);
+  }
+  return docs.map((d) => ({
+    document_id: d.document_id,
+    selected: selected.has(d.document_id),
+    amount: amounts.get(d.document_id) ?? 0,
+  }));
+}
+
+/**
  * 勾選一張單據時的預設沖銷金額：
  * - 一般單據（outstanding > 0）：min(outstanding, 剩餘)，剩餘 ≤ 0 時為 0；
  * - 退貨單（outstanding < 0）：整張沖銷（負數會增加可沖額度）。
@@ -117,15 +182,17 @@ export function outstandingAfter(outstanding: number, amount: number): number {
 }
 
 /**
- * 驗證沖銷明細（規則同 DB §5.4／決策 14）：
- * 每列金額非 0、與未沖餘額同號且不超過其絕對值；合計介於 0 與 capacity 之間。
- * capacity = 新增時為收付款金額、補沖銷時為目前未沖銷餘額。
+ * 驗證沖銷明細（規則同 DB 0029 erp_allocate_payment，見檔頭 R1–R3）：
+ * 每列金額非 0、與未沖餘額同號且不超過其絕對值；合計 ≤ capacity；
+ * 合計為負（退貨貸項轉預收／預付）時，docs 中的一般單據須全數沖清。
+ * capacity = 新增時為收付款金額、補沖銷時為目前未沖銷餘額；docs 須為該對象全部未沖銷單據。
  * 回傳全部錯誤（逐列 → 合計，#240 B-08a）；通過回空陣列。
  */
 export function collectAllocationErrors(
   capacity: number,
   rows: AllocationRow[],
   docs: OutstandingDoc[],
+  direction: PaymentDirection = "in",
 ): string[] {
   const errors: string[] = [];
   const byId = new Map(docs.map((d) => [d.document_id, d]));
@@ -152,9 +219,27 @@ export function collectAllocationErrors(
     }
   }
   const total = allocatedTotal(rows);
-  if (total < 0) errors.push("沖銷合計不可為負數。");
   if (total > roundCents(capacity)) {
     errors.push(`沖銷合計 ${total} 超過可沖銷金額 ${roundCents(capacity)}。`);
+  }
+  if (total < 0) {
+    const meta = DIRECTION_META[direction] ?? DIRECTION_META.in;
+    const amountOf = new Map(
+      rows.filter((r) => r.selected).map((r) => [r.document_id, r.amount]),
+    );
+    const open = docs.filter(
+      (d) =>
+        d.outstanding > 0 &&
+        outstandingAfter(
+          d.outstanding,
+          Number(amountOf.get(d.document_id)) || 0,
+        ) > 0,
+    );
+    if (open.length > 0) {
+      errors.push(
+        `沖銷合計為 ${total}：${meta.creditLabel}貸項要轉為${meta.unallocatedLabel}，須先沖清所有未結${meta.debitLabel}單（尚未沖清：${open.map((d) => d.doc_no).join("、")}）。`,
+      );
+    }
   }
   return mergeErrors(errors);
 }
@@ -164,8 +249,9 @@ export function validateAllocations(
   capacity: number,
   rows: AllocationRow[],
   docs: OutstandingDoc[],
+  direction: PaymentDirection = "in",
 ): string | null {
-  return collectAllocationErrors(capacity, rows, docs)[0] ?? null;
+  return collectAllocationErrors(capacity, rows, docs, direction)[0] ?? null;
 }
 
 /** 已勾選列 → RPC allocations。 */
@@ -191,7 +277,27 @@ export interface PaymentFormInput {
   allocations: PaymentAllocationInput[];
 }
 
-/** 表頭欄位的錯誤（對象、日期、方式、金額、支票欄位）。 */
+/**
+ * 沖抵單（金額 0）不收付現金：方式一律「其他」、不帶票號／票期／銀行（DB 亦同樣正規化）。
+ * 其他金額原樣回傳。
+ */
+export function normalizePaymentInput(
+  input: PaymentFormInput,
+): PaymentFormInput {
+  if (!isOffsetAmount(input.amount) || !(Number(input.amount) >= 0)) {
+    return input;
+  }
+  return {
+    ...input,
+    amount: 0,
+    method: "other",
+    check_no: null,
+    check_due_date: null,
+    bank: null,
+  };
+}
+
+/** 表頭欄位的錯誤（對象、日期、方式、金額、支票欄位）；沖抵單不檢查方式與支票欄位。 */
 function paymentHeaderErrors(input: PaymentFormInput): string[] {
   const meta = DIRECTION_META[input.direction];
   if (!meta) return ["收付款方向不正確。"];
@@ -200,8 +306,13 @@ function paymentHeaderErrors(input: PaymentFormInput): string[] {
   if (!input.pay_date || !/^\d{4}-\d{2}-\d{2}$/.test(input.pay_date)) {
     errors.push(`請填寫${meta.label}日期。`);
   }
+  const amount = Number(input.amount);
+  if (!Number.isFinite(amount) || amount < 0) {
+    errors.push("金額不可為負數。");
+  } else if (isOffsetAmount(amount)) {
+    return errors;
+  }
   if (!PAYMENT_METHODS.includes(input.method)) errors.push("請選擇付款方式。");
-  if (!(Number(input.amount) > 0)) errors.push("金額需大於 0。");
   if (input.method === "check") {
     if (!input.check_no?.trim()) errors.push("支票需填寫票號。");
     if (!input.check_due_date) errors.push("支票需填寫到期日（票期）。");
@@ -210,14 +321,25 @@ function paymentHeaderErrors(input: PaymentFormInput): string[] {
   return errors;
 }
 
+/** R4：沖抵單（金額 0）至少要沖一張退貨單（負數沖銷）。 */
+function offsetErrors(input: PaymentFormInput): string[] {
+  const meta = DIRECTION_META[input.direction];
+  if (!meta || !isOffsetAmount(input.amount)) return [];
+  return input.allocations.some((a) => Number(a.amount) < 0)
+    ? []
+    : [`金額 0 為沖抵單，需至少勾選一張${meta.creditLabel}單。`];
+}
+
 /**
  * 新增收付款的輸入檢核（表頭 + RPC allocations），一次列出所有錯誤（#240 B-08a）；通過回空陣列。
- * server action 以 validatePaymentForm（第一條）把關。
+ * server action 以 validatePaymentForm（第一條）把關。合計為負時能否轉預收（R3）需要該對象全部單據，
+ * 由表單（collectPaymentSubmitErrors）與 DB 檢查。
  */
 export function collectPaymentFormErrors(input: PaymentFormInput): string[] {
   const errors = paymentHeaderErrors(input);
   const meta = DIRECTION_META[input.direction];
   if (!meta) return errors;
+  errors.push(...offsetErrors(input));
   if (
     input.allocations.some((a) => !a.document_id || !(Number(a.amount) !== 0))
   ) {
@@ -226,8 +348,8 @@ export function collectPaymentFormErrors(input: PaymentFormInput): string[] {
   const total = roundCents(
     input.allocations.reduce((s, a) => s + (Number(a.amount) || 0), 0),
   );
-  if (total < 0) errors.push("沖銷合計不可為負數。");
-  if (total > roundCents(input.amount)) {
+  // 金額為負時表頭已報錯，不再重複報超沖
+  if (Number(input.amount) >= 0 && total > roundCents(input.amount)) {
     errors.push(
       `沖銷合計 ${total} 超過${meta.label}金額 ${roundCents(input.amount)}。`,
     );
@@ -251,6 +373,12 @@ export function collectPaymentSubmitErrors(
 ): string[] {
   return mergeErrors(
     paymentHeaderErrors(input),
-    collectAllocationErrors(input.amount, rows, docs),
+    offsetErrors(input),
+    collectAllocationErrors(
+      Math.max(0, Number(input.amount) || 0),
+      rows,
+      docs,
+      input.direction,
+    ),
   );
 }

@@ -164,7 +164,7 @@ export default async function StatementsPage({
                       </td>
                       <td className="px-4 py-3 text-right">
                         {r.payment !== null ? (
-                          <MoneyText value={r.payment} />
+                          <MoneyText value={r.payment} negativeRed />
                         ) : (
                           ""
                         )}
@@ -205,7 +205,9 @@ export default async function StatementsPage({
             </table>
           </div>
           <p className="text-text-muted mt-2 text-[12px]">
-            期末餘額為負數表示{isVendor ? "預付" : "預收"}大於未結單據。
+            期末餘額為負數表示{isVendor ? "預付" : "預收"}大於未結單據；
+            {isVendor ? "廠商退款" : "退款給客戶"}以負數列於
+            {isVendor ? "付款" : "收款"}欄（增加餘額），0 元沖抵單不影響餘額。
           </p>
         </section>
       )}
