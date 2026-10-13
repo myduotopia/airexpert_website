@@ -21,7 +21,11 @@
 --    來源收付款的 unallocated = 金額 − Σ 沖銷 − Σ 被退款。
 --
 -- ── 沖銷規則（erp_allocate_payment，DB 為最後防線；前端 allocation.ts 同規則即時提示）─────
---   R1 每筆沖銷：金額非 0；沖後單據 outstanding 需落在 [0, total]（S/I）或 [total, 0]（SR/PR）（同 0020）。
+--   R1 每筆沖銷：金額非 0、與單據同號（S/I 為正、SR/PR 為負，與前端一致；0020 只擋會超出 [0, total] 的反向沖銷，
+--      見下；錯誤碼同 0020 的反向超沖 over_allocation）；
+--      沖後單據 outstanding 需落在 [0, total]（S/I）或 [total, 0]（SR/PR）（同 0020）。
+--      同號的理由：若允許對 S 負數沖銷（把別張收款的沖銷「搬走」），金額 0 的沖抵單不需任何 SR 就能成立（R4 落空），
+--      且之後作廢原收款會刪掉它的正數沖銷，S 的 outstanding 會超過 total（單據超沖）。前端一向只送同號金額。
 --   R2 上限：該收付款 Σ 沖銷 + Σ 被退款 ≤ 金額（unallocated 不可為負；沖銷可用的「錢」= 金額 + 退貨貸項）。
 --   R3 不可憑空產生預收：一次沖銷（本次呼叫）的合計為負數時，代表退貨貸項大於本次沖的正數單據，
 --      多出的部分要轉為預收；此時沖完後該對象不可再有未沖清的銷貨（進貨）單，否則 validation。
@@ -54,6 +58,9 @@
 -- 上線順序：須先於新前端套用（新前端會查 kind、erp_refund_sources、呼叫 erp_post_refund）。
 -- 舊前端搭配本檔不受影響（舊前端金額仍要求 > 0；view 欄位不變）。
 -- 既有資料：只新增欄位（預設 payment）與約束，不改任何既有列；既有收付款均 amount > 0，新約束必然成立。
+--   R1 同號規則只檢查新的沖銷呼叫、不回頭驗既有列；套用前可確認既有資料沒有反向沖銷（前端一向只送同號，預期 0 列）：
+--   select a.* from erp_payment_allocations a join erp_documents d on d.id = a.document_id
+--    where (d.doc_type in ('SR','PR')) <> (a.amount < 0);
 -- 本檔可重複執行：add column if not exists、約束 drop if exists 後重建、create table if not exists、
 --   policy drop if exists 後重建、create or replace function／view、grant／revoke 冪等。
 -- 注意：重跑 0020 會把上述函式與 view 蓋回 0020 版，故本檔須排在 0020 之後重跑（local-db.sh 放最後）。
@@ -178,6 +185,7 @@ declare
   v_refunded numeric;
   v_batch    numeric := 0;
   v_open     text;
+  v_amt      numeric;
 begin
   if not has_module('erp') then
     perform erp_raise('forbidden', '沒有 ERP 模組權限');
@@ -201,7 +209,9 @@ begin
   for v_a in
     select * from jsonb_to_recordset(p_allocations) as x(document_id uuid, amount numeric)
   loop
-    if v_a.document_id is null or v_a.amount is null or v_a.amount = 0 then
+    -- 金額以分為單位（欄位 numeric(14,2)）：先四捨五入再檢查，避免以未捨入值通過 R1 後存成 0 或差 1 分
+    v_amt := round(v_a.amount, 2);
+    if v_a.document_id is null or v_amt is null or v_amt = 0 then
       perform erp_raise('validation', '沖銷明細需指定單據與非 0 金額');
     end if;
 
@@ -221,22 +231,28 @@ begin
       perform erp_raise('validation', format('單據 %s 不是此廠商的進貨／進退單', v_doc.doc_no));
     end if;
 
-    -- R1
+    -- R1：與單據同號（S/I 正、SR/PR 負）；錯誤碼沿用 0020 反向超沖的 over_allocation
+    if (v_doc.doc_type in ('SR','PR')) <> (v_amt < 0) then
+      perform erp_raise('over_allocation',
+        format('單據 %s 的沖銷金額需為%s（%s）', v_doc.doc_no,
+               case when v_doc.doc_type in ('SR','PR') then '負數' else '正數' end, v_amt));
+    end if;
+    -- R1：沖後 outstanding 在 [0, total] 或 [total, 0]
     v_total := case when v_doc.doc_type in ('SR','PR') then -v_doc.total_twd else v_doc.total_twd end;
     select coalesce(sum(a.amount), 0) into v_alloc
       from erp_payment_allocations a join erp_payments p on p.id = a.payment_id
      where a.document_id = v_doc.id and p.status = 'posted';
-    v_new := v_total - v_alloc - v_a.amount;
+    v_new := v_total - v_alloc - v_amt;
 
     if (v_total >= 0 and (v_new < 0 or v_new > v_total))
        or (v_total < 0 and (v_new > 0 or v_new < v_total)) then
       perform erp_raise('over_allocation',
-        format('單據 %s 未沖餘額 %s，沖銷 %s 會超沖', v_doc.doc_no, v_total - v_alloc, v_a.amount));
+        format('單據 %s 未沖餘額 %s，沖銷 %s 會超沖', v_doc.doc_no, v_total - v_alloc, v_amt));
     end if;
 
     insert into erp_payment_allocations (payment_id, document_id, amount)
-    values (p_payment_id, v_doc.id, v_a.amount);
-    v_batch := v_batch + v_a.amount;
+    values (p_payment_id, v_doc.id, v_amt);
+    v_batch := v_batch + v_amt;
   end loop;
 
   -- R2：Σ 沖銷 + Σ 被退款 ≤ 金額
@@ -307,7 +323,7 @@ begin
     v_dir      := p_payment->>'direction';
     v_date     := nullif(p_payment->>'pay_date', '')::date;
     v_method   := p_payment->>'method';
-    v_amount   := nullif(p_payment->>'amount', '')::numeric;
+    v_amount   := round(nullif(p_payment->>'amount', '')::numeric, 2);
     v_customer := nullif(p_payment->>'customer_id', '')::uuid;
     v_vendor   := nullif(p_payment->>'vendor_id', '')::uuid;
     v_check_no := nullif(btrim(p_payment->>'check_no'), '');
@@ -421,7 +437,7 @@ begin
     v_dir      := p_refund->>'direction';
     v_date     := nullif(p_refund->>'pay_date', '')::date;
     v_method   := p_refund->>'method';
-    v_amount   := nullif(p_refund->>'amount', '')::numeric;
+    v_amount   := round(nullif(p_refund->>'amount', '')::numeric, 2);
     v_customer := nullif(p_refund->>'customer_id', '')::uuid;
     v_vendor   := nullif(p_refund->>'vendor_id', '')::uuid;
     v_check_no := nullif(btrim(p_refund->>'check_no'), '');

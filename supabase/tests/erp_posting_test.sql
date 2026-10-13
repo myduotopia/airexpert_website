@@ -71,6 +71,51 @@ create function erp_test.serial(p_no text) returns erp_serials language sql as $
   select * from erp_serials where serial_no = p_no;
 $$;
 
+-- 收付款帳務不變式（#249 review）：對象 p_type（customer／vendor）p_id
+--   1. erp_party_balances.balance = Σ erp_document_balances.outstanding
+--   2. balance − unallocated（淨額）= 對帳單全期期末 = Σ 單據（SR／PR 為負）− Σ 收付款 + Σ 退款
+--   3. Σ 有效退款金額 = Σ 其退款來源；4. 每張單據 outstanding 在 [0, total] 或 [total, 0]
+--   5. 每張有效收付款 unallocated（金額 − 沖銷 − 被退款）≥ 0；6. 作廢收付款不留沖銷／退款來源
+create function erp_test.assert_ledger(p_type text, p_id uuid, p_label text) returns void language plpgsql as $$
+declare
+  v_dir text := case p_type when 'customer' then 'in' else 'out' end;
+  v_bal numeric; v_unalloc numeric; v_out numeric; v_docs numeric; v_pay numeric; v_ref numeric; v_src numeric; v_bad int;
+begin
+  select coalesce(sum(balance), 0), coalesce(sum(unallocated), 0) into v_bal, v_unalloc
+    from erp_party_balances where party_type = p_type and party_id = p_id;
+  select coalesce(sum(outstanding), 0) into v_out
+    from erp_document_balances where coalesce(customer_id, vendor_id) = p_id
+     and doc_type in (select unnest(case p_type when 'customer' then array['S','SR'] else array['I','PR'] end));
+  select coalesce(sum(case when doc_type in ('SR','PR') then -total_twd else total_twd end), 0) into v_docs
+    from erp_documents where coalesce(customer_id, vendor_id) = p_id and status = 'posted'
+     and doc_type in (select unnest(case p_type when 'customer' then array['S','SR'] else array['I','PR'] end));
+  select coalesce(sum(amount) filter (where kind = 'payment'), 0), coalesce(sum(amount) filter (where kind = 'refund'), 0)
+    into v_pay, v_ref
+    from erp_payments where coalesce(customer_id, vendor_id) = p_id and direction = v_dir and status = 'posted';
+  select coalesce(sum(rs.amount), 0) into v_src
+    from erp_refund_sources rs join erp_payments r on r.id = rs.refund_id
+   where coalesce(r.customer_id, r.vendor_id) = p_id and r.direction = v_dir and r.status = 'posted';
+  assert v_bal = v_out, format('%s：balance %s ≠ Σ outstanding %s', p_label, v_bal, v_out);
+  assert v_bal - v_unalloc = v_docs - v_pay + v_ref,
+    format('%s：淨額 %s − %s ≠ 對帳單期末 %s − %s + %s', p_label, v_bal, v_unalloc, v_docs, v_pay, v_ref);
+  assert v_ref = v_src, format('%s：退款 %s ≠ 退款來源 %s', p_label, v_ref, v_src);
+  select count(*) into v_bad from erp_document_balances
+   where coalesce(customer_id, vendor_id) = p_id
+     and ((total_twd >= 0 and (outstanding < 0 or outstanding > total_twd))
+       or (total_twd < 0 and (outstanding > 0 or outstanding < total_twd)));
+  assert v_bad = 0, format('%s：%s 張單據超沖', p_label, v_bad);
+  select count(*) into v_bad from erp_payments p
+   where coalesce(p.customer_id, p.vendor_id) = p_id and p.direction = v_dir and p.status = 'posted' and p.kind = 'payment'
+     and p.amount - coalesce((select sum(a.amount) from erp_payment_allocations a where a.payment_id = p.id), 0)
+         - coalesce((select sum(rs.amount) from erp_refund_sources rs where rs.source_payment_id = p.id), 0) < 0;
+  assert v_bad = 0, format('%s：%s 張收付款 unallocated < 0', p_label, v_bad);
+  select count(*) into v_bad from erp_payments p
+   where coalesce(p.customer_id, p.vendor_id) = p_id and p.status = 'voided'
+     and (exists (select 1 from erp_payment_allocations a where a.payment_id = p.id)
+          or exists (select 1 from erp_refund_sources rs where rs.refund_id = p.id));
+  assert v_bad = 0, format('%s：作廢收付款仍有沖銷／退款來源', p_label);
+end $$;
+
 grant usage on schema erp_test to authenticated, anon;
 grant execute on all functions in schema erp_test to authenticated, anon;
 
@@ -1246,6 +1291,87 @@ begin
   raise notice 'ok  付款端 0 元沖抵 / 廠商退款';
 end $$;
 select erp_test.expect_error($q$select erp_post_refund('{"direction":"out","pay_date":"2026-10-13","vendor_id":"00000000-0000-0000-0000-00000000b249","method":"cash","amount":1}')$q$, 'over_allocation');
+select erp_test.assert_ledger('vendor', '00000000-0000-0000-0000-00000000b249', '付款端 #249 結束');
+select erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d238', '#238 結束');
+
+-- ============================================================
+-- 12) #249 review：沖銷與單據同號、操作序列後帳務不變式
+--     S1 100,000、S2 50,000；支票 RC 20,000 沖 S1 → SR 30,000（退 S1）→ 0 元沖抵（SR 沖 S1、S2，合計 −20,000 → 預收）
+--     → 退款 → 作廢退款 → 補沖銷 → 作廢沖抵單 → 退票作廢原收款；每一步檢查 erp_test.assert_ledger
+-- ============================================================
+insert into mx_customers (id, name, code) values ('00000000-0000-0000-0000-00000000d24a', '不變式測試', 'INV249');
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e250', 'S', '2026-10-01', '00000000-0000-0000-0000-00000000d24a', erp_test.main(), 'exempt'),
+  ('00000000-0000-0000-0000-00000000e251', 'S', '2026-10-02', '00000000-0000-0000-0000-00000000d24a', erp_test.main(), 'exempt');
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-0000f2500001', '00000000-0000-0000-0000-00000000e250', 1, 'item', '00000000-0000-0000-0000-00000000c004', 10, 10000),
+  ('00000000-0000-0000-0000-0000f2510001', '00000000-0000-0000-0000-00000000e251', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 50000);
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, source_doc_id, tax_type) values
+  ('00000000-0000-0000-0000-00000000e252', 'SR', '2026-10-05', '00000000-0000-0000-0000-00000000d24a', erp_test.main(), '00000000-0000-0000-0000-00000000e250', 'exempt');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price, source_line_id) values
+  ('00000000-0000-0000-0000-00000000e252', 1, 'item', '00000000-0000-0000-0000-00000000c004', 3, 10000, '00000000-0000-0000-0000-0000f2500001');
+
+do $$
+declare v jsonb;
+begin
+  perform erp_post_document('00000000-0000-0000-0000-00000000e250');
+  perform erp_post_document('00000000-0000-0000-0000-00000000e251');
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '銷貨');
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-03","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"check","check_no":"INV-1","check_due_date":"2026-11-30","amount":20000,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e250","amount":20000}]}');
+  perform set_config('erp_test.inv_rc', v->>'id', true);
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '支票收款沖銷');
+  perform erp_post_document('00000000-0000-0000-0000-00000000e252');
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '銷退');
+end $$;
+
+-- 同號：沒有銷退時，以 S1 負數沖銷「搬走」RC 的沖銷來湊成 0 元沖抵單 → 擋（否則作廢 RC 後 S1 會超沖）
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e250","amount":-20000},{"document_id":"00000000-0000-0000-0000-00000000e251","amount":20000}]}')$q$, 'over_allocation');
+-- 一般收款也不可對 S 負數沖銷；SR 不可正數沖銷
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":100,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e250","amount":-1000},{"document_id":"00000000-0000-0000-0000-00000000e251","amount":1100}]}')$q$, 'over_allocation');
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":100,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e252","amount":100}]}')$q$, 'over_allocation');
+-- 沖銷金額四捨五入到分：0.004 視為 0
+select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":100,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e251","amount":0.004}]}')$q$, 'validation');
+
+do $$
+declare v jsonb; pb record; v_off uuid; v_rf uuid;
+begin
+  assert (select count(*) from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d24a') = 1, '失敗的收款不應留下';
+  -- 0 元沖抵：SR −30,000 沖 S1 80,000？不行（合計為正 > 0）；SR −30,000 沖 S2 10,000 → 合計 −20,000，S1 未清 → R3 擋
+  perform erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e252","amount":-30000},{"document_id":"00000000-0000-0000-0000-00000000e251","amount":10000}]}')$q$, 'validation');
+  -- 純沖抵（合計 0）：SR −30,000 沖 S2 30,000
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e252","amount":-30000},{"document_id":"00000000-0000-0000-0000-00000000e251","amount":30000}]}');
+  v_off := (v->>'id')::uuid;
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '純沖抵');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d24a';
+  assert pb.balance = 100000 and pb.unallocated = 0, format('純沖抵後 %s', pb);
+
+  -- 另收預收 5,000（不沖銷）→ 退款 3,000 → 作廢退款 → 補沖銷 S2 5,000
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-14","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":5000}');
+  perform set_config('erp_test.inv_adv', v->>'id', true);
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '預收');
+  v := erp_post_refund('{"direction":"in","pay_date":"2026-10-15","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":3000}');
+  v_rf := (v->>'id')::uuid;
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '退款');
+  perform erp_void_payment(v_rf, '取消退款');
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '作廢退款');
+  perform erp_allocate_payment(current_setting('erp_test.inv_adv')::uuid, '[{"document_id":"00000000-0000-0000-0000-00000000e251","amount":5000}]');
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '補沖銷');
+
+  -- 作廢沖抵單 → SR、S2 還原
+  perform erp_void_payment(v_off, '重做');
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '作廢沖抵單');
+  assert (select outstanding from erp_document_balances where document_id = '00000000-0000-0000-0000-00000000e252') = -30000, 'SR 還原';
+
+  -- 支票退票 → 作廢原收款：S1 回到 100,000（不超沖），淨額仍一致
+  update erp_payments set check_status = 'bounced' where id = current_setting('erp_test.inv_rc')::uuid;
+  perform erp_void_payment(current_setting('erp_test.inv_rc')::uuid, '退票');
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '退票作廢原收款');
+  assert (select outstanding from erp_document_balances where document_id = '00000000-0000-0000-0000-00000000e250') = 100000, 'S1 還原';
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d24a';
+  -- 單據 100,000 + 50,000 − 30,000 = 120,000；收款 5,000（已沖 S2）→ 淨額 115,000
+  assert pb.balance = 115000 and pb.unallocated = 0, format('最後 %s', pb);
+  raise notice 'ok  #249 review：同號規則、操作序列後帳務不變式';
+end $$;
 
 -- 未授權：退款 RPC forbidden；anon 無執行權限、看不到退款來源
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated"}';
