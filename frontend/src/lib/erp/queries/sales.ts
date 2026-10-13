@@ -97,8 +97,8 @@ export function freeTextItemQueries(quote: ErpDocumentWithLines): string[] {
  * 複製表頭（客戶、業務、稅別稅率、幣別、備註）與全部明細；source_doc_id = 報價單，
  * item 行 source_line_id = 報價行（過帳時 RPC 驗證品項與客戶一致）。
  * 日期為轉單當天、出庫倉帶預設倉；機號留空（過帳前於銷貨單選取）。
- * 小計行（#221，僅報價單有）轉為備註行，文字保留標題與報價當時的金額（例「總價款 NT$328,000」），
- * 不計入銷貨合計；銷貨單之後若增刪品項，備註金額不會自動更新。
+ * 小計行（#221，僅報價單有）轉為備註行，文字保留標題與報價當時的金額（例「報價時總價款 NT$328,000」），
+ * 不計入銷貨合計；銷貨單之後若增刪品項，備註金額不會自動更新，故文字冠上「報價時」（#241 A-2）。
  * 自由輸入的報價行（#222）：以 matchItemByText 比對 opts.items，唯一命中即帶入該品項
  * （品名規格、單價保留報價內容——報價為議定價；品名規格空白才用品項名稱，同手動選品項）；
  * 無法唯一命中則不指定品項，品項文字併入品名規格，待使用者於銷貨草稿選品項。
@@ -131,7 +131,11 @@ export function quoteToSaleDraft(
   });
 }
 
-/** 小計行轉成備註時的文字：「標題 金額」（台幣 NT$328,000；外幣 USD 12.50）。 */
+/**
+ * 小計行轉成備註時的文字：「報價時標題 金額」（台幣「報價時總價款 NT$328,000」；外幣「報價時小計 USD 12.50」）。
+ * 備註是固定文字、不隨銷貨明細更新（#241 A-2），冠上「報價時」讓人看得出是報價當時的金額；
+ * 文字存在明細行本身，詳情、編輯、列印都看得到，不需另加提示。
+ */
 export function subtotalNoteText(
   title: string | null | undefined,
   amount: number,
@@ -139,7 +143,7 @@ export function subtotalNoteText(
 ): string {
   const cur = currency.trim().toUpperCase();
   const money = formatMoney(amount, { currency: cur });
-  return `${subtotalLabel(title)} ${cur === "TWD" ? "NT$" : `${cur} `}${money}`;
+  return `報價時${subtotalLabel(title)} ${cur === "TWD" ? "NT$" : `${cur} `}${money}`;
 }
 
 function quoteLinesForSale(

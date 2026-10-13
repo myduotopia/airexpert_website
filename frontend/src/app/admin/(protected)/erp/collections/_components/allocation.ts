@@ -71,6 +71,19 @@ export const DIRECTION_META: Record<
   },
 };
 
+/**
+ * 詳情頁是否顯示「補沖銷」（#241 A-8）：已過帳且未沖銷餘額（預收／預付，取到分）> 0。
+ * 餘額為 0 時沒有可沖的金額，區塊與確認鈕一併隱藏。
+ */
+export function canAllocateMore(payment: {
+  status: string;
+  unallocated: number;
+}): boolean {
+  return (
+    payment.status === "posted" && roundCents(Number(payment.unallocated)) > 0
+  );
+}
+
 /** 已勾選沖銷的合計。 */
 export function allocatedTotal(rows: AllocationRow[]): number {
   return roundCents(

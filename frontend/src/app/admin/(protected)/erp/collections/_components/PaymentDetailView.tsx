@@ -10,7 +10,7 @@ import {
 import { PAYMENT_METHOD_LABEL } from "@/lib/erp/statement";
 import type { PaymentDirection } from "@/lib/erp/types";
 import { AllocateMorePanel } from "./AllocateMorePanel";
-import { DIRECTION_META } from "./allocation";
+import { canAllocateMore, DIRECTION_META } from "./allocation";
 import { CheckStatusControl } from "./CheckStatusControl";
 import { PaymentTabs } from "./PaymentTabs";
 import { VoidPaymentForm } from "./VoidPaymentForm";
@@ -39,9 +39,11 @@ export async function PaymentDetailView({
   if (!p || p.direction !== direction) notFound();
 
   const posted = p.status === "posted";
+  // 預收／預付為 0 時不顯示補沖銷（#241 A-8），也不必查未沖銷單據。
+  const showAllocateMore = canAllocateMore(p);
   const partyId = direction === "in" ? p.customer_id : p.vendor_id;
   const outstanding =
-    posted && partyId
+    showAllocateMore && partyId
       ? await listOutstandingDocuments(direction, partyId)
       : null;
 
@@ -182,7 +184,7 @@ export async function PaymentDetailView({
         </div>
       </section>
 
-      {posted && (
+      {showAllocateMore && (
         <section className="mt-6">
           <h2 className="text-ink mb-1 text-[16px] font-bold">補沖銷</h2>
           <p className="text-text-muted mb-3 text-[13px]">

@@ -17,6 +17,18 @@ export const COMPANY_INFO = {
   line: "LINE@air9977",
 } as const;
 
+/**
+ * 列印表頭的聯絡資訊行：服務專線、傳真、LINE@ 三段以全形空白分隔（#241 A-3：
+ * 原本 JSX 換行處沒有空白，印成「傳真 02-2675-9955LINE@air9977」）。所有列印頁共用 PrintSheet。
+ */
+export function companyContactLine(): string {
+  return [
+    `服務專線 ${COMPANY_INFO.phone}`,
+    `傳真 ${COMPANY_INFO.fax}`,
+    COMPANY_INFO.line,
+  ].join("　");
+}
+
 // ── 單據 ─────────────────────────────────────────────────────
 
 /** 列印版單據名稱（對照紙本：客戶銷貨單 / 廠商採購單）。 */
@@ -87,8 +99,15 @@ export interface PrintPaymentRow {
   amount: number;
 }
 
+/** 是否需要讀沖銷餘額：只有已過帳的銷貨單 S（列印與銷貨詳情頁共用，#222、#241 A-7）。 */
+export function needsSaleBalance(
+  doc: Pick<ErpDocumentWithLines, "doc_type" | "status">,
+): boolean {
+  return doc.doc_type === "S" && doc.status === "posted";
+}
+
 /**
- * 銷貨單列印的「已收款」「未收餘額」列（#222）：只有已過帳的銷貨單 S 才印（草稿、作廢、
+ * 銷貨單列印與詳情頁的「已收款」「未收餘額」列（#222、#241 A-7）：只有已過帳的銷貨單 S 才印（草稿、作廢、
  * 其他單別回 null）。金額取自 erp_document_balances（以 total_twd 計，皆為台幣），
  * 外幣單在標題註明（台幣）。版面放在合計表右側，不佔明細列數（DOC_PRINT_ROWS 不變）。
  */
@@ -96,7 +115,7 @@ export function salePaymentRows(
   doc: Pick<ErpDocumentWithLines, "doc_type" | "status" | "currency">,
   balance: PrintDocBalance | null | undefined,
 ): PrintPaymentRow[] | null {
-  if (doc.doc_type !== "S" || doc.status !== "posted" || !balance) return null;
+  if (!needsSaleBalance(doc) || !balance) return null;
   const suffix = doc.currency === "TWD" ? "" : "（台幣）";
   return [
     { label: `已收款${suffix}`, amount: Number(balance.allocated) },

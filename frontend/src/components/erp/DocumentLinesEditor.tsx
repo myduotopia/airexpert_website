@@ -14,6 +14,7 @@ import {
   computeSubtotals,
   SUBTOTAL_DEFAULT_LABEL,
 } from "@/lib/erp/calc";
+import { totalsSummaryRows } from "@/lib/erp/display";
 import {
   applyItemToLine,
   lineMissingItem,
@@ -73,12 +74,6 @@ export interface DocumentLinesEditorProps {
   /** 品項欄允許就地新增品項主檔（#218）。 */
   allowCreateItem?: boolean;
 }
-
-const TAX_LABEL: Record<TaxType, string> = {
-  excluded: "外加",
-  included: "內含",
-  exempt: "免稅",
-};
 
 export function DocumentLinesEditor({
   value,
@@ -525,33 +520,29 @@ export function DocumentLinesEditor({
       )}
 
       {showPrices && (
+        // 合計區（#241 B-09）：合計（未稅）／稅額（含稅別、稅率）／總計，與詳情頁一致。
         <dl className="ml-auto grid w-full max-w-[320px] grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-[14px]">
-          <dt className="text-text-muted">合計（{TAX_LABEL[taxType]}）</dt>
-          <dd className="text-right">
-            <MoneyText value={totals.amount_untaxed} currency={currency} />
-          </dd>
-          <dt className="text-text-muted">
-            稅額
-            {taxType !== "exempt" ? `（${roundPercent(taxRate)}%）` : ""}
-          </dt>
-          <dd className="text-right">
-            <MoneyText value={totals.tax_amount} currency={currency} />
-          </dd>
-          <dt className="text-ink font-semibold">總計</dt>
-          <dd className="text-ink text-right font-semibold">
-            <MoneyText
-              value={totals.total_amount}
-              currency={currency}
-              showCurrency={currency !== "TWD"}
-            />
-          </dd>
-          {currency !== "TWD" && (
-            <>
-              <dt className="text-text-muted">折合台幣</dt>
-              <dd className="text-right">
-                <MoneyText value={totals.total_twd} currency="TWD" />
-              </dd>
-            </>
+          {totalsSummaryRows(totals, { taxType, taxRate, currency }).map(
+            (r) => (
+              <Fragment key={r.key}>
+                <dt
+                  className={
+                    r.strong ? "text-ink font-semibold" : "text-text-muted"
+                  }
+                >
+                  {r.label}
+                </dt>
+                <dd
+                  className={`text-right ${r.strong ? "text-ink font-semibold" : ""}`}
+                >
+                  <MoneyText
+                    value={r.amount}
+                    currency={r.currency}
+                    showCurrency={r.showCurrency}
+                  />
+                </dd>
+              </Fragment>
+            ),
           )}
         </dl>
       )}
@@ -561,10 +552,6 @@ export function DocumentLinesEditor({
       )}
     </div>
   );
-}
-
-function roundPercent(rate: number): string {
-  return String(Math.round(rate * 10000) / 100);
 }
 
 function IconButton({

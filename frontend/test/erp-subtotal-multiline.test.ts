@@ -258,9 +258,11 @@ describe("草稿：新增小計行與驗證", () => {
 });
 
 describe("報價轉銷貨：小計行轉為備註，銷貨合計不變", () => {
-  it("subtotalNoteText：標題＋當時金額（台幣 NT$、外幣幣別前綴）", () => {
-    expect(subtotalNoteText("總價款", 328000, "TWD")).toBe("總價款 NT$328,000");
-    expect(subtotalNoteText("", 12.5, "usd")).toBe("小計 USD 12.50");
+  it("subtotalNoteText：「報價時」＋標題＋當時金額（台幣 NT$、外幣幣別前綴）（#241 A-2）", () => {
+    expect(subtotalNoteText("總價款", 328000, "TWD")).toBe(
+      "報價時總價款 NT$328,000",
+    );
+    expect(subtotalNoteText("", 12.5, "usd")).toBe("報價時小計 USD 12.50");
   });
 
   it("小計 → note（保留標題與金額說明）、不帶來源行；合計與報價一致", () => {
@@ -276,14 +278,14 @@ describe("報價轉銷貨：小計行轉為備註，銷貨合計不變", () => {
       "note",
     ]);
     expect(s.lines[2]).toMatchObject({
-      description: "總價款 NT$328,000",
+      description: "報價時總價款 NT$328,000",
       qty: 0,
       unit_price: 0,
       amount: 0,
       item_id: null,
       source_line_id: null,
     });
-    expect(s.lines[6].description).toBe("小計 NT$8,500");
+    expect(s.lines[6].description).toBe("報價時小計 NT$8,500");
     expect(s.lines.some((l) => l.line_type === "subtotal")).toBe(false);
     // 多行品名規格原樣帶入
     expect(s.lines[0].description).toBe("乾燥機\nAL-010N");

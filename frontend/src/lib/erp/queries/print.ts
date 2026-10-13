@@ -6,7 +6,11 @@ import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase-server";
 import { erpErrorMessage } from "../errors";
-import type { PrintDocBalance, PrintItemInfo } from "../print";
+import {
+  needsSaleBalance,
+  type PrintDocBalance,
+  type PrintItemInfo,
+} from "../print";
 import type { ErpDocumentWithLines, ErpResult } from "../types";
 
 export interface DocumentPrintContext {
@@ -29,7 +33,6 @@ export async function getDocumentPrintContext(
     (v): v is string => !!v,
   );
 
-  const wantBalance = doc.doc_type === "S" && doc.status === "posted";
   const [items, warehouses, customer, vendor, balance] = await Promise.all([
     itemIds.length
       ? supabase
@@ -57,18 +60,11 @@ export async function getDocumentPrintContext(
           .eq("id", doc.vendor_id)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
-    wantBalance
-      ? supabase
-          .from("erp_document_balances")
-          .select("allocated, outstanding")
-          .eq("document_id", doc.id)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
+    getSaleDocumentBalance(doc),
   ]);
-  const failed = [items, warehouses, customer, vendor, balance].find(
-    (r) => r.error,
-  );
+  const failed = [items, warehouses, customer, vendor].find((r) => r.error);
   if (failed?.error) return { ok: false, error: erpErrorMessage(failed.error) };
+  if (!balance.ok) return balance;
 
   return {
     ok: true,
@@ -92,16 +88,37 @@ export async function getDocumentPrintContext(
         (customer.data as { code: string | null } | null)?.code ?? null,
       vendor:
         (vendor.data as { code: string; fax: string | null } | null) ?? null,
-      balance: balance.data
-        ? {
-            allocated: Number(
-              (balance.data as { allocated: number | string }).allocated,
-            ),
-            outstanding: Number(
-              (balance.data as { outstanding: number | string }).outstanding,
-            ),
-          }
-        : null,
+      balance: balance.data,
     },
+  };
+}
+
+/**
+ * 已過帳銷貨單的已收款／未收餘額（erp_document_balances，台幣）；其他單據不查、回 null。
+ * 列印頁與銷貨單詳情頁共用（#222、#241 A-7），確保兩邊數字同一來源。
+ */
+export async function getSaleDocumentBalance(
+  doc: Pick<ErpDocumentWithLines, "id" | "doc_type" | "status">,
+): Promise<ErpResult<PrintDocBalance | null>> {
+  if (!needsSaleBalance(doc)) return { ok: true, data: null };
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("erp_document_balances")
+    .select("allocated, outstanding")
+    .eq("document_id", doc.id)
+    .maybeSingle();
+  if (error) return { ok: false, error: erpErrorMessage(error) };
+  const row = data as {
+    allocated: number | string;
+    outstanding: number | string;
+  } | null;
+  return {
+    ok: true,
+    data: row
+      ? {
+          allocated: Number(row.allocated),
+          outstanding: Number(row.outstanding),
+        }
+      : null,
   };
 }
