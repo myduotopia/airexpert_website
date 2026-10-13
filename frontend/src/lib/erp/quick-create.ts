@@ -109,6 +109,39 @@ export function comboboxEntries<T>(
   return entries;
 }
 
+/** 「完全相符」比對用的正規化：去頭尾空白、不分大小寫（與 DB 代碼唯一鍵 lower(btrim(code)) 一致）。 */
+export function matchKey(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+/**
+ * 查詢字是否與某個既有選項的比對鍵完全相同（matchKey 正規化後）。
+ * getKeys 回傳該選項要比對的欄位：品項只比代碼；客戶／廠商另比名稱。空白查詢一律 false。
+ * 比對全部選項（不是只比前 MAX_RESULTS 筆搜尋結果）。
+ */
+export function hasExactMatch<T>(
+  options: readonly T[],
+  query: string,
+  getKeys: (option: T) => readonly (string | null | undefined)[],
+): boolean {
+  const q = matchKey(query);
+  if (!q) return false;
+  return options.some((o) => getKeys(o).some((k) => matchKey(k) === q));
+}
+
+/**
+ * 清單是否顯示「＋ 新增」項（A-6，#239）：允許新增，且查詢字沒有完全符合既有項目時才顯示，
+ * 避免使用者以為要新建、誤建重複代碼（server 雖會擋，入口仍會誤導）。查詢空白時照常顯示「＋ 新增…」。
+ */
+export function shouldOfferCreate<T>(
+  canCreate: boolean,
+  options: readonly T[],
+  query: string,
+  getKeys: (option: T) => readonly (string | null | undefined)[],
+): boolean {
+  return canCreate && !hasExactMatch(options, query, getKeys);
+}
+
 /** 新增項文字：有查詢字 →「＋ 新增『xxx』」；空白 →「＋ 新增…」。noun 例：「品項」。 */
 export function quickCreateLabel(query: string, noun = ""): string {
   const q = query.trim();

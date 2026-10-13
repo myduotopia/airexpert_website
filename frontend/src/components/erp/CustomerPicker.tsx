@@ -10,6 +10,9 @@ import { useAddedOptions } from "./useAddedOptions";
 
 const NO_EMPLOYEES: EmployeeOption[] = [];
 
+/** 查詢字等於既有客戶編號或名稱時不顯示「＋ 新增」（#239 A-6）。 */
+const matchKeys = (o: CustomerOption) => [o.code, o.name];
+
 export function CustomerPicker({
   options,
   value,
@@ -59,6 +62,7 @@ export function CustomerPicker({
         required={required}
         aria-label={ariaLabel}
         onCreate={allowCreate ? setCreateQuery : undefined}
+        getMatchKeys={matchKeys}
         getLabel={(o) => (o.code ? `${o.code} ${o.name}` : o.name)}
         getSearchText={(o) => `${o.code ?? ""} ${o.name} ${o.tax_id ?? ""}`}
         renderOption={(o) => (

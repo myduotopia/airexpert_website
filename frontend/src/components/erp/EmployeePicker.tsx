@@ -14,11 +14,19 @@ import type {
 import {
   employeePickerModel,
   employeeRefFromOption,
+  type EmployeePickerOption,
 } from "@/lib/employees/picker";
 import { quickCreateLabel } from "@/lib/erp/quick-create";
 import { Combobox } from "./Combobox";
 import { QuickCreateEmployeeDialog } from "./QuickCreateEmployeeDialog";
 import { useAddedOptions } from "./useAddedOptions";
+
+/**
+ * 查詢字等於既有員工代號或姓名時不顯示「＋ 新增」（#239 A-6；DB 代號、姓名皆唯一）。
+ * 「舊資料」項只是單據上的文字、主檔沒有此人，不列入比對（仍可就地建檔）。
+ */
+const matchKeys = (o: EmployeePickerOption) =>
+  o.legacy ? [] : [o.code, o.name];
 
 export function EmployeePicker({
   options,
@@ -64,6 +72,7 @@ export function EmployeePicker({
         disabled={disabled}
         aria-label={ariaLabel ?? noun}
         onCreate={allowCreate ? setCreateQuery : undefined}
+        getMatchKeys={matchKeys}
         createLabel={(q) => quickCreateLabel(q, noun)}
         getLabel={(o) => o.name}
         getSearchText={(o) => `${o.code ?? ""} ${o.name}`}

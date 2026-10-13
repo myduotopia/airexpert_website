@@ -14,6 +14,9 @@ const KIND_LABEL: Record<ItemOption["kind"], string> = {
   expense: "費用",
 };
 
+/** 查詢字等於既有品項代碼時不顯示「＋ 新增」（#239 A-6）。 */
+const matchKeys = (o: ItemOption) => [o.code];
+
 export function ItemPicker({
   options,
   value,
@@ -57,6 +60,7 @@ export function ItemPicker({
         required={required}
         aria-label={ariaLabel}
         onCreate={allowCreate ? setCreateQuery : undefined}
+        getMatchKeys={matchKeys}
         getLabel={(o) => `${o.code} ${o.name}`}
         getSearchText={(o) => `${o.code} ${o.name} ${o.model ?? ""}`}
         renderOption={(o) => (

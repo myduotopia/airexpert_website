@@ -4,8 +4,15 @@
 // - 打字即時以 onText 回寫，失焦不需另外確認；鍵盤 ↑↓ Enter Esc 同 Combobox。
 // - allowCreate：清單最後多一個「＋ 新增品項『xxx』」，開 Dialog 建立品項主檔後帶入（#218）。
 // - 下拉清單以 FloatingList 浮層顯示，不會被明細表的 overflow-x-auto 裁切（#219）。
+// - 輸入文字與既有品項代碼完全相符時不顯示「＋ 新增品項」（#239 A-6）。
+// - 點擊已聚焦的輸入框也會展開清單（就地新增 Dialog 關閉、焦點歸還後；#239 A-1）。
 import { useId, useMemo, useRef, useState } from "react";
-import { isImeComposing, quickCreateLabel } from "@/lib/erp/quick-create";
+import {
+  isImeComposing,
+  quickCreateLabel,
+  shouldOfferCreate,
+} from "@/lib/erp/quick-create";
+import { pickerInputEvent, type PickerInputEvent } from "@/lib/erp/picker-open";
 import type { ItemOption } from "@/lib/erp/types";
 import { FloatingList, scrollOptionIntoView } from "./FloatingList";
 import { QuickCreateItemDialog } from "./QuickCreateItemDialog";
@@ -13,6 +20,9 @@ import { useAddedOptions } from "./useAddedOptions";
 import { ERP_INPUT } from "./styles";
 
 const MAX_RESULTS = 50;
+
+/** 「完全相符」只比品項代碼（保養卡機型不是主檔，照樣可新增同名品項）。 */
+const itemMatchKeys = (item: ItemOption) => [item.code];
 
 type Option =
   | { kind: "item"; key: string; item: ItemOption }
@@ -79,7 +89,7 @@ export function ItemOrTextPicker({
       0,
       MAX_RESULTS,
     );
-    if (allowCreate) {
+    if (shouldOfferCreate(allowCreate, allItems, query, itemMatchKeys)) {
       matched.push({ kind: "create", key: "__create__", query: query.trim() });
     }
     return matched;
@@ -96,11 +106,14 @@ export function ItemOrTextPicker({
     setOpen(false);
   }
 
-  function onFocus() {
-    if (skipFocusOpen.current) {
-      skipFocusOpen.current = false;
-      return;
-    }
+  // focus／mousedown／click 是否展開清單（含略過 Dialog 關閉時焦點歸還的那次 focus）。
+  function onInputEvent(event: PickerInputEvent) {
+    const r = pickerInputEvent(event, {
+      open,
+      skipFocusOpen: skipFocusOpen.current,
+    });
+    skipFocusOpen.current = r.skipFocusOpen;
+    if (!r.openList) return;
     // 自由輸入中 → 接著編輯原文字；已選品項 → 清空以便重新搜尋。
     setQuery(selected ? "" : text);
     setHighlight(-1);
@@ -158,10 +171,10 @@ export function ItemOrTextPicker({
           selected && open ? selected.code : "搜尋品項 / 機型，或直接輸入"
         }
         disabled={disabled}
-        onMouseDown={() => {
-          skipFocusOpen.current = false;
-        }}
-        onFocus={onFocus}
+        onMouseDown={() => onInputEvent("mousedown")}
+        onFocus={() => onInputEvent("focus")}
+        // 已聚焦時點擊不會再觸發 focus（例：Dialog 關閉後焦點已歸還）→ 清單未開就展開。
+        onClick={() => onInputEvent("click")}
         onBlur={() => setOpen(false)}
         onChange={(e) => {
           skipFocusOpen.current = false;
