@@ -2,6 +2,7 @@
 
 // 採購區單據表單（P / I / PR 共用）：表頭 + 明細，受控；「儲存草稿」與「儲存並過帳」。
 // 錯誤就地顯示並保留輸入（spec §9）；成功後導向明細頁。
+// 送出前先做前端檢核並一次列出所有錯誤（#240）；有錯就不跳「儲存並過帳」確認框。
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -9,6 +10,7 @@ import { unstable_rethrow } from "next/navigation";
 import { quickCreateTargets } from "@/lib/erp/quick-create";
 import { useConfirm } from "@/components/erp/ConfirmDialog";
 import { DocumentHeaderFields } from "@/components/erp/DocumentHeaderFields";
+import { ErrorList } from "@/components/erp/ErrorList";
 import {
   DocumentLinesEditor,
   type SerialMode,
@@ -21,6 +23,11 @@ import type {
   VendorOption,
   WarehouseOption,
 } from "@/lib/erp/types";
+import {
+  collectDraftDocumentErrors,
+  collectPostErrors,
+  mergeErrors,
+} from "@/lib/erp/validate";
 
 type SaveResult = { ok: true; id: string } | { ok: false; error: string };
 type DocActionResult =
@@ -53,7 +60,8 @@ export function DocumentForm({
 }) {
   const router = useRouter();
   const [doc, setDoc] = useState<DraftDocument>(initial);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
+  const setError = (msg: string) => setErrors([msg]);
   const [pending, startTransition] = useTransition();
   const [askConfirm, confirmDialog] = useConfirm();
 
@@ -71,7 +79,15 @@ export function DocumentForm({
   );
 
   async function submit(andPost: boolean) {
-    setError(null);
+    setErrors([]);
+    const problems = mergeErrors(
+      collectDraftDocumentErrors(doc),
+      andPost ? collectPostErrors(doc, items) : [],
+    );
+    if (problems.length > 0) {
+      setErrors(problems);
+      return;
+    }
     if (
       andPost &&
       !(await askConfirm({
@@ -141,14 +157,7 @@ export function DocumentForm({
           allowCreateItem={quickCreate.item}
         />
       </section>
-      {error && (
-        <p
-          role="alert"
-          className="rounded-lg bg-red-50 px-3 py-2 text-[14px] text-red-700"
-        >
-          {error}
-        </p>
-      )}
+      <ErrorList errors={errors} />
       <div className="flex flex-wrap justify-end gap-2">
         <Link
           href={doc.id ? `${basePath}/${doc.id}` : basePath}

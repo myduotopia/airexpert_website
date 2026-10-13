@@ -127,8 +127,13 @@ export function parseSerialLines(text: string): string[] {
   return out;
 }
 
-/** 品項行是否「有內容但未指定品項」（報價自由輸入轉入、待選品項；全空的新行不算）。 */
-export function lineMissingItem(line: DraftLine): boolean {
+/** 品項行是否「有內容但未指定品項」（報價自由輸入轉入、待選品項；全空的新行不算）。編輯中的行與 DB 明細列皆可傳入。 */
+export function lineMissingItem(
+  line: Pick<DraftLine, "line_type" | "item_id"> & {
+    description?: string | null;
+    item_text?: string | null;
+  },
+): boolean {
   return (
     line.line_type === "item" &&
     !line.item_id &&

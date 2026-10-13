@@ -9,6 +9,7 @@ import { MoneyText } from "@/components/erp/MoneyText";
 import { rocDate, rocDateTime } from "@/lib/admin/minguo";
 import { computeSubtotals, subtotalLabel } from "@/lib/erp/calc";
 import { getDocumentWithLines } from "@/lib/erp/documents";
+import { draftDocumentFromRow, lineMissingItem } from "@/lib/erp/draft";
 import { formatQty } from "@/lib/erp/format";
 import { salePaymentRows } from "@/lib/erp/print";
 import { getSaleDocumentBalance } from "@/lib/erp/queries/print";
@@ -26,6 +27,7 @@ import {
   type SalesDocType,
 } from "@/lib/erp/queries/sales";
 import type { TaxType } from "@/lib/erp/types";
+import { collectPostErrors } from "@/lib/erp/validate";
 import { SalesDocActions } from "./SalesDocActions";
 import { SalesTabs } from "./SalesTabs";
 import {
@@ -82,6 +84,10 @@ export async function SalesDocDetail({
   const margins = showCost ? calcSaleMargins(doc) : null;
   const machinesBySerial = new Map(machineLinks.map((m) => [m.serial_id, m]));
   const paymentRows = salePaymentRows(doc, balance.ok ? balance.data : null);
+  // 草稿：過帳前的前端檢核（#240），按「過帳」時一次列出，不先跳確認框。
+  const postErrors = isDraft
+    ? collectPostErrors(draftDocumentFromRow(doc), items)
+    : [];
 
   const info: [string, React.ReactNode][] = [
     ["客戶", doc.party_name ?? "—"],
@@ -168,6 +174,7 @@ export async function SalesDocDetail({
             status: d.status,
             created_at: d.created_at,
           }))}
+          postErrors={postErrors}
         />
       </div>
 
@@ -286,6 +293,12 @@ export async function SalesDocDetail({
                       {l.line_type === "discount"
                         ? "折扣"
                         : (item?.code ?? (l.item_text?.trim() || "—"))}
+                      {isDraft && docType !== "Q" && lineMissingItem(l) && (
+                        // 與編輯頁一致的待選品項提示（#222、#240）
+                        <p className="mt-1 text-[12px] text-amber-700">
+                          尚未選擇品項，過帳前需選定
+                        </p>
+                      )}
                     </td>
                     <td className="px-2 py-2 whitespace-pre-line">
                       {l.description}
