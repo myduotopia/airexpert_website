@@ -7,6 +7,9 @@ import { Combobox } from "./Combobox";
 import { QuickCreateVendorDialog } from "./QuickCreateVendorDialog";
 import { useAddedOptions } from "./useAddedOptions";
 
+/** 查詢字等於既有廠商代碼或名稱時不顯示「＋ 新增」（#239 A-6）。 */
+const matchKeys = (o: VendorOption) => [o.code, o.name];
+
 export function VendorPicker({
   options,
   value,
@@ -50,6 +53,7 @@ export function VendorPicker({
         required={required}
         aria-label={ariaLabel}
         onCreate={allowCreate ? setCreateQuery : undefined}
+        getMatchKeys={matchKeys}
         getLabel={(o) => `${o.code} ${o.name}`}
         getSearchText={(o) => `${o.code} ${o.name} ${o.tax_id ?? ""}`}
         renderOption={(o) => (

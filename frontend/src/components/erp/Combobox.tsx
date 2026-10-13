@@ -4,18 +4,24 @@
 // 各 Picker（品項 / 客戶 / 廠商）為此元件的薄包裝。
 // 傳 onCreate 時，清單最後（含查無結果）多一個「＋ 新增『查詢字』」項（建單時就地新增，#218）。
 // 下拉清單以 FloatingList 浮層顯示，不會被明細表等 overflow 容器裁切（#219）。
+// 查詢字與既有項目完全相符（getMatchKeys，例：代碼）時不顯示「＋ 新增」（#239 A-6）。
+// 點擊已聚焦的輸入框也會展開清單（就地新增 Dialog 關閉、焦點歸還後；#239 A-1，見 lib/erp/picker-open.ts）。
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   comboboxEntries,
   filterComboboxOptions,
   isImeComposing,
   quickCreateLabel,
+  shouldOfferCreate,
 } from "@/lib/erp/quick-create";
+import { pickerInputEvent, type PickerInputEvent } from "@/lib/erp/picker-open";
 import { FloatingList, scrollOptionIntoView } from "./FloatingList";
 import { ERP_INPUT } from "./styles";
 
 /** 最多顯示幾筆（避免上千筆選項時渲染過慢；使用者可再輸入縮小範圍）。 */
 const MAX_RESULTS = 50;
+
+const NO_MATCH_KEYS = () => [] as const;
 
 export interface ComboboxProps<T extends { id: string }> {
   options: T[];
@@ -39,6 +45,11 @@ export interface ComboboxProps<T extends { id: string }> {
   onCreate?: (query: string) => void;
   /** 新增項的文字；預設「＋ 新增『xxx』」／查詢空白時「＋ 新增…」。 */
   createLabel?: (query: string) => ReactNode;
+  /**
+   * 「完全相符」比對欄位（去頭尾空白、不分大小寫）：查詢字等於任一選項的這些欄位時不顯示新增項。
+   * 例：品項 [code]；客戶／廠商 [code, name]。未傳 = 不比對（一律顯示新增項）。
+   */
+  getMatchKeys?: (option: T) => readonly (string | null | undefined)[];
 }
 
 export function Combobox<T extends { id: string }>({
@@ -57,6 +68,7 @@ export function Combobox<T extends { id: string }>({
   clearable = true,
   onCreate,
   createLabel = quickCreateLabel,
+  getMatchKeys = NO_MATCH_KEYS,
 }: ComboboxProps<T>) {
   const autoId = useId();
   const inputId = id ?? `${autoId}-input`;
@@ -85,8 +97,13 @@ export function Combobox<T extends { id: string }>({
     [options, query, getLabel, getSearchText],
   );
   const entries = useMemo(
-    () => comboboxEntries(results, query, !!onCreate),
-    [results, query, onCreate],
+    () =>
+      comboboxEntries(
+        results,
+        query,
+        shouldOfferCreate(!!onCreate, options, query, getMatchKeys),
+      ),
+    [results, query, onCreate, options, getMatchKeys],
   );
 
   function pick(option: T | null) {
@@ -100,6 +117,19 @@ export function Combobox<T extends { id: string }>({
     setQuery("");
     skipFocusOpen.current = true;
     onCreate?.(q);
+  }
+
+  // focus／mousedown／click 是否展開清單（含略過 Dialog 關閉時焦點歸還的那次 focus）。
+  function onInputEvent(event: PickerInputEvent) {
+    const r = pickerInputEvent(event, {
+      open,
+      skipFocusOpen: skipFocusOpen.current,
+    });
+    skipFocusOpen.current = r.skipFocusOpen;
+    if (r.openList) {
+      setOpen(true);
+      setHighlight(0);
+    }
   }
 
   function choose(index: number) {
@@ -159,17 +189,10 @@ export function Combobox<T extends { id: string }>({
         placeholder={selected && open ? getLabel(selected) : placeholder}
         disabled={disabled}
         required={required && !value}
-        onMouseDown={() => {
-          skipFocusOpen.current = false;
-        }}
-        onFocus={() => {
-          if (skipFocusOpen.current) {
-            skipFocusOpen.current = false;
-            return;
-          }
-          setOpen(true);
-          setHighlight(0);
-        }}
+        onMouseDown={() => onInputEvent("mousedown")}
+        onFocus={() => onInputEvent("focus")}
+        // 已聚焦時點擊不會再觸發 focus（例：Dialog 關閉後焦點已歸還）→ 清單未開就展開。
+        onClick={() => onInputEvent("click")}
         onBlur={() => {
           setOpen(false);
           setQuery("");
