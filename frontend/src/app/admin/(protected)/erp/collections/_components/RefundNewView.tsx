@@ -35,8 +35,8 @@ export async function RefundNewView({
       </h1>
       <p className="text-text-muted mb-4 text-[14px]">
         {direction === "in"
-          ? "把客戶多付的預收退還給客戶（匯款、現金或支票），過帳後扣減預收。"
-          : "廠商退還我方預付款（匯款、現金或支票），過帳後扣減預付。"}
+          ? "把客戶多付的預收退還給客戶（匯款、現金或支票），過帳後扣減預收。最多可退「預收 − 未結應收」。"
+          : "廠商退還我方預付款（匯款、現金或支票），過帳後扣減預付。最多可退「預付 − 未結應付」。"}
       </p>
       <RefundForm
         direction={direction}

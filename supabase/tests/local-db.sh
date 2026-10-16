@@ -105,6 +105,10 @@ psql_run -1 < "$ROOT/migrations/0028_sales_return_amount_cap.sql"
 echo "==> 重跑 0029（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0029_payment_offset_refund.sql"
 
+# 0030 以 0029 為底 create or replace erp_post_refund（退款上限 = 預收 − 未結應收）；重跑 0029 會蓋回舊版，故需最後重跑。
+echo "==> 重跑 0030（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0030_refund_cap_open_receivable.sql"
+
 echo "==> 執行 erp_posting_test.sql"
 psql_run < "$ROOT/tests/erp_posting_test.sql"
 

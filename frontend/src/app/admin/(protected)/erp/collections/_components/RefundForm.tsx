@@ -2,7 +2,9 @@
 // 退款給客戶（RF）／廠商退款（VR）表單（#249）。選完對象後讀出目前預收（預付）與來源；
 // 送出：前端檢核一次列出所有錯誤 → 頁內確認框（對象、金額、方式、退款前後餘額）→ 過帳。
 // 來源由 DB 依日期先後自動扣減（erp_post_refund），這裡只列出供參考。
-import { useState, useTransition } from "react";
+// #253：一併讀出未結單據，顯示「目前預收／未結應收／最多可退」；有未結應收時警示並建議改用補沖銷。
+import Link from "next/link";
+import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow, useRouter } from "next/navigation";
 import {
   useConfirm,
@@ -16,7 +18,7 @@ import { RocDateInput } from "@/components/erp/RocDateInput";
 import { VendorPicker } from "@/components/erp/VendorPicker";
 import { ERP_AREA, ERP_INPUT, ERP_LABEL } from "@/components/erp/styles";
 import { rocDate } from "@/lib/admin/minguo";
-import type { PrepaidSummary } from "@/lib/erp/queries/ar-ap";
+import { DOC_TYPE_LABEL } from "@/lib/erp/doc-no";
 import { PAYMENT_METHOD_LABEL } from "@/lib/erp/statement";
 import type {
   CustomerOption,
@@ -28,10 +30,13 @@ import { createRefundAction, loadPrepaidAction } from "./actions";
 import { DIRECTION_META, NETWORK_ERROR } from "./allocation";
 import {
   collectRefundErrors,
+  openLabel,
+  openNoticeKind,
   refundConfirmSummary,
   refundVerb,
   REFUND_METHODS,
   type RefundConfirmSummary,
+  type RefundContext,
 } from "./refund";
 
 function refundConfirmOptions(s: RefundConfirmSummary): ConfirmOptions {
@@ -69,6 +74,16 @@ function refundConfirmOptions(s: RefundConfirmSummary): ConfirmOptions {
             {s.prepaidAfterText}
           </span>
         </p>
+        <p className="text-[13px]">
+          最多可退{" "}
+          <span className="font-semibold tabular-nums">{s.capText}</span>
+          {s.hasOpen && (
+            <span className="text-text-muted">
+              （{s.prepaidLabel} {s.prepaidBeforeText} − {s.openLabel}{" "}
+              {s.openText}）
+            </span>
+          )}
+        </p>
         <p className="text-text-muted text-[12px]">
           過帳後不可修改，如有錯誤需作廢重開（作廢後{s.prepaidLabel}還原）。
         </p>
@@ -95,7 +110,7 @@ export function RefundForm({
 
   const [partyId, setPartyId] = useState<string | null>(null);
   const [partyLabel, setPartyLabel] = useState<string | null>(null);
-  const [prepaid, setPrepaid] = useState<PrepaidSummary | null>(null);
+  const [prepaid, setPrepaid] = useState<RefundContext | null>(null);
   const [payDate, setPayDate] = useState(today);
   const [method, setMethod] = useState<PaymentMethod>("transfer");
   const [amount, setAmount] = useState(0);
@@ -105,11 +120,14 @@ export function RefundForm({
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
   const [askConfirm, confirmDialog] = useConfirm();
+  // 最後一次選的對象：快速切換時，較早的查詢晚回來不可蓋掉目前對象的預收與上限
+  const latestParty = useRef<string | null>(null);
 
   function selectParty(
     id: string | null,
     party: { code?: string | null; name?: string | null } | null,
   ) {
+    latestParty.current = id;
     setPartyId(id);
     setPartyLabel(
       party ? [party.code, party.name].filter(Boolean).join(" ") : null,
@@ -124,16 +142,17 @@ export function RefundForm({
         res = await loadPrepaidAction(direction, id);
       } catch (err) {
         unstable_rethrow(err);
-        setErrors([NETWORK_ERROR]);
+        if (latestParty.current === id) setErrors([NETWORK_ERROR]);
         return;
       }
+      if (latestParty.current !== id) return;
       if (!res.ok) {
         setErrors([res.error]);
         return;
       }
       setPrepaid(res.data);
-      // 預設全額退款（可改小）
-      setAmount(res.data.total);
+      // 預設退到上限（預收 − 未結應收，可改小）
+      setAmount(res.data.refundable);
     });
   }
 
@@ -151,7 +170,11 @@ export function RefundForm({
       bank,
       note,
     };
-    const bad = collectRefundErrors(input, prepaid?.total ?? 0);
+    const bad = collectRefundErrors(
+      input,
+      prepaid?.total ?? 0,
+      prepaid?.openTotal ?? 0,
+    );
     if (bad.length > 0) {
       setErrors(bad);
       return;
@@ -168,6 +191,7 @@ export function RefundForm({
           checkDueDate: dueDate,
           bank,
           prepaid: prepaid?.total ?? 0,
+          openTotal: prepaid?.openTotal ?? 0,
         }),
       ),
     );
@@ -190,6 +214,8 @@ export function RefundForm({
   }
 
   const busy = pending || loading;
+  const open = openLabel(direction);
+  const notice = prepaid ? openNoticeKind(prepaid.openTotal) : "zero";
 
   return (
     <form onSubmit={submit} className="space-y-6">
@@ -355,9 +381,12 @@ export function RefundForm({
                     className="border-border border-b last:border-b-0"
                   >
                     <td className="px-3 py-2">
-                      <span className="font-mono text-[13px]">
+                      <Link
+                        href={`${meta.basePath}/${src.id}`}
+                        className="text-primary-deep font-mono text-[13px] hover:underline"
+                      >
                         {src.doc_no ?? "—"}
-                      </span>
+                      </Link>
                       {src.amount === 0 && (
                         <span className="text-text-muted ml-2 text-[12px]">
                           沖抵單
@@ -377,11 +406,105 @@ export function RefundForm({
             </table>
           </div>
         )}
-        {prepaid && (
-          <p className="text-right text-[14px]">
-            目前{meta.unallocatedLabel}{" "}
-            <MoneyText value={prepaid.total} className="font-semibold" />
-          </p>
+        {prepaid && !loading && (
+          <>
+            <dl className="border-border grid grid-cols-3 gap-2 rounded-xl border bg-white p-4 text-[14px]">
+              <div>
+                <dt className="text-text-muted text-[12px]">
+                  目前{meta.unallocatedLabel}
+                </dt>
+                <dd>
+                  <MoneyText value={prepaid.total} className="font-semibold" />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-text-muted text-[12px]">{open}</dt>
+                <dd>
+                  <MoneyText
+                    value={prepaid.openTotal}
+                    className={`font-semibold ${prepaid.openTotal > 0 ? "text-amber-800" : ""}`}
+                  />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-text-muted text-[12px]">最多可退</dt>
+                <dd>
+                  <MoneyText
+                    value={prepaid.refundable}
+                    className="text-[16px] font-bold"
+                  />
+                </dd>
+              </div>
+            </dl>
+            {prepaid.openDocs.length > 0 && (
+              <div
+                role={notice === "owe" ? "alert" : undefined}
+                className={`space-y-2 rounded-xl border px-4 py-3 text-[14px] ${
+                  notice === "owe"
+                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                    : "border-border bg-surface-muted text-ink"
+                }`}
+              >
+                {notice === "owe" ? (
+                  <p>
+                    <span className="font-semibold">
+                      此{meta.partyLabel}還有{open}{" "}
+                      <MoneyText value={prepaid.openTotal} />
+                    </span>
+                    ，最多只能退{" "}
+                    <MoneyText
+                      value={prepaid.refundable}
+                      className="font-semibold"
+                    />
+                    （{meta.unallocatedLabel}扣掉{open}，最低為 0）。
+                    {prepaid.sources.length > 0 && (
+                      <>
+                        建議改用「補沖銷」：點上方{meta.unallocatedLabel}
+                        來源的單號，把{meta.unallocatedLabel}沖到下列單據。
+                      </>
+                    )}
+                  </p>
+                ) : notice === "credit" ? (
+                  <p>
+                    {open}淨額為負（{meta.creditLabel}貸項），不影響可退上限；
+                    {meta.creditLabel}的負數餘額請先以 0 元沖抵單轉為
+                    {meta.unallocatedLabel}才能退款。
+                  </p>
+                ) : (
+                  <p>下列未結單據互抵後{open}淨額為 0，不影響可退上限。</p>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-[13px]">
+                    <thead>
+                      <tr className="border-b border-black/10">
+                        <th className="py-1.5 pr-3 font-medium">單號</th>
+                        <th className="py-1.5 pr-3 font-medium">日期</th>
+                        <th className="py-1.5 text-right font-medium">
+                          未沖餘額
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {prepaid.openDocs.map((d) => (
+                        <tr key={d.document_id}>
+                          <td className="py-1 pr-3">
+                            <span className="font-mono">{d.doc_no}</span>
+                            <span className="ml-2 text-[12px] opacity-80">
+                              {DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}
+                            </span>
+                          </td>
+                          <td className="py-1 pr-3">{rocDate(d.doc_date)}</td>
+                          <td className="py-1 text-right">
+                            <MoneyText value={d.outstanding} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </section>
 

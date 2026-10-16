@@ -10,7 +10,6 @@ import { ensureErp } from "@/lib/erp/guard";
 import {
   getPrepaidSummary,
   listOutstandingDocuments,
-  type PrepaidSummary,
 } from "@/lib/erp/queries/ar-ap";
 import {
   allocatePayment,
@@ -32,7 +31,12 @@ import {
   validatePaymentForm,
   type PaymentFormInput,
 } from "./allocation";
-import { validateRefundForm, type RefundFormInput } from "./refund";
+import {
+  summarizeRefundContext,
+  validateRefundForm,
+  type RefundContext,
+  type RefundFormInput,
+} from "./refund";
 
 function isDirection(v: unknown): v is PaymentDirection {
   return v === "in" || v === "out";
@@ -111,17 +115,26 @@ export async function createRefundAction(
   return res;
 }
 
-/** 讀取對象可退款的預收（預付）與來源（退款表單選完對象後呼叫）。 */
+/**
+ * 讀取對象可退款的預收（預付）與來源，並一併讀出未結單據與可退上限（#253）
+ * （退款表單選完對象後呼叫）。任一查詢失敗即回錯誤，不以缺少未結單據的資料放行。
+ */
 export async function loadPrepaidAction(
   direction: PaymentDirection,
   partyId: string,
-): Promise<ErpResult<PrepaidSummary>> {
+): Promise<ErpResult<RefundContext>> {
   const denied = await ensureErp();
   if (denied) return denied;
   if (!isDirection(direction)) {
     return { ok: false, error: "退款方向不正確。" };
   }
-  return getPrepaidSummary(direction, partyId);
+  const [prepaid, docs] = await Promise.all([
+    getPrepaidSummary(direction, partyId),
+    listOutstandingDocuments(direction, partyId),
+  ]);
+  if (!prepaid.ok) return prepaid;
+  if (!docs.ok) return docs;
+  return { ok: true, data: summarizeRefundContext(prepaid.data, docs.data) };
 }
 
 /** 讀取對象的未沖銷單據（新增表單選完客戶 / 廠商後呼叫）。 */

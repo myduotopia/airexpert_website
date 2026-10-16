@@ -116,6 +116,30 @@ begin
   assert v_bad = 0, format('%s：作廢收付款仍有沖銷／退款來源', p_label);
 end $$;
 
+-- 預期錯誤碼 p_code，且 detail 依序包含 p_like 每一段文字（#253 退款上限訊息）
+create function erp_test.expect_detail(p_sql text, p_code text, p_like text[]) returns void language plpgsql as $$
+declare
+  v_detail text;
+  v_part   text;
+begin
+  begin
+    execute p_sql;
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    if sqlerrm <> p_code then
+      raise exception '預期 % 但得到 % (%): % / sql=%', p_code, sqlerrm, sqlstate, v_detail, p_sql;
+    end if;
+    foreach v_part in array p_like loop
+      if position(v_part in coalesce(v_detail, '')) = 0 then
+        raise exception '% 的訊息缺少「%」：% / sql=%', p_code, v_part, v_detail, p_sql;
+      end if;
+    end loop;
+    raise notice 'ok  [%] %', p_code, v_detail;
+    return;
+  end;
+  raise exception '預期 % 但執行成功：%', p_code, p_sql;
+end $$;
+
 grant usage on schema erp_test to authenticated, anon;
 grant execute on all functions in schema erp_test to authenticated, anon;
 
@@ -1333,7 +1357,7 @@ select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_
 select erp_test.expect_error($q$select erp_post_payment('{"direction":"in","pay_date":"2026-10-13","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":100,"allocations":[{"document_id":"00000000-0000-0000-0000-00000000e251","amount":0.004}]}')$q$, 'validation');
 
 do $$
-declare v jsonb; pb record; v_off uuid; v_rf uuid;
+declare v jsonb; pb record; v_off uuid;
 begin
   assert (select count(*) from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d24a') = 1, '失敗的收款不應留下';
   -- 0 元沖抵：SR −30,000 沖 S1 80,000？不行（合計為正 > 0）；SR −30,000 沖 S2 10,000 → 合計 −20,000，S1 未清 → R3 擋
@@ -1345,15 +1369,14 @@ begin
   select * into pb from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d24a';
   assert pb.balance = 100000 and pb.unallocated = 0, format('純沖抵後 %s', pb);
 
-  -- 另收預收 5,000（不沖銷）→ 退款 3,000 → 作廢退款 → 補沖銷 S2 5,000
+  -- 另收預收 5,000（不沖銷）→ 退款 3,000 被擋（#253：未結應收 100,000 ≥ 預收，可退上限 0）→ 補沖銷 S2 5,000
+  -- （退款 → 作廢退款的不變式改在第 13 節的無未結應收情境檢查）
   v := erp_post_payment('{"direction":"in","pay_date":"2026-10-14","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":5000}');
   perform set_config('erp_test.inv_adv', v->>'id', true);
   perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '預收');
-  v := erp_post_refund('{"direction":"in","pay_date":"2026-10-15","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":3000}');
-  v_rf := (v->>'id')::uuid;
-  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '退款');
-  perform erp_void_payment(v_rf, '取消退款');
-  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '作廢退款');
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-15","customer_id":"00000000-0000-0000-0000-00000000d24a","method":"cash","amount":3000}')$q$,
+    'validation', array['可退上限 0.00', '預收 5,000.00', '未結應收 100,000.00']);
+  perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '退款被擋');
   perform erp_allocate_payment(current_setting('erp_test.inv_adv')::uuid, '[{"document_id":"00000000-0000-0000-0000-00000000e251","amount":5000}]');
   perform erp_test.assert_ledger('customer', '00000000-0000-0000-0000-00000000d24a', '補沖銷');
 
@@ -1371,6 +1394,153 @@ begin
   -- 單據 100,000 + 50,000 − 30,000 = 120,000；收款 5,000（已沖 S2）→ 淨額 115,000
   assert pb.balance = 115000 and pb.unallocated = 0, format('最後 %s', pb);
   raise notice 'ok  #249 review：同號規則、操作序列後帳務不變式';
+end $$;
+
+-- ============================================================
+-- 13) #253 退款上限 = max(0, 預收 − 未結應收淨額)（0030）；未結應收淨額 ≤ 0 時上限即預收（R5）
+--     每一步檢查 erp_test.assert_ledger
+-- ============================================================
+insert into mx_customers (id, name, code) values
+  ('00000000-0000-0000-0000-0000253d0001', '退款上限測試', 'CAP253'),
+  ('00000000-0000-0000-0000-0000253d0002', '負數應收測試', 'NEG253'),
+  ('00000000-0000-0000-0000-0000253d0003', 'D1 重現', 'D1253');
+insert into erp_vendors (id, code, name) values ('00000000-0000-0000-0000-0000253b0001', 'V253', '退款上限廠商');
+insert into erp_documents (id, doc_type, doc_date, customer_id, vendor_id, warehouse_id, tax_type) values
+  ('00000000-0000-0000-0000-0000253e0001', 'S', '2026-10-01', '00000000-0000-0000-0000-0000253d0001', null, erp_test.main(), 'exempt'),
+  ('00000000-0000-0000-0000-0000253e0002', 'S', '2026-10-02', '00000000-0000-0000-0000-0000253d0001', null, erp_test.main(), 'exempt'),
+  ('00000000-0000-0000-0000-0000253e0011', 'S', '2026-10-01', '00000000-0000-0000-0000-0000253d0002', null, erp_test.main(), 'exempt'),
+  ('00000000-0000-0000-0000-0000253e0021', 'S', '2026-10-01', '00000000-0000-0000-0000-0000253d0003', null, erp_test.main(), 'exempt'),
+  ('00000000-0000-0000-0000-0000253e0031', 'I', '2026-10-01', null, '00000000-0000-0000-0000-0000253b0001', erp_test.main(), 'exempt');
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-0000253f0001', '00000000-0000-0000-0000-0000253e0001', 1, 'item', '00000000-0000-0000-0000-00000000c004', 10, 1000),
+  ('00000000-0000-0000-0000-0000253f0002', '00000000-0000-0000-0000-0000253e0002', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 3000),
+  ('00000000-0000-0000-0000-0000253f0011', '00000000-0000-0000-0000-0000253e0011', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 1000),
+  ('00000000-0000-0000-0000-0000253f0021', '00000000-0000-0000-0000-0000253e0021', 1, 'item', '00000000-0000-0000-0000-00000000c004', 2, 15000),
+  ('00000000-0000-0000-0000-0000253f0031', '00000000-0000-0000-0000-0000253e0031', 1, 'item', '00000000-0000-0000-0000-00000000c003', 5, 1000);
+insert into erp_documents (id, doc_type, doc_date, customer_id, vendor_id, warehouse_id, source_doc_id, tax_type) values
+  ('00000000-0000-0000-0000-0000253e0003', 'SR', '2026-10-05', '00000000-0000-0000-0000-0000253d0001', null, erp_test.main(), '00000000-0000-0000-0000-0000253e0001', 'exempt'),
+  ('00000000-0000-0000-0000-0000253e0012', 'SR', '2026-10-05', '00000000-0000-0000-0000-0000253d0002', null, erp_test.main(), '00000000-0000-0000-0000-0000253e0011', 'exempt'),
+  ('00000000-0000-0000-0000-0000253e0022', 'SR', '2026-10-05', '00000000-0000-0000-0000-0000253d0003', null, erp_test.main(), '00000000-0000-0000-0000-0000253e0021', 'exempt'),
+  ('00000000-0000-0000-0000-0000253e0032', 'PR', '2026-10-05', null, '00000000-0000-0000-0000-0000253b0001', erp_test.main(), '00000000-0000-0000-0000-0000253e0031', 'exempt');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price, source_line_id) values
+  ('00000000-0000-0000-0000-0000253e0003', 1, 'item', '00000000-0000-0000-0000-00000000c004', 4, 1000,  '00000000-0000-0000-0000-0000253f0001'),
+  ('00000000-0000-0000-0000-0000253e0012', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 1000,  '00000000-0000-0000-0000-0000253f0011'),
+  ('00000000-0000-0000-0000-0000253e0022', 1, 'item', '00000000-0000-0000-0000-00000000c004', 1, 15000, '00000000-0000-0000-0000-0000253f0021'),
+  ('00000000-0000-0000-0000-0000253e0032', 1, 'item', '00000000-0000-0000-0000-00000000c003', 2, 1000,  '00000000-0000-0000-0000-0000253f0031');
+
+-- 13a 客戶：無未結應收 → 可全退；有未結應收 → 上限 = 預收 − 未結應收；SR 負數降低未結應收
+do $$
+declare v jsonb; pb record; c constant uuid := '00000000-0000-0000-0000-0000253d0001';
+begin
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-01","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"cash","amount":5000}');
+  perform erp_test.assert_ledger('customer', c, '13a 預收 5,000');
+  -- 無未結應收：全額 5,000 可退 → 作廢退款還原
+  v := erp_post_refund('{"direction":"in","pay_date":"2026-10-02","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"transfer","amount":5000}');
+  perform erp_test.assert_ledger('customer', c, '13a 無未結應收全退');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = c;
+  assert pb.balance = 0 and pb.unallocated = 0, format('13a 全退後 %s', pb);
+  perform erp_void_payment((v->>'id')::uuid, '測試');
+  perform erp_test.assert_ledger('customer', c, '13a 作廢退款');
+
+  -- 銷貨 3,000 未收：預收 5,000 − 未結應收 3,000 → 上限 2,000
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0002');
+  perform erp_test.assert_ledger('customer', c, '13a 銷貨 3,000');
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-03","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"transfer","amount":2000.01}')$q$,
+    'validation', array['退款金額 2,000.01', '可退上限 2,000.00', '預收 5,000.00', '未結應收 3,000.00', '補沖銷']);
+  -- 同時超過預收：仍給上限訊息（一次給齊）
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-03","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"transfer","amount":6000}')$q$,
+    'validation', array['可退上限 2,000.00']);
+  perform erp_test.assert_ledger('customer', c, '13a 超過上限被擋');
+  v := erp_post_refund('{"direction":"in","pay_date":"2026-10-03","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"transfer","amount":2000}');
+  perform erp_test.assert_ledger('customer', c, '13a 退到上限');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = c;
+  assert pb.balance = 3000 and pb.unallocated = 3000, format('13a 退 2,000 後 %s', pb);
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-03","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"cash","amount":0.01}')$q$,
+    'validation', array['可退上限 0.00', '預收 3,000.00', '未結應收 3,000.00']);
+
+  -- 再銷貨 10,000、銷退 4,000（SR 未沖，負數）、另收預收 8,000：
+  -- 未結應收 = 3,000 + 10,000 − 4,000 = 9,000；預收 3,000 + 8,000 = 11,000 → 上限 2,000（不計 SR 時會是 0）
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0001');
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0003');
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-06","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"cash","amount":8000}');
+  perform erp_test.assert_ledger('customer', c, '13a 銷退未沖 + 預收');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = c;
+  assert pb.balance = 9000 and pb.unallocated = 11000, format('13a SR 後 %s', pb);
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-07","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"transfer","amount":2000.01}')$q$,
+    'validation', array['可退上限 2,000.00', '預收 11,000.00', '未結應收 9,000.00']);
+  v := erp_post_refund('{"direction":"in","pay_date":"2026-10-07","customer_id":"00000000-0000-0000-0000-0000253d0001","method":"transfer","amount":2000}');
+  perform erp_test.assert_ledger('customer', c, '13a SR 負數計入後退到上限');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = c;
+  assert pb.balance = 9000 and pb.unallocated = 9000, format('13a 最後 %s', pb);
+  raise notice 'ok  #253 客戶退款上限（無未結全退／有未結上限／SR 負數）';
+end $$;
+
+-- 13b 客戶：未結應收淨額為負（銷退貸項未轉預收）→ 上限仍為預收（R5，over_allocation）
+do $$
+declare v jsonb; pb record; c constant uuid := '00000000-0000-0000-0000-0000253d0002';
+begin
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0011');
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-02","customer_id":"00000000-0000-0000-0000-0000253d0002","method":"cash","amount":1000,"allocations":[{"document_id":"00000000-0000-0000-0000-0000253e0011","amount":1000}]}');
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0012');
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-06","customer_id":"00000000-0000-0000-0000-0000253d0002","method":"cash","amount":500}');
+  perform erp_test.assert_ledger('customer', c, '13b 應收 −1,000、預收 500');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = c;
+  assert pb.balance = -1000 and pb.unallocated = 500, format('13b %s', pb);
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-07","customer_id":"00000000-0000-0000-0000-0000253d0002","method":"cash","amount":500.01}')$q$,
+    'over_allocation', array['超過預收餘額']);
+  v := erp_post_refund('{"direction":"in","pay_date":"2026-10-07","customer_id":"00000000-0000-0000-0000-0000253d0002","method":"cash","amount":500}');
+  perform erp_test.assert_ledger('customer', c, '13b 退到預收');
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-07","customer_id":"00000000-0000-0000-0000-0000253d0002","method":"cash","amount":1}')$q$,
+    'over_allocation', array['超過預收餘額']);
+  raise notice 'ok  #253 未結應收為負時上限為預收';
+end $$;
+
+-- 13c D1 重現：沖抵轉預收 5,000 後作廢原收款 → 應收回到 20,000，0029 仍可退 5,000，0030 擋下
+do $$
+declare v jsonb; pb record; v_rc uuid; c constant uuid := '00000000-0000-0000-0000-0000253d0003';
+begin
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0021');
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-02","customer_id":"00000000-0000-0000-0000-0000253d0003","method":"transfer","amount":20000,"allocations":[{"document_id":"00000000-0000-0000-0000-0000253e0021","amount":20000}]}');
+  v_rc := (v->>'id')::uuid;
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0022');
+  -- 0 元沖抵：SR −15,000 沖 S 10,000 → 預收 5,000
+  v := erp_post_payment('{"direction":"in","pay_date":"2026-10-06","customer_id":"00000000-0000-0000-0000-0000253d0003","method":"other","amount":0,"allocations":[{"document_id":"00000000-0000-0000-0000-0000253e0022","amount":-15000},{"document_id":"00000000-0000-0000-0000-0000253e0021","amount":10000}]}');
+  perform erp_test.assert_ledger('customer', c, '13c 沖抵後');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = c;
+  assert pb.balance = 0 and pb.unallocated = 5000, format('13c 沖抵後 %s', pb);
+  perform erp_void_payment(v_rc, '退票');
+  perform erp_test.assert_ledger('customer', c, '13c 作廢原收款');
+  select * into pb from erp_party_balances where party_type = 'customer' and party_id = c;
+  assert pb.balance = 20000 and pb.unallocated = 5000, format('13c 作廢原收款後 %s', pb);
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"in","pay_date":"2026-10-07","customer_id":"00000000-0000-0000-0000-0000253d0003","method":"transfer","amount":5000}')$q$,
+    'validation', array['可退上限 0.00', '預收 5,000.00', '未結應收 20,000.00']);
+  perform erp_test.assert_ledger('customer', c, '13c 退款被擋');
+  raise notice 'ok  #253 D1 重現：作廢原收款後不可退款';
+end $$;
+
+-- 13d 廠商比照：預付 − 未結應付；PR 負數降低未結應付
+do $$
+declare v jsonb; pb record; b constant uuid := '00000000-0000-0000-0000-0000253b0001';
+begin
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0031');
+  v := erp_post_payment('{"direction":"out","pay_date":"2026-10-02","vendor_id":"00000000-0000-0000-0000-0000253b0001","method":"transfer","amount":8000}');
+  perform erp_test.assert_ledger('vendor', b, '13d 應付 5,000、預付 8,000');
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"out","pay_date":"2026-10-03","vendor_id":"00000000-0000-0000-0000-0000253b0001","method":"transfer","amount":3000.01}')$q$,
+    'validation', array['退款金額 3,000.01', '可退上限 3,000.00', '預付 8,000.00', '未結應付 5,000.00', '把預付沖到未結單據']);
+  v := erp_post_refund('{"direction":"out","pay_date":"2026-10-03","vendor_id":"00000000-0000-0000-0000-0000253b0001","method":"transfer","amount":3000}');
+  perform erp_test.assert_ledger('vendor', b, '13d 退到上限');
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"out","pay_date":"2026-10-03","vendor_id":"00000000-0000-0000-0000-0000253b0001","method":"cash","amount":1}')$q$,
+    'validation', array['可退上限 0.00', '預付 5,000.00', '未結應付 5,000.00']);
+  -- 進退 2,000（PR 未沖）→ 未結應付 3,000、預付 5,000 → 上限 2,000
+  perform erp_post_document('00000000-0000-0000-0000-0000253e0032');
+  perform erp_test.assert_ledger('vendor', b, '13d 進退');
+  perform erp_test.expect_detail($q$select erp_post_refund('{"direction":"out","pay_date":"2026-10-06","vendor_id":"00000000-0000-0000-0000-0000253b0001","method":"cash","amount":2000.01}')$q$,
+    'validation', array['可退上限 2,000.00', '未結應付 3,000.00']);
+  v := erp_post_refund('{"direction":"out","pay_date":"2026-10-06","vendor_id":"00000000-0000-0000-0000-0000253b0001","method":"cash","amount":2000}');
+  perform erp_test.assert_ledger('vendor', b, '13d PR 負數計入後退到上限');
+  select * into pb from erp_party_balances where party_type = 'vendor' and party_id = b;
+  assert pb.balance = 3000 and pb.unallocated = 3000, format('13d 最後 %s', pb);
+  raise notice 'ok  #253 廠商退款上限';
 end $$;
 
 -- 未授權：退款 RPC forbidden；anon 無執行權限、看不到退款來源
