@@ -84,7 +84,7 @@ export async function SalesDocDetail({
   const margins = showCost ? calcSaleMargins(doc) : null;
   const machinesBySerial = new Map(machineLinks.map((m) => [m.serial_id, m]));
   const paymentRows = salePaymentRows(doc, balance.ok ? balance.data : null);
-  // 草稿：過帳前的前端檢核（#240），按「過帳」時一次列出，不先跳確認框。
+  // 草稿：過帳前的前端檢核（#240）；按「過帳」並確認後才一次列出（#254，先確認後檢核）。
   const postErrors = isDraft
     ? collectPostErrors(draftDocumentFromRow(doc), items)
     : [];

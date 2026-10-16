@@ -2,7 +2,8 @@
 
 // 採購區單據表單（P / I / PR 共用）：表頭 + 明細，受控；「儲存草稿」與「儲存並過帳」。
 // 錯誤就地顯示並保留輸入（spec §9）；成功後導向明細頁。
-// 送出前先做前端檢核並一次列出所有錯誤（#240）；有錯就不跳「儲存並過帳」確認框。
+// 前端檢核一次列出所有錯誤（#240）。「儲存並過帳」先跳確認框、按確認後才檢核（#254，A-4 維持原本做法）；
+// 儲存草稿直接檢核。
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -32,6 +33,7 @@ import {
   collectPostErrors,
   mergeErrors,
 } from "@/lib/erp/validate";
+import { gateSubmit } from "@/lib/erp/submit-gate";
 
 type SaveResult = { ok: true; id: string } | { ok: false; error: string };
 type DocActionResult =
@@ -84,25 +86,27 @@ export function DocumentForm({
 
   async function submit(andPost: boolean) {
     setErrors([]);
-    const problems = mergeErrors(
-      collectDraftDocumentErrors(doc),
-      andPost ? collectPostErrors(doc, items) : [],
-    );
-    if (problems.length > 0) {
-      setErrors(problems);
-      return;
-    }
-    if (
-      andPost &&
-      !(await askConfirm({
-        title: "確定儲存並過帳？",
-        // 採購單過帳只取號、不異動庫存（#248 N-3）。
-        message: purchasingPostConfirmMessage(
-          initial.doc_type as PurchasingDocType,
+    const gate = await gateSubmit({
+      confirm: andPost
+        ? () =>
+            askConfirm({
+              title: "確定儲存並過帳？",
+              // 採購單過帳只取號、不異動庫存（#248 N-3）。
+              message: purchasingPostConfirmMessage(
+                initial.doc_type as PurchasingDocType,
+              ),
+              confirmLabel: "過帳",
+            })
+        : null,
+      check: () =>
+        mergeErrors(
+          collectDraftDocumentErrors(doc),
+          andPost ? collectPostErrors(doc, items) : [],
         ),
-        confirmLabel: "過帳",
-      }))
-    ) {
+    });
+    if (gate.kind === "cancelled") return;
+    if (gate.kind === "invalid") {
+      setErrors(gate.errors);
       return;
     }
     startTransition(async () => {
