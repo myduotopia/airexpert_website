@@ -35,16 +35,23 @@
 --   d. 新收款（含 0 元沖抵單）erp_post_payment、新銷退過帳、作廢無沖銷的 S（I）：只會讓上限持平或變大；
 --      退款看不到尚未提交者，最多保守地少退，不會超退。
 --   e. 兩張退款同時：0029 的收付款鎖已序列化，後者看到前者已扣減的預收。
---   已鎖收付款的預收在取得鎖後即固定（能改它的補沖銷、作廢、退款都要先鎖同一批收付款）；
+--   已鎖收付款的預收在取得鎖後不會變小（能減少它的補沖銷、作廢、退款都要先鎖同一批收付款；
+--   只有作廢舊退款單會刪除來源列使它變大，最多保守地少退）；
 --   未結應收只會因 c、d 改變（a 的補沖銷被鎖擋住），且 c、d 都不讀預收、不檢查上限，
 --   故讀預收與讀未結應收即使不在同一快照，結果也等同某個序列順序，不會超過該順序下的上限。
 --   死結：退款只鎖收付款（依 id），不鎖單據；erp_allocate_payment 先鎖收付款、再鎖單據，
 --   erp_post_document／erp_void_document 只鎖單據與品項／機號，不鎖收付款 → 沒有反向的等待鏈，與 0029 相同。
---   （0029 既有限制，未改：鎖之後才提交的新收款不在鎖集合內，但後續語句看得到、可能被計入預收並被 FIFO 扣減；
---    若同時有人對該新收款補沖銷，兩邊各自看不到對方未提交的寫入。視窗極短且需同一對象同時新增收款，本檔不處理。）
+--   f. 鎖之後才提交的新收付款（0029 既有競態，#253 review 修正）：它不在鎖集合內，但 READ COMMITTED 下後續語句看得到，
+--      0029 會把它計入預收並由 FIFO 扣減。若同時有人對它補沖銷或作廢（只鎖它本身，不受退款的鎖阻擋），
+--      雙方各自看不到對方未提交的寫入 → 它的 Σ 沖銷 + Σ 被退款 > 金額（R2 被破壞，之後的退款會多算預收），
+--      或退款扣自已作廢的收款（預收被高估、等於超退）。併發測試 R18／R19 可重現。
+--      修正：鎖定時記下 id（v_locked），預收 v_avail 與 FIFO 只算這批；新收付款本次不動用（最多保守地少退）。
+--      上限仍正確：新收付款的預收 ≥ 0（R2），不計入只會讓上限變小；它對單據的沖銷若已提交而讓未結應收變小，
+--      等同上限計入了它的沖銷卻沒計入它的預收，仍 ≤ 真實上限。不新增鎖，死結分析不變。
 --
 -- ── 變更 ───────────────────────────────────────────────────────────
---   只有 erp_post_refund：以 0029 為底 create or replace，新增 v_open／v_cap 與上述檢查（標「0030」），其餘逐字相同。
+--   只有 erp_post_refund：以 0029 為底 create or replace，新增 v_open／v_cap 與上述檢查，
+--   以及 v_locked（預收與 FIFO 只算已鎖定的收付款，見「鎖」f）（皆標「0030」），其餘逐字相同。
 --   未新增欄位／約束／資料。函式權限 create or replace 沿用；仍再宣告一次以便單獨重跑。
 --
 -- 上線順序：與前端先後皆可，建議先套本檔（DB 為最後防線）。
@@ -77,6 +84,7 @@ declare
   v_avail    numeric;
   v_open     numeric;
   v_cap      numeric;
+  v_locked   uuid[];
   v_left     numeric;
   v_take     numeric;
   v_src      record;
@@ -133,12 +141,14 @@ begin
   end if;
   v_party := coalesce(v_customer, v_vendor);
 
-  -- 併發：依 id 鎖定該對象全部有效收付款（與其他退款、補沖銷、作廢互斥），之後才計算餘額
-  perform 1 from erp_payments
-   where status = 'posted' and kind = 'payment' and direction = v_dir
-     and coalesce(customer_id, vendor_id) = v_party
-   order by id
-     for update;
+  -- 併發：依 id 鎖定該對象全部有效收付款（與其他退款、補沖銷、作廢互斥），之後才計算餘額。
+  -- 0030（#253 review）：記下鎖到的 id，預收與 FIFO 只算這批；鎖之後才提交的新收付款不動用（見檔頭「鎖」f）。
+  select coalesce(array_agg(l.id), '{}') into v_locked
+    from (select id from erp_payments
+           where status = 'posted' and kind = 'payment' and direction = v_dir
+             and coalesce(customer_id, vendor_id) = v_party
+           order by id
+             for update) l;
 
   select coalesce(sum(b.avail), 0) into v_avail
     from (
@@ -148,7 +158,8 @@ begin
                            join erp_payments r on r.id = rs.refund_id and r.status = 'posted'
                           where rs.source_payment_id = p.id), 0) as avail
         from erp_payments p
-       where p.status = 'posted' and p.kind = 'payment' and p.direction = v_dir
+       where p.id = any(v_locked)  -- 0030：只算已鎖定者
+         and p.status = 'posted' and p.kind = 'payment' and p.direction = v_dir
          and coalesce(p.customer_id, p.vendor_id) = v_party
     ) b
    where b.avail > 0;
@@ -200,7 +211,8 @@ begin
                            join erp_payments r on r.id = rs.refund_id and r.status = 'posted'
                           where rs.source_payment_id = p.id), 0) as avail
       from erp_payments p
-     where p.status = 'posted' and p.kind = 'payment' and p.direction = v_dir
+     where p.id = any(v_locked)  -- 0030：只從已鎖定者扣減
+       and p.status = 'posted' and p.kind = 'payment' and p.direction = v_dir
        and coalesce(p.customer_id, p.vendor_id) = v_party
      order by p.pay_date, p.doc_no, p.id
   loop

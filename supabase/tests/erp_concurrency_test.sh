@@ -253,6 +253,18 @@ begin
     end if;
   end loop;
 end $$;
+
+-- R18／R19（#253 review：退款鎖定後才提交的新收款）：各一位客戶，預收 P1 2,000（2026-09-05，不沖銷）
+--   R18 另有銷貨 500 已過帳未收（未結應收 500 → 上限 1,500）；R19 無單據。
+insert into mx_customers (id, name) values
+  ('00000000-0000-0000-0000-00000000d018', 'C18'), ('00000000-0000-0000-0000-00000000d019', 'C19');
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, tax_type) values
+  ('00000000-0000-0000-0000-0000001800a1', 'S', '2026-09-02', '00000000-0000-0000-0000-00000000d018', (select wh from ids), 'exempt');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-0000001800a1', 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1, 500);
+select erp_post_document('00000000-0000-0000-0000-0000001800a1');
+select erp_post_payment('{"direction":"in","pay_date":"2026-09-05","customer_id":"00000000-0000-0000-0000-00000000d018","method":"cash","amount":2000}');
+select erp_post_payment('{"direction":"in","pay_date":"2026-09-05","customer_id":"00000000-0000-0000-0000-00000000d019","method":"cash","amount":2000}');
 SQL
 
 FAILS=0
@@ -438,6 +450,73 @@ expect_grep "B 退款等鎖後以新餘額檢查（超過預收 400 → over_all
 OUT_C="$(printf '%s\n' "$AUTH" "$(refund_sql 17 2026-09-10 400)" | q 2>&1)" || true
 expect_no_error "之後退款 400 成功" "$OUT_C"
 expect_eq "R17 應收／預收" "$(party_bal 00000000-0000-0000-0000-00000000d017)" "0/0"
+
+# ── #253 review：退款鎖定收付款「之後」才提交的新收款 ──
+# 退款 A 鎖完該客戶的收付款、算完上限後，在取號（erp_doc_sequences 的 RF 列）被 S0 擋住；
+# 期間 B 提交一張日期較早的新收款 P_new（不在 A 的鎖集合內），C 開交易對 P_new 補沖銷／作廢並持鎖；
+# 放行 A 後，A 的 FIFO 若讀到 P_new（READ COMMITTED 每句新快照），會以 C 未提交前的餘額扣減 P_new。
+# 預期：退款只從已鎖定的收付款扣減，P_new 不被動用、任何收付款的 unallocated 都不為負。
+wait_for() { # $1 條件 SQL（回傳 t 即成立）
+  for _ in $(seq 1 100); do
+    [ "$(val "$1")" = "t" ] && return 0
+    sleep 0.1
+  done
+  return 1
+}
+pay_avail_sql() { # $1 客戶 id：每張有效收款的 unallocated（金額 − 沖銷 − 被退款），逗號分隔、依日期
+  printf '%s' "select string_agg((p.amount
+      - coalesce((select sum(a.amount) from erp_payment_allocations a where a.payment_id = p.id), 0)
+      - coalesce((select sum(rs.amount) from erp_refund_sources rs join erp_payments r on r.id = rs.refund_id and r.status = 'posted'
+                   where rs.source_payment_id = p.id), 0))::int::text, ',' order by p.pay_date, p.doc_no)
+    from erp_payments p where p.customer_id = '$1' and p.kind = 'payment' and p.status = 'posted'"
+}
+# late_payment_race <客戶尾碼> <C 的 SQL（:NEW 代入新收款 id）>：結果存 OUT_A（退款）、OUT_C、NEW_PAY
+late_payment_race() {
+  local cust="$1" c_sql="$2"
+  val "insert into erp_doc_sequences (prefix, period, last_no) values ('RF', '11511', 0) on conflict do nothing" >/dev/null
+  printf '%s\n' "set application_name = 'erp_race_s0';" "begin;" \
+    "select 1 from erp_doc_sequences where prefix = 'RF' and period = '11511' for update;" \
+    "select pg_sleep(60);" "commit;" | q >"$TMP/s0.out" 2>&1 &
+  local s0_pid=$!
+  wait_for "select count(*) = 1 from pg_stat_activity where application_name = 'erp_race_s0' and query like 'select pg_sleep%'" \
+    || echo "  WARN  S0 未進入 sleep"
+  printf '%s\n' "set application_name = 'erp_race_a';" "$AUTH" "$(refund_sql "$cust" 2026-11-10 1000)" \
+    | q >"$TMP/a.out" 2>&1 &
+  local a_pid=$!
+  wait_for "select count(*) = 1 from pg_stat_activity where application_name = 'erp_race_a' and wait_event_type = 'Lock'" \
+    || echo "  WARN  退款 A 未在取號處等待"
+  printf '%s\n' "$AUTH" \
+    "select erp_post_payment('{\"direction\":\"in\",\"pay_date\":\"2026-09-01\",\"customer_id\":\"00000000-0000-0000-0000-00000000d0$cust\",\"method\":\"cash\",\"amount\":500}');" \
+    | q >/dev/null 2>&1
+  NEW_PAY="$(val "select id from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d0$cust' and pay_date = '2026-09-01'")"
+  printf '%s\n' "set application_name = 'erp_race_c';" "$AUTH" "begin;" "${c_sql//:NEW/$NEW_PAY}" \
+    "select pg_sleep($HOLD);" "commit;" | q >"$TMP/c.out" 2>&1 &
+  local c_pid=$!
+  wait_for "select count(*) = 1 from pg_stat_activity where application_name = 'erp_race_c' and query like 'select pg_sleep%'" \
+    || echo "  WARN  C 未進入 sleep（可能已失敗）"
+  val "select pg_cancel_backend(pid) from pg_stat_activity where application_name = 'erp_race_s0'" >/dev/null
+  wait "$s0_pid" || true
+  wait "$c_pid" || true
+  wait "$a_pid" || true
+  OUT_A="$(cat "$TMP/a.out")"
+  OUT_C="$(cat "$TMP/c.out")"
+}
+
+echo "== R18（#253 review）退款鎖定後才提交的新收款，同時被補沖銷：退款不得動用它"
+late_payment_race 18 "select erp_allocate_payment(':NEW', '[{\"document_id\":\"00000000-0000-0000-0000-0000001800a1\",\"amount\":500}]');"
+expect_no_error "A 退款 1,000 成功" "$OUT_A"
+expect_no_error "C 補沖銷新收款成功" "$OUT_C"
+expect_eq "R18 退款來源未含新收款" "$(val "select count(*) from erp_refund_sources where source_payment_id = '$NEW_PAY'")" "0"
+expect_eq "R18 各收款 unallocated（新收款, P1）" "$(val "$(pay_avail_sql 00000000-0000-0000-0000-00000000d018)")" "0,1000"
+expect_eq "R18 應收／預收" "$(party_bal 00000000-0000-0000-0000-00000000d018)" "0/1000"
+
+echo "== R19（#253 review）退款鎖定後才提交的新收款，同時被作廢：退款不得扣自已作廢的收款"
+late_payment_race 19 "select erp_void_payment(':NEW', 'race');"
+expect_no_error "A 退款 1,000 成功" "$OUT_A"
+expect_no_error "C 作廢新收款成功" "$OUT_C"
+expect_eq "R19 退款來源未含已作廢收款" "$(val "select count(*) from erp_refund_sources where source_payment_id = '$NEW_PAY'")" "0"
+expect_eq "R19 各收款 unallocated（P1）" "$(val "$(pay_avail_sql 00000000-0000-0000-0000-00000000d019)")" "1000"
+expect_eq "R19 應收／預收" "$(party_bal 00000000-0000-0000-0000-00000000d019)" "0/1000"
 
 if [ "$FAILS" -ne 0 ]; then
   echo "==> ERP CONCURRENCY TESTS FAILED（$FAILS 項）" >&2

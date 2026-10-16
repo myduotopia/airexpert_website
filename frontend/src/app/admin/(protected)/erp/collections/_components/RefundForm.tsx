@@ -4,7 +4,7 @@
 // 來源由 DB 依日期先後自動扣減（erp_post_refund），這裡只列出供參考。
 // #253：一併讀出未結單據，顯示「目前預收／未結應收／最多可退」；有未結應收時警示並建議改用補沖銷。
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow, useRouter } from "next/navigation";
 import {
   useConfirm,
@@ -31,6 +31,7 @@ import { DIRECTION_META, NETWORK_ERROR } from "./allocation";
 import {
   collectRefundErrors,
   openLabel,
+  openNoticeKind,
   refundConfirmSummary,
   refundVerb,
   REFUND_METHODS,
@@ -119,11 +120,14 @@ export function RefundForm({
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
   const [askConfirm, confirmDialog] = useConfirm();
+  // 最後一次選的對象：快速切換時，較早的查詢晚回來不可蓋掉目前對象的預收與上限
+  const latestParty = useRef<string | null>(null);
 
   function selectParty(
     id: string | null,
     party: { code?: string | null; name?: string | null } | null,
   ) {
+    latestParty.current = id;
     setPartyId(id);
     setPartyLabel(
       party ? [party.code, party.name].filter(Boolean).join(" ") : null,
@@ -138,9 +142,10 @@ export function RefundForm({
         res = await loadPrepaidAction(direction, id);
       } catch (err) {
         unstable_rethrow(err);
-        setErrors([NETWORK_ERROR]);
+        if (latestParty.current === id) setErrors([NETWORK_ERROR]);
         return;
       }
+      if (latestParty.current !== id) return;
       if (!res.ok) {
         setErrors([res.error]);
         return;
@@ -210,6 +215,7 @@ export function RefundForm({
 
   const busy = pending || loading;
   const open = openLabel(direction);
+  const notice = prepaid ? openNoticeKind(prepaid.openTotal) : "zero";
 
   return (
     <form onSubmit={submit} className="space-y-6">
@@ -432,14 +438,14 @@ export function RefundForm({
             </dl>
             {prepaid.openDocs.length > 0 && (
               <div
-                role={prepaid.openTotal > 0 ? "alert" : undefined}
+                role={notice === "owe" ? "alert" : undefined}
                 className={`space-y-2 rounded-xl border px-4 py-3 text-[14px] ${
-                  prepaid.openTotal > 0
+                  notice === "owe"
                     ? "border-amber-300 bg-amber-50 text-amber-900"
                     : "border-border bg-surface-muted text-ink"
                 }`}
               >
-                {prepaid.openTotal > 0 ? (
+                {notice === "owe" ? (
                   <p>
                     <span className="font-semibold">
                       此{meta.partyLabel}還有{open}{" "}
@@ -450,17 +456,22 @@ export function RefundForm({
                       value={prepaid.refundable}
                       className="font-semibold"
                     />
-                    （{meta.unallocatedLabel}扣掉{open}
-                    ）。建議改用「補沖銷」：點上方
-                    {meta.unallocatedLabel}來源的單號，把{meta.unallocatedLabel}
-                    沖到下列單據。
+                    （{meta.unallocatedLabel}扣掉{open}，最低為 0）。
+                    {prepaid.sources.length > 0 && (
+                      <>
+                        建議改用「補沖銷」：點上方{meta.unallocatedLabel}
+                        來源的單號，把{meta.unallocatedLabel}沖到下列單據。
+                      </>
+                    )}
                   </p>
-                ) : (
+                ) : notice === "credit" ? (
                   <p>
                     {open}淨額為負（{meta.creditLabel}貸項），不影響可退上限；
                     {meta.creditLabel}的負數餘額請先以 0 元沖抵單轉為
                     {meta.unallocatedLabel}才能退款。
                   </p>
+                ) : (
+                  <p>下列未結單據互抵後{open}淨額為 0，不影響可退上限。</p>
                 )}
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left text-[13px]">

@@ -51,6 +51,15 @@ export function refundCap(prepaid: number, openTotal: number): number {
   return roundCents(Math.max(0, p - Math.max(0, open)));
 }
 
+/**
+ * 退款表單未結單據提示的種類（#253）：owe = 未結應收（應付）淨額 > 0（警示，上限被扣減）；
+ * credit = 淨額為負（銷退／進退貸項尚未轉預收）；zero = 單據互抵後淨額為 0。後兩者不影響上限。
+ */
+export function openNoticeKind(openTotal: number): "owe" | "credit" | "zero" {
+  const open = roundCents(Number(openTotal) || 0);
+  return open > 0 ? "owe" : open < 0 ? "credit" : "zero";
+}
+
 /** 未結單據（退款表單提醒用）。 */
 export interface RefundOpenDoc {
   document_id: string;

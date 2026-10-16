@@ -64,6 +64,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 import { loadPrepaidAction } from "@/app/admin/(protected)/erp/collections/_components/actions";
 import {
   collectRefundErrors,
+  openNoticeKind,
   refundCap,
   refundConfirmSummary,
   summarizeRefundContext,
@@ -114,6 +115,16 @@ describe("refundCap：max(0, 預收 − 未結應收淨額)，且不超過預收
   it("取到分", () => {
     expect(refundCap(0.3, 0.1)).toBe(0.2);
     expect(refundCap(1000.105, 0)).toBe(1000.11);
+  });
+});
+
+describe("openNoticeKind：未結單據提示（review）", () => {
+  it("淨額 > 0 → 警示；< 0 → 貸項；互抵為 0 → 不影響上限（不可誤稱為負）", () => {
+    expect(openNoticeKind(3000)).toBe("owe");
+    expect(openNoticeKind(0.01)).toBe("owe");
+    expect(openNoticeKind(-1000)).toBe("credit");
+    expect(openNoticeKind(0)).toBe("zero");
+    expect(openNoticeKind(0.001)).toBe("zero");
   });
 });
 
