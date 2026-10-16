@@ -197,18 +197,62 @@ select erp_post_payment('{"direction":"in","pay_date":"2026-09-01","customer_id"
 select erp_post_payment('{"direction":"in","pay_date":"2026-09-01","customer_id":"00000000-0000-0000-0000-00000000d010","method":"cash","amount":1000}');
 
 -- R11／R12（#249 review）：客戶預收 1,000（收款不沖銷）＋ 未收銷貨 800、500（服務品項，不動庫存）
+--   ＋ 銷退全退第二張銷貨 500（SR 未沖，−500）。#253 起退款上限 = 預收 − 未結應收淨額：
+--   未結應收淨額 = 800 + 500 − 500 = 800；沖掉 800 後為 0，上限回到預收，R11／R12 仍驗證同一筆預收不可超領。
 insert into mx_customers (id, name) values ('00000000-0000-0000-0000-00000000d011', 'C11');
 insert into erp_items (id, code, name, kind, track_serial, track_stock) values
   ('00000000-0000-0000-0000-0000001100c0', 'R11', 'r11', 'service', false, false);
 insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, tax_type) values
   ('00000000-0000-0000-0000-0000001100a1', 'S', '2026-09-02', '00000000-0000-0000-0000-00000000d011', (select wh from ids), 'exempt'),
   ('00000000-0000-0000-0000-0000001100a2', 'S', '2026-09-02', '00000000-0000-0000-0000-00000000d011', (select wh from ids), 'exempt');
-insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price) values
-  ('00000000-0000-0000-0000-0000001100a1', 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1, 800),
-  ('00000000-0000-0000-0000-0000001100a2', 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1, 500);
+insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qty, unit_price) values
+  ('00000000-0000-0000-0000-0000001100f1', '00000000-0000-0000-0000-0000001100a1', 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1, 800),
+  ('00000000-0000-0000-0000-0000001100f2', '00000000-0000-0000-0000-0000001100a2', 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1, 500);
 select erp_post_document('00000000-0000-0000-0000-0000001100a1');
 select erp_post_document('00000000-0000-0000-0000-0000001100a2');
+insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, source_doc_id, tax_type) values
+  ('00000000-0000-0000-0000-0000001100a3', 'SR', '2026-09-03', '00000000-0000-0000-0000-00000000d011', (select wh from ids),
+   '00000000-0000-0000-0000-0000001100a2', 'exempt');
+insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price, source_line_id) values
+  ('00000000-0000-0000-0000-0000001100a3', 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1, 500, '00000000-0000-0000-0000-0000001100f2');
+select erp_post_document('00000000-0000-0000-0000-0000001100a3');
 select erp_post_payment('{"direction":"in","pay_date":"2026-09-01","customer_id":"00000000-0000-0000-0000-00000000d011","method":"cash","amount":1000}');
+
+-- R13–R17（#253 退款上限）：服務品項 R11；各一位客戶
+--   R13／R14：銷貨 1,000 已由收款 P1 1,000 沖清，另收預收 P2 500 → 未結應收 0、預收 500、上限 500
+--   R15／R16：預收 1,000，銷貨 600 草稿（未過帳）
+--   R17：預收 1,000，銷貨 600 已過帳未收 → 上限 400
+insert into mx_customers (id, name) values
+  ('00000000-0000-0000-0000-00000000d013', 'C13'), ('00000000-0000-0000-0000-00000000d014', 'C14'),
+  ('00000000-0000-0000-0000-00000000d015', 'C15'), ('00000000-0000-0000-0000-00000000d016', 'C16'),
+  ('00000000-0000-0000-0000-00000000d017', 'C17');
+do $$
+declare r int; t text; c uuid; wh uuid := (select wh from ids);
+begin
+  foreach r in array array[13, 14, 15, 16, 17] loop
+    t := lpad(r::text, 8, '0');
+    c := ('00000000-0000-0000-0000-00000000d0' || r::text)::uuid;
+    insert into erp_documents (id, doc_type, doc_date, customer_id, warehouse_id, tax_type) values
+      (('00000000-0000-0000-0000-' || t || '00a1')::uuid, 'S', '2026-09-02', c, wh, 'exempt');
+    insert into erp_document_lines (document_id, line_no, line_type, item_id, qty, unit_price) values
+      (('00000000-0000-0000-0000-' || t || '00a1')::uuid, 1, 'item', '00000000-0000-0000-0000-0000001100c0', 1,
+       case when r in (13, 14) then 1000 else 600 end);
+    if r in (13, 14) then
+      perform erp_post_document(('00000000-0000-0000-0000-' || t || '00a1')::uuid);
+      perform erp_post_payment(jsonb_build_object('direction', 'in', 'pay_date', '2026-09-03', 'customer_id', c,
+        'method', 'transfer', 'amount', 1000,
+        'allocations', jsonb_build_array(jsonb_build_object('document_id', '00000000-0000-0000-0000-' || t || '00a1', 'amount', 1000))));
+      perform erp_post_payment(jsonb_build_object('direction', 'in', 'pay_date', '2026-09-04', 'customer_id', c,
+        'method', 'cash', 'amount', 500));
+    else
+      if r = 17 then
+        perform erp_post_document(('00000000-0000-0000-0000-' || t || '00a1')::uuid);
+      end if;
+      perform erp_post_payment(jsonb_build_object('direction', 'in', 'pay_date', '2026-09-01', 'customer_id', c,
+        'method', 'cash', 'amount', 1000));
+    end if;
+  end loop;
+end $$;
 SQL
 
 FAILS=0
@@ -346,6 +390,54 @@ expect_no_error "A 退款 200（用完預收）成功" "$OUT_A"
 expect_grep "B 補沖銷超過剩餘預收被拒" "$OUT_B" "ERROR:  over_allocation"
 expect_eq "R12 剩餘預收" "$(val "select unallocated::int from erp_party_balances where party_type = 'customer' and party_id = '00000000-0000-0000-0000-00000000d011'")" "0"
 expect_eq "R12 第二張銷貨仍未沖" "$(val "select outstanding::int from erp_document_balances where document_id = '00000000-0000-0000-0000-0000001100a2'")" "500"
+
+# ── #253 退款上限（0030）：退款只鎖該對象的收付款、不鎖單據（分析見 0030 檔頭「鎖」）──
+party_bal() { val "select balance::int || '/' || unallocated::int from erp_party_balances where party_type = 'customer' and party_id = '$1'"; }
+refund_sql() { # $1 客戶 id 尾碼 $2 日期 $3 金額
+  printf '%s' "select erp_post_refund('{\"direction\":\"in\",\"pay_date\":\"$2\",\"customer_id\":\"00000000-0000-0000-0000-00000000d0$1\",\"method\":\"transfer\",\"amount\":$3}');"
+}
+# B 以 DO block 執行並回報耗時（client_min_messages = warning 才看得到）
+timed() { printf '%s' "do \$t\$ declare t0 timestamptz := clock_timestamp(); begin perform $1; raise warning 'B_ELAPSED=%', round(extract(epoch from clock_timestamp() - t0)::numeric, 1); end \$t\$;"; }
+
+echo "== R13（#253 D1）先作廢已沖銷的原收款（應收回升 1,000），同時退款 500（作廢前上限 500）"
+R13_P1="$(val "select id from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d013' and amount = 1000")"
+race "select erp_void_payment('$R13_P1', 'race');" "$(refund_sql 13 2026-09-10 500)"
+expect_no_error "A 作廢原收款成功" "$OUT_A"
+expect_grep "B 退款等鎖後看到應收回升，被上限擋下" "$OUT_B" "ERROR:  validation"
+expect_grep "B 訊息含可退上限 0" "$OUT_B" "可退上限 0.00"
+expect_eq "R13 未過帳退款" "$(val "select count(*) from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d013' and kind = 'refund'")" "0"
+expect_eq "R13 應收／預收" "$(party_bal 00000000-0000-0000-0000-00000000d013)" "1000/500"
+
+echo "== R14（#253）反向：先退款 500（用完上限），同時作廢已沖銷的原收款"
+R14_P1="$(val "select id from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d014' and amount = 1000")"
+race "$(refund_sql 14 2026-09-10 500)" "select erp_void_payment('$R14_P1', 'race');"
+expect_no_error "A 退款成功" "$OUT_A"
+expect_no_error "B 作廢原收款等鎖後成功（先退款、後作廢的合法順序）" "$OUT_B"
+expect_eq "R14 應收／預收" "$(party_bal 00000000-0000-0000-0000-00000000d014)" "1000/0"
+
+echo "== R15（#253）先退款 1,000（未結應收 0），同時過帳新銷貨 600：銷貨不需等退款"
+race "$(refund_sql 15 2026-09-10 1000)" "$(timed "erp_post_document('00000000-0000-0000-0000-0000001500a1')")"
+expect_no_error "A 退款成功" "$OUT_A"
+expect_no_error "B 銷貨過帳成功" "$OUT_B"
+expect_grep "B 未等待 A（不鎖單據）" "$OUT_B" "B_ELAPSED=0\."
+expect_eq "R15 應收／預收（= 先退款、後銷貨）" "$(party_bal 00000000-0000-0000-0000-00000000d015)" "600/0"
+
+echo "== R16（#253）先過帳新銷貨 600（未提交），同時退款 1,000：退款看不到未提交的銷貨、不等待"
+race "select erp_post_document('00000000-0000-0000-0000-0000001600a1');" "$(timed "$(refund_sql 16 2026-09-10 1000 | sed -e 's/^select //' -e 's/;$//')")"
+expect_no_error "A 銷貨過帳成功" "$OUT_A"
+expect_no_error "B 退款成功" "$OUT_B"
+expect_grep "B 未等待 A" "$OUT_B" "B_ELAPSED=0\."
+expect_eq "R16 應收／預收（= 先退款、後銷貨的序列順序）" "$(party_bal 00000000-0000-0000-0000-00000000d016)" "600/0"
+
+echo "== R17（#253）先補沖銷 600（預收 1,000 → 400、應收 600 → 0），同時退款 500（補沖銷前上限 400）"
+R17_PAY="$(val "select id from erp_payments where customer_id = '00000000-0000-0000-0000-00000000d017' and kind = 'payment'")"
+race "select erp_allocate_payment('$R17_PAY', '[{\"document_id\":\"00000000-0000-0000-0000-0000001700a1\",\"amount\":600}]');" \
+     "$(refund_sql 17 2026-09-10 500)"
+expect_no_error "A 補沖銷成功" "$OUT_A"
+expect_grep "B 退款等鎖後以新餘額檢查（超過預收 400 → over_allocation）" "$OUT_B" "ERROR:  over_allocation"
+OUT_C="$(printf '%s\n' "$AUTH" "$(refund_sql 17 2026-09-10 400)" | q 2>&1)" || true
+expect_no_error "之後退款 400 成功" "$OUT_C"
+expect_eq "R17 應收／預收" "$(party_bal 00000000-0000-0000-0000-00000000d017)" "0/0"
 
 if [ "$FAILS" -ne 0 ]; then
   echo "==> ERP CONCURRENCY TESTS FAILED（$FAILS 項）" >&2

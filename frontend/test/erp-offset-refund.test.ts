@@ -30,9 +30,21 @@ function selectBuilder(table: string, columns: string) {
       rec.filters.push(["eq", ...args]);
       return b;
     },
+    in: (...args: unknown[]) => {
+      rec.filters.push(["in", ...args]);
+      return b;
+    },
+    neq: (...args: unknown[]) => {
+      rec.filters.push(["neq", ...args]);
+      return b;
+    },
     order: () => b,
+    // selectRows 只模擬 erp_payments；其他表（#253 起退款表單另讀 erp_document_balances）回空
     range: (from: number, to: number) =>
-      Promise.resolve({ data: selectRows.slice(from, to + 1), error: null }),
+      Promise.resolve({
+        data: table === "erp_payments" ? selectRows.slice(from, to + 1) : [],
+        error: null,
+      }),
   };
   return b;
 }
@@ -848,6 +860,10 @@ describe("server actions（#249）", () => {
             available: 9500,
           },
         ],
+        // #253：沒有未結單據 → 最多可退 = 預收
+        openTotal: 0,
+        refundable: 9500,
+        openDocs: [],
       },
     });
     expect(selectCalls[0].table).toBe("erp_payments");
