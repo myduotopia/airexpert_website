@@ -3,8 +3,9 @@
 // - 報價單：儲存即確認（存草稿後立刻過帳取號，列表直接看到正式單）；品項欄可自由輸入或帶入保養卡機型。
 // - 銷貨 / 銷退單：「儲存草稿」或「儲存並過帳」（#240，比照採購／進貨）：存草稿成功後過帳，
 //   過帳失敗時留在本頁（草稿已存）並顯示錯誤。
-// - 送出前先做前端檢核（存草稿條件；過帳時另加倉庫、品項、數量、機號數），一次列出所有錯誤；
-//   有錯就不跳確認框（#238 A-4 順帶）。server／RPC 的錯誤仍一次一條。
+// - 前端檢核（存草稿條件；過帳時另加倉庫、品項、數量、機號數）一次列出所有錯誤（#240）。
+//   「儲存並過帳」先跳確認框，按確認後才檢核（#254，A-4 維持原本做法）；儲存草稿直接檢核。
+//   server／RPC 的錯誤仍一次一條。
 // - 銷貨單：追機號品項只列「出庫倉」中 in_stock 的機號（serials 由 server 讀出，client 依倉庫篩選）。
 // - 銷退單：客戶、稅別稅率、幣別鎖定為來源銷貨單；上方列出各來源行可退數量與可退金額（折扣分攤後淨額，#233），
 //   明細合計超過可退金額時即時提示（存草稿時 server 會擋，過帳時 DB 再檢查一次）。
@@ -43,6 +44,7 @@ import {
   excludeLiveHints,
   mergeErrors,
 } from "@/lib/erp/validate";
+import { gateSubmit } from "@/lib/erp/submit-gate";
 import { postSalesDocumentAction, saveSalesDraftAction } from "../actions";
 import { SALES_BASE_PATH, SALES_DOC_LABEL } from "./sales-config";
 
@@ -116,25 +118,28 @@ export function SalesDocForm({
     setErrors([]);
     const doc = { ...header, lines };
     const posting = andPost || confirmOnSave;
-    const problems = mergeErrors(
-      collectDraftDocumentErrors(doc),
-      posting ? collectPostErrors(doc, items) : [],
-      returnAmountError,
-    );
-    if (problems.length > 0) {
+    // 儲存並過帳：先確認、按確認後才檢核（#254）；儲存草稿與報價單不跳確認框，直接檢核。
+    const gate = await gateSubmit({
+      confirm: andPost
+        ? () =>
+            askConfirm({
+              title: `確定儲存並過帳此${SALES_DOC_LABEL[docType]}？`,
+              message: "過帳後將取號並異動庫存，不可再修改（需作廢）。",
+              confirmLabel: "過帳",
+            })
+        : null,
+      check: () =>
+        mergeErrors(
+          collectDraftDocumentErrors(doc),
+          posting ? collectPostErrors(doc, items) : [],
+          returnAmountError,
+        ),
+    });
+    if (gate.kind === "cancelled") return;
+    if (gate.kind === "invalid") {
       // 銷退超額仍擋下存檔，但該訊息已在黃底即時提示，紅底只列其他錯誤；
       // 不存入 errors，之後改金額時也不會留下舊金額的紅底訊息。
-      setErrors(excludeLiveHints(problems, returnAmountError));
-      return;
-    }
-    if (
-      andPost &&
-      !(await askConfirm({
-        title: `確定儲存並過帳此${SALES_DOC_LABEL[docType]}？`,
-        message: "過帳後將取號並異動庫存，不可再修改（需作廢）。",
-        confirmLabel: "過帳",
-      }))
-    ) {
+      setErrors(excludeLiveHints(gate.errors, returnAmountError));
       return;
     }
     startTransition(async () => {

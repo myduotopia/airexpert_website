@@ -2,7 +2,8 @@
 // 銷售單據明細頁的動作列：編輯 / 過帳（確認）/ 刪除草稿 / 作廢（原因必填、二次確認）/
 // 轉銷貨單 / 建立銷退單 / 列印。過帳與作廢的 RPC 結果（取號、保養卡機台、警告）就地顯示。
 // 轉銷貨單 / 建立銷退單的確認框會列出已轉出的單據並視情況警示（#234，規則見 lib/erp/derived-confirm.ts）。
-// 過帳前先看前端檢核（postErrors，由明細頁以 collectPostErrors 算好傳入），有錯一次列出、不跳確認框（#240）。
+// 過帳：先跳確認框，按確認後才看前端檢核（postErrors，由明細頁以 collectPostErrors 算好傳入），
+// 有錯一次列出、不呼叫過帳（#240；順序依 #254 A-4 維持原本做法）。
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, unstable_rethrow } from "next/navigation";
@@ -20,6 +21,7 @@ import {
   type DerivedDocInput,
 } from "@/lib/erp/derived-confirm";
 import type { SalesDocType } from "@/lib/erp/queries/sales";
+import { gateSubmit } from "@/lib/erp/submit-gate";
 import type { DocStatus, ErpResult } from "@/lib/erp/types";
 import {
   convertQuoteToSaleAction,
@@ -83,7 +85,7 @@ export function SalesDocActions({
   status: DocStatus;
   /** 由本單轉出的單據（報價 → 銷貨、銷貨 → 銷退；含草稿與作廢），新→舊。 */
   derivedDocs?: DerivedDocInput[];
-  /** 草稿過帳前的前端檢核錯誤（lib/erp/validate collectPostErrors）；有錯時按過帳只列出錯誤。 */
+  /** 草稿過帳前的前端檢核錯誤（lib/erp/validate collectPostErrors）；按過帳並確認後，有錯只列出錯誤。 */
   postErrors?: string[];
 }) {
   const router = useRouter();
@@ -97,14 +99,24 @@ export function SalesDocActions({
   const [reason, setReason] = useState("");
   const [askConfirm, confirmDialog] = useConfirm();
 
+  /** confirm：先跳確認框；check：確認後才做的前端檢核，有錯一次列出、不呼叫 action（#254）。 */
   async function run<T>(
     action: () => Promise<ErpResult<T>>,
     onOk: (data: T) => void,
     confirm?: ConfirmOptions,
+    check?: () => readonly string[],
   ) {
     setError(null);
     setCheckErrors([]);
-    if (confirm && !(await askConfirm(confirm))) return;
+    const gate = await gateSubmit({
+      confirm: confirm ? () => askConfirm(confirm) : null,
+      check: check ?? (() => []),
+    });
+    if (gate.kind === "cancelled") return;
+    if (gate.kind === "invalid") {
+      setCheckErrors(gate.errors);
+      return;
+    }
     startTransition(async () => {
       try {
         const res = await action();
@@ -134,12 +146,7 @@ export function SalesDocActions({
               type="button"
               disabled={pending}
               className={PRIMARY}
-              onClick={() => {
-                if (postErrors.length > 0) {
-                  setError(null);
-                  setCheckErrors(postErrors);
-                  return;
-                }
+              onClick={() =>
                 run(
                   () => postSalesDocumentAction(docId),
                   (data) => {
@@ -158,8 +165,9 @@ export function SalesDocActions({
                           "過帳後將取號並異動庫存，不可再修改（需作廢）。",
                         confirmLabel: "過帳",
                       },
-                );
-              }}
+                  () => postErrors,
+                )
+              }
             >
               {pending ? "處理中…" : SALES_POST_LABEL[docType]}
             </button>
