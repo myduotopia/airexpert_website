@@ -11,7 +11,10 @@ import {
   isEmployeeId,
   normalizeEmployeeInput,
 } from "@/lib/employees/normalize";
-import { EMPLOYEE_OPTION_COLUMNS } from "@/lib/employees/queries";
+import {
+  EMPLOYEE_OPTION_COLUMNS,
+  toEmployeeOption,
+} from "@/lib/employees/queries";
 import type { EmployeeInput, EmployeeOption } from "@/lib/employees/types";
 
 export type EmployeeActionResult =
@@ -27,7 +30,10 @@ const NOT_FOUND = "找不到此員工，請重新整理後再試。";
 
 function revalidateEmployees(id?: string) {
   revalidatePath("/admin/employees");
-  if (id) revalidatePath(`/admin/employees/${id}/edit`);
+  if (id) {
+    revalidatePath(`/admin/employees/${id}`);
+    revalidatePath(`/admin/employees/${id}/edit`);
+  }
 }
 
 export async function createEmployeeAction(
@@ -45,7 +51,9 @@ export async function createEmployeeAction(
       .select(EMPLOYEE_OPTION_COLUMNS)
       .single();
     if (error) return { ok: false, error: employeeWriteError(error) };
-    const option = data as EmployeeOption;
+    const option = toEmployeeOption(
+      data as EmployeeOption & { left_on: string | null },
+    );
     revalidateEmployees(option.id);
     return { ok: true, id: option.id, option };
   } catch (e) {

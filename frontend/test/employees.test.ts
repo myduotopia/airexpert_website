@@ -71,10 +71,9 @@ describe("normalizeEmployeeInput", () => {
     );
     expect(r.ok).toBe(false);
   });
-  it("至少一個角色；角色依固定順序去重、未知角色忽略", () => {
-    expect(normalizeEmployeeInput(emptyEmployeeInput({ name: "甲" })).ok).toBe(
-      false,
-    );
+  it("角色依固定順序去重、未知角色忽略；可不選角色（#257）", () => {
+    const none = normalizeEmployeeInput(emptyEmployeeInput({ name: "甲" }));
+    expect(none.ok && none.row.roles).toEqual([]);
     const r = normalizeEmployeeInput(
       emptyEmployeeInput({
         name: " 王　小明 ",
@@ -96,6 +95,11 @@ describe("normalizeEmployeeInput", () => {
         roles: ["sales", "technician"],
         active: true,
         note: null,
+        title: null,
+        phone: null,
+        emergency_contact: null,
+        hired_on: null,
+        left_on: null,
       },
     });
   });
@@ -128,7 +132,7 @@ describe("employeeWriteError", () => {
       EMPLOYEE_IN_USE_MESSAGE,
     );
     expect(employeeWriteError({ code: "23514", message: "x" })).toContain(
-      "至少一個角色",
+      "離職日不可早於到職日",
     );
     expect(employeeWriteError({ message: "boom" })).toBe("儲存失敗：boom");
   });

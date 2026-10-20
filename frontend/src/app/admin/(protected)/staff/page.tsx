@@ -1,9 +1,10 @@
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { DataTable } from "@/components/admin/DataTable";
+import { ActionButton } from "@/components/admin/ActionButton";
 import { DeleteButton } from "@/components/admin/DeleteButton";
 import { CreateSeoManagerForm } from "./CreateSeoManagerForm";
-import { removeSeoManager } from "./actions";
+import { removeSeoManager, setModuleGrant } from "./actions";
 
 export const metadata = { title: "人員管理 — 後台" };
 
@@ -61,6 +62,7 @@ function roleLabel(role: string): string {
 function moduleLabel(module: string): string {
   if (module === "erp") return "ERP";
   if (module === "service_report") return "機台維護報告單";
+  if (module === "hr") return "人事（敏感資料）";
   return module;
 }
 
@@ -81,6 +83,11 @@ export default async function AdminStaffPage() {
           meta，行政帳號僅能操作保養記錄卡相關功能，ERP 行政帳號只看得到 ERP
           模組，皆看不到內文、帳號與網站設定。共 {managers.length} 個代管 / 行政
           / ERP 帳號。
+        </p>
+        <p className="text-text-muted mt-2 text-[14px]">
+          「人事權限」（hr
+          模組）可查看與修改員工的身份證號、戶籍地址等敏感資料，只授予需要的人；
+          員工主檔本身仍需 ERP 或機台維護報告單模組才能進入。
         </p>
       </div>
 
@@ -121,6 +128,29 @@ export default async function AdminStaffPage() {
                   </span>
                 ) : (
                   <span className="text-text-muted text-[13px]">—</span>
+                );
+              },
+            },
+            {
+              header: "人事權限",
+              cell: (p) => {
+                const hasHr = (grants.get(p.id) ?? []).includes("hr");
+                return hasHr ? (
+                  <ActionButton
+                    action={setModuleGrant.bind(null, p.id, "hr", false)}
+                    label="移除人事權限"
+                    pendingLabel="移除中…"
+                    confirmText={`確定移除 ${p.email ?? "此帳號"} 的人事權限？移除後將無法查看員工敏感資料。`}
+                    variant="danger"
+                  />
+                ) : (
+                  <ActionButton
+                    action={setModuleGrant.bind(null, p.id, "hr", true)}
+                    label="授予人事權限"
+                    pendingLabel="授予中…"
+                    confirmText={`確定授予 ${p.email ?? "此帳號"} 人事權限？該帳號將可查看與修改員工的身份證號、戶籍地址等敏感資料（每次顯示明文都會留下存取紀錄）。`}
+                    variant="secondary"
+                  />
                 );
               },
             },

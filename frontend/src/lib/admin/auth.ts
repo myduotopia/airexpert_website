@@ -79,10 +79,19 @@ export const getCurrentUserRole = cache(async (): Promise<AdminRole | null> => {
   return isAdminRole(data.role) ? data.role : null;
 });
 
-/** 後台模組授權（與角色正交；見 admin_module_grants / has_module()，spec §3）。 */
-export type AdminModule = "erp" | "service_report";
+/**
+ * 後台模組授權（與角色正交；見 admin_module_grants / has_module()，spec §3）。
+ *   erp            — ERP
+ *   service_report — 機台維護報告單
+ *   hr             — 人事：員工敏感資料（身份證號、地址…，0031）；員工主檔本身仍需 erp 或 service_report
+ */
+export type AdminModule = "erp" | "service_report" | "hr";
 
-const KNOWN_MODULES: readonly AdminModule[] = ["erp", "service_report"];
+export const KNOWN_MODULES: readonly AdminModule[] = [
+  "erp",
+  "service_report",
+  "hr",
+];
 
 /**
  * 取得目前登入者被授權的模組清單（未登入 / 查詢失敗回空陣列）。

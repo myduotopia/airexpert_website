@@ -172,7 +172,7 @@ end $$;
 select emp_test.expect_error($q$insert into employees (name, roles) values ('  amy　wu ', '{sales}')$q$, '23505');
 insert into employees (code, name, roles) values ('E01', '測試甲', '{sales}');
 select emp_test.expect_error($q$insert into employees (code, name, roles) values (' e01 ', '測試乙', '{sales}')$q$, '23505');
-select emp_test.expect_error($q$insert into employees (name, roles) values ('測試丙', '{}')$q$, '23514');
+-- 空角色自 0031 起允許（職務對不到角色的員工不出現在選取器），見 employee_hr_test.sql
 select emp_test.expect_error($q$insert into employees (name, roles) values ('測試丙', '{driver}')$q$, '23514');
 select emp_test.expect_error($q$insert into employees (name, roles) values ('   ', '{sales}')$q$, '23514');
 -- 空白代號不受唯一限制

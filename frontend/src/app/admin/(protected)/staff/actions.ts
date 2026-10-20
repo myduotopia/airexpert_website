@@ -148,3 +148,53 @@ export async function removeSeoManager(id: string): Promise<ActionResult> {
   revalidatePath("/admin/staff");
   return { ok: true };
 }
+
+/**
+ * 可在人員管理頁單獨授予／移除的模組（#257）：目前只有人事（hr，員工敏感資料）。
+ * erp／service_report 仍隨帳號建立流程授權，不在此開放切換。
+ */
+const TOGGLEABLE_MODULES: readonly AdminModule[] = ["hr"];
+
+/**
+ * 授予或移除帳號的模組授權（admin only；DeleteButton／ActionButton 以 bind 帶入參數）。
+ * admin_module_grants 無 insert/delete policy，走 service_role。授予可重複執行（已授權不報錯）。
+ */
+export async function setModuleGrant(
+  userId: string,
+  module: AdminModule,
+  grant: boolean,
+): Promise<ActionResult> {
+  await requireAdmin();
+  if (!TOGGLEABLE_MODULES.includes(module)) {
+    return { ok: false, error: "此模組不可在這裡切換。" };
+  }
+
+  const admin = getAdminSupabase();
+  const { data: target, error: readErr } = await admin
+    .from("admin_profiles")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr.message };
+  if (!target) return { ok: false, error: "找不到該帳號。" };
+
+  if (grant) {
+    const { error } = await admin
+      .from("admin_module_grants")
+      .upsert(
+        { user_id: userId, module },
+        { onConflict: "user_id,module", ignoreDuplicates: true },
+      );
+    if (error) return { ok: false, error: `授權失敗：${error.message}` };
+  } else {
+    const { error } = await admin
+      .from("admin_module_grants")
+      .delete()
+      .eq("user_id", userId)
+      .eq("module", module);
+    if (error) return { ok: false, error: `移除授權失敗：${error.message}` };
+  }
+
+  revalidatePath("/admin/staff");
+  return { ok: true };
+}

@@ -20,3 +20,15 @@ export async function ensureEmployeeAccess(): Promise<{
   }
   return { ok: false, error: EMPLOYEE_FORBIDDEN_MESSAGE };
 }
+
+export const HR_FORBIDDEN_ACTION_MESSAGE = "沒有人事（hr）權限";
+
+/** 敏感資料（hr 模組）權限：有權限回 null；否則回 { ok:false, error }。DB 的 hr_* RPC 另有相同檢查。 */
+export async function ensureHrAccess(): Promise<{
+  ok: false;
+  error: string;
+} | null> {
+  return (await hasModule("hr"))
+    ? null
+    : { ok: false, error: HR_FORBIDDEN_ACTION_MESSAGE };
+}

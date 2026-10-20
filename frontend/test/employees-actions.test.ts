@@ -170,8 +170,8 @@ describe("createEmployeeAction", () => {
     });
   });
 
-  it("驗證失敗（無角色）→ 不碰 DB", async () => {
-    const res = await createEmployeeAction(emptyEmployeeInput({ name: "甲" }));
+  it("驗證失敗（姓名空白）→ 不碰 DB", async () => {
+    const res = await createEmployeeAction(emptyEmployeeInput({ name: "  " }));
     expect(res.ok).toBe(false);
     expect(recorded).toHaveLength(0);
   });
