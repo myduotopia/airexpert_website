@@ -90,8 +90,10 @@ alter table employees add constraint employees_name_check
   check (btrim(name) <> '' and char_length(name) <= 50);
 
 alter table employees drop constraint if exists employees_roles_check;
+-- 允許值與 0031 同步（加入 office／manager、允許空陣列）：本檔可重跑，若在 0031 之後重跑仍是舊條件，
+-- 既有的內勤／負責人／無角色員工會讓約束建立失敗。之後調整角色時請一併更新此處與 0031。
 alter table employees add constraint employees_roles_check
-  check (cardinality(roles) >= 1 and roles <@ array['sales', 'technician']::text[]);
+  check (roles <@ array['sales', 'technician', 'office', 'manager']::text[]);
 
 create unique index if not exists employees_code_key on employees (lower(btrim(code)))
   where code is not null and btrim(code) <> '';

@@ -141,7 +141,10 @@ update employees set admin_profile_id = '00000000-0000-0000-0000-0000000001a4'
 select hr_test.expect_error($q$update employees set admin_profile_id = '00000000-0000-0000-0000-0000000001a4' where id = '00000000-0000-0000-0000-0000000002b2'$q$, '23505');
 select hr_test.expect_error($q$update employees set admin_profile_id = gen_random_uuid() where id = '00000000-0000-0000-0000-0000000002b2'$q$, '23503');
 delete from admin_module_grants where user_id = '00000000-0000-0000-0000-0000000001a4';
+-- 刪除帳號（人員管理頁走 service_role）→ cascade set null 不受 admin_profile_id 防護擋下
+set local role service_role;
 delete from admin_profiles where id = '00000000-0000-0000-0000-0000000001a4';
+reset role;
 do $$ begin
   assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000002b1') is null,
     '刪除後台帳號 → admin_profile_id 設為 null';
@@ -150,6 +153,30 @@ end $$;
 -- 恢復 office 帳號（後續測試用）
 insert into admin_profiles (id, role, email) values
   ('00000000-0000-0000-0000-0000000001a4', 'office', 'office-test@example.invalid');
+
+-- admin_profile_id 防護：erp／service_report 不可設定或改成另一個帳號（日後對應登入身分，屬提權），可清除；
+-- hr 與維運身分（postgres）可設定。
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a2","role":"authenticated"}';  -- erp
+select hr_test.expect_error($q$update employees set admin_profile_id = '00000000-0000-0000-0000-0000000001a2' where id = '00000000-0000-0000-0000-0000000002b2'$q$, 'admin_link_forbidden');
+select hr_test.expect_error($q$insert into employees (name, roles, admin_profile_id) values ('測試連結', '{sales}', '00000000-0000-0000-0000-0000000001a2')$q$, 'admin_link_forbidden');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a3","role":"authenticated"}';  -- service_report
+select hr_test.expect_error($q$update employees set admin_profile_id = '00000000-0000-0000-0000-0000000001a3' where id = '00000000-0000-0000-0000-0000000002b2'$q$, 'admin_link_forbidden');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a1","role":"authenticated"}';  -- hr
+update employees set admin_profile_id = '00000000-0000-0000-0000-0000000001a4' where id = '00000000-0000-0000-0000-0000000002b2';
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a2","role":"authenticated"}';  -- erp
+select hr_test.expect_error($q$update employees set admin_profile_id = '00000000-0000-0000-0000-0000000001a2' where id = '00000000-0000-0000-0000-0000000002b2'$q$, 'admin_link_forbidden');
+do $$ begin
+  -- 不動 admin_profile_id 的一般更新照常（含 set 成相同值）
+  update employees set note = '測試備註', admin_profile_id = admin_profile_id where id = '00000000-0000-0000-0000-0000000002b2';
+  assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000002b2')
+         = '00000000-0000-0000-0000-0000000001a4', 'hr 設定的連結保留';
+  -- 清除不會提權 → 允許
+  update employees set admin_profile_id = null where id = '00000000-0000-0000-0000-0000000002b2';
+  assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000002b2') is null, 'erp 可清除連結';
+  raise notice 'ok  admin_profile_id 只限 hr／維運身分設定';
+end $$;
+reset role;
 
 -- ============================================================
 -- 3) 遮罩格式（hr_mask_private，postgres 直接呼叫）
@@ -229,6 +256,30 @@ end $$;
 -- psql 以 postgres 登入但 set role authenticated（無 hr）→ 不算維運身分
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a2","role":"authenticated"}';
 select hr_test.expect_error($q$select hr_import_employee_private('[]')$q$, 'forbidden');
+-- 偽造維運身分（模擬 PostgREST：以非超級使用者 authenticator 登入後 set local role authenticated）：
+-- GUC role 只能 set 成 session user 是成員的角色；自訂 GUC、JWT 內的 role、set role none 都不會變成維運身分
+reset role;
+create role hr_test_authenticator nologin noinherit;
+grant authenticated, anon, service_role to hr_test_authenticator;
+grant usage on schema hr_test to hr_test_authenticator;
+grant execute on all functions in schema hr_test to hr_test_authenticator;
+set local session authorization hr_test_authenticator;
+set local role authenticated;
+select hr_test.expect_error($q$select set_config('role', 'postgres', true)$q$, '42501');
+select hr_test.expect_error($q$set role postgres$q$, '42501');
+-- （set session authorization 的拒絕需以非超級使用者「登入」才測得到；本測試的登入者是 postgres，略過）
+select hr_test.expect_error($q$select hr_caller_is_maintenance()$q$, '42501');
+select set_config('request.jwt.claim.role', 'postgres', true), set_config('app.role', 'postgres', true);
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a2","role":"postgres"}';
+select hr_test.expect_error($q$select hr_import_employee_private('[]')$q$, 'forbidden');
+set local role service_role;
+select hr_test.expect_error($q$select hr_import_employee_private('[]')$q$, '42501');
+set local role none;   -- 回到 session user（authenticator）：不是 postgres
+select hr_test.expect_error($q$select hr_import_employee_private('[]')$q$, '42501');
+reset session authorization;
+reset role;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a2","role":"authenticated"}';
 
 set local role anon;
 select hr_test.expect_error($q$select hr_get_employee_private('00000000-0000-0000-0000-0000000002b1')$q$, '42501');
@@ -315,14 +366,23 @@ select hr_test.expect_error($q$update employee_private_access_log set field = 'x
 select hr_test.expect_error($q$delete from employee_private_access_log$q$, '42501');
 select hr_test.expect_error($q$insert into employee_private_access_log (actor_role, employee_id, field, action) values ('x', gen_random_uuid(), 'x', 'reveal')$q$, '42501');
 
--- 只有 hr、沒有 erp 的帳號：可用 hr_* RPC，但讀不到 employees（員工主檔 RLS 沿用 0027）
+-- 只有 hr、沒有 erp 的帳號：可用 hr_* RPC，也可維護員工主檔（0031 §7c 的 hr policy），
+-- 但不因此取得 erp_*／sr_* 的權限
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a6","role":"authenticated"}';
 do $$ begin
-  assert (select count(*) from employees) = 0, 'hr-only 讀不到 employees';
+  assert (select count(*) from employees) > 0, 'hr-only 讀得到 employees';
   assert hr_get_employee_private('00000000-0000-0000-0000-0000000002b1')->'fields'->>'national_id' = 'Z99*****99',
     'hr-only 可讀遮罩值';
-  raise notice 'ok  hr-only：RPC 可用、employees 依 0027 不可讀';
+  insert into employees (name, roles) values ('測試員庚', '{office}');
+  update employees set note = 'hr 備註' where id = hr_test.emp('測試員庚');
+  assert (select note from employees where id = hr_test.emp('測試員庚')) = 'hr 備註', 'hr-only 可新增、修改員工';
+  delete from employees where id = hr_test.emp('測試員庚');
+  assert hr_test.emp('測試員庚') is null, 'hr-only 可刪除員工';
+  assert (select count(*) from erp_documents) = 0 and (select count(*) from sr_reports) = 0
+         and (select count(*) from mx_customers) = 0, 'hr-only 讀不到 erp／sr 資料';
+  raise notice 'ok  hr-only：RPC 可用、可維護員工主檔、無 erp／sr 權限';
 end $$;
+select hr_test.expect_error($q$insert into erp_items (code, name) values ('HRX', '測試')$q$, '42501');
 
 -- 已有紀錄時，erp 仍讀不到
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a2","role":"authenticated"}';
@@ -468,17 +528,35 @@ begin
 end $$;
 
 -- ============================================================
--- 10) 刪除員工（未被引用）→ 敏感資料 cascade、紀錄保留
+-- 10) 刪除員工（未被引用）：有敏感資料 → 只有 hr／維運身分可刪（cascade、留 delete 紀錄）
 -- ============================================================
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a2","role":"authenticated"}';  -- erp
+select hr_test.expect_error($q$delete from employees where id = '00000000-0000-0000-0000-0000000002b3'$q$, 'employee_has_private');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a3","role":"authenticated"}';  -- service_report
+select hr_test.expect_error($q$delete from employees where id = '00000000-0000-0000-0000-0000000002b3'$q$, 'employee_has_private');
+-- 敏感資料列存在但全部為空 → erp 照常可刪（cascade）
+reset role;
+insert into employees (id, name, roles) values ('00000000-0000-0000-0000-0000000002b9', '測試員辛', '{sales}');
+insert into employee_private (employee_id) values ('00000000-0000-0000-0000-0000000002b9');
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a2","role":"authenticated"}';  -- erp
+delete from employees where id = '00000000-0000-0000-0000-0000000002b9';
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a1","role":"authenticated"}';  -- hr
 delete from employees where id = '00000000-0000-0000-0000-0000000002b3';
 reset role;
 do $$ begin
+  assert not exists (select 1 from employees where id = '00000000-0000-0000-0000-0000000002b9')
+     and not exists (select 1 from employee_private where employee_id = '00000000-0000-0000-0000-0000000002b9'),
+    '空的敏感資料列不擋刪除';
   assert not exists (select 1 from employee_private where employee_id = '00000000-0000-0000-0000-0000000002b3'),
-    '刪除員工 → 敏感資料一併刪除';
+    'hr 刪除員工 → 敏感資料一併刪除';
   assert exists (select 1 from employee_private_access_log where employee_id = '00000000-0000-0000-0000-0000000002b3'),
     '存取紀錄保留';
-  raise notice 'ok  刪除員工 cascade、紀錄保留';
+  assert (select array_agg(field order by field) from employee_private_access_log
+           where employee_id = '00000000-0000-0000-0000-0000000002b3' and action = 'delete'
+             and user_id = '00000000-0000-0000-0000-0000000001a1')
+         = array['education', 'emergency_contact'], 'hr 刪除時每個非空欄位一筆 delete 紀錄';
+  raise notice 'ok  刪除有敏感資料的員工只限 hr、cascade、紀錄保留';
 end $$;
 
 -- ============================================================

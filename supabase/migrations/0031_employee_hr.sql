@@ -7,7 +7,8 @@
 --   * employee_private：身份證號、戶籍地址、聯絡人原文、婚姻、學歷、經歷，以 pgcrypto
 --     extensions.pgp_sym_encrypt（AES-256）加密成 bytea。RLS 啟用、無任何 policy，且撤銷
 --     anon／authenticated／service_role 全部權限——只能透過下列 security definer RPC 讀寫。
---   * employee_private_access_log：顯示明文、寫入、匯入的存取紀錄；hr 可讀，任何身分皆不可改刪（觸發器）。
+--   * employee_private_access_log：顯示明文、寫入、匯入、刪除的存取紀錄；hr 可讀，API 角色不可改刪，
+--     postgres 亦被觸發器擋下（維運清理方式見 §4 註解）。
 --   * 模組 hr：admin_module_grants 模組檢查放寬為 ('erp','service_report','hr')；不 seed 任何授權。
 --   * RPC（security definer、search_path = public, pg_temp，開頭檢查 has_module('hr')，否則 forbidden）：
 --       hr_get_employee_private(employee_id)              → 遮罩值（不含明文）
@@ -27,8 +28,9 @@
 -- ⚠️ 套用正式 DB 前需使用者確認並先備份（pooler 連線或 SQL Editor，身分須為 postgres）。
 -- ⚠️ 須先於前端程式上線：新版程式會 select／寫入新欄位與呼叫 hr_* RPC；舊程式搭配本檔不受影響
 --    （只多出可空欄位、放寬的約束、新表與新函式）。
--- ⚠️ 本檔之後不可再重跑 0021（會把模組檢查改回 ('erp','service_report')，已授權的 hr 列使約束建立失敗）
---    或 0027（會把 roles 檢查改回兩種角色且至少一個）。local-db.sh 因此把 0031 放在最後重跑。
+-- 重跑順序：0021／0027 的模組與角色檢查已改為與本檔相同的允許值（review 修正），本檔之後重跑 0021／0027
+--    不會因已授權的 hr 或 office／manager／空角色員工而失敗；但重跑 0027 會把 employees 的表註解改回，
+--    重跑後請再重跑本檔。local-db.sh 以有 hr 授權與新角色資料的狀態實測此順序。
 -- 本檔可重複執行：add column if not exists、create table / index if not exists、create or replace function、
 --   drop policy / trigger / constraint if exists 後再建立；只做加法，不刪資料。
 --
@@ -42,10 +44,11 @@
 --   3. department（部門）為唯一新增的保留欄位：公司擴編後業務／服務／管理部門的列表篩選與報表彙總需要，
 --      且無法由 title（職務原文、格式不一）可靠推得。其他（員工 email、分機…）待有需求再加。
 --   4. admin_profile_id：on delete set null（刪除後台帳號不影響員工主檔），唯一（一個帳號至多對應一位員工）。
---      目前 erp／service_report 使用者依 0027 的 RLS 也能寫此欄，但沒有 UI、也沒有任何程式依此授權；
---      日後若用於授權判斷，需改為只有 admin／hr 可設定。
+--      日後會用來對應登入身分 → 設定／改成另一個帳號只限 hr 或維運身分（觸發器 employees_admin_profile_guard，§7b）；
+--      erp／service_report 使用者依 0027 的 RLS 可寫整列，但寫入非空值會被擋。
 --   5. employee_private 的 FK 為 on delete cascade（依 #257 設計）：刪除員工（僅限未被任何單據引用者，
---      0027 的 restrict）會一併刪除其敏感資料。erp 使用者因此可間接刪除未被引用員工的敏感資料。
+--      0027 的 restrict）會一併刪除其敏感資料。有敏感資料的員工只有 hr 或維運身分能刪除
+--      （觸發器 employees_private_delete_guard，§7a），hr 刪除時留下 action = 'delete' 的存取紀錄。
 --   6. hr_upsert_employee_private 的 fields 為 jsonb 物件，以「鍵是否存在」表達語意：
 --        鍵不存在 → 不變；值為 null 或去頭尾空白後為空字串 → 清除；其他字串 → 加密寫入。未知鍵 → validation。
 --      hr_import_employee_private 只寫非空值（空白儲存格不清除既有資料），且解密比對後內容相同就不重寫、
@@ -66,6 +69,7 @@
 --      空值回 null（前端顯示「未填寫」）。
 --   9. 存取紀錄不設 employees 外鍵：員工刪除後紀錄仍保留（稽核用）；actor_email 於寫入當下由
 --      admin_profiles 帶入，hr 檢視紀錄時不需讀取其他人的後台帳號資料。
+--   10. hr 模組本身即可維護員工主檔的非敏感欄位（§7c 的 hr policy），不必另外授予 erp／service_report。
 
 -- ============================================================
 -- 0) pgcrypto（Supabase 已預設安裝於 extensions schema）
@@ -189,9 +193,13 @@ create table if not exists employee_private_access_log (
   actor_role  text not null,                       -- 呼叫者資料庫角色（authenticated／postgres）
   employee_id uuid not null,                       -- 不設外鍵：員工刪除後紀錄仍保留
   field       text not null,
-  action      text not null check (action in ('reveal', 'write', 'import')),
+  action      text not null,
   at          timestamptz not null default now()
 );
+-- 具名約束（drop／add 讓重跑能更新允許值；'delete' = hr 刪除有敏感資料的員工，見 §7）
+alter table employee_private_access_log drop constraint if exists employee_private_access_log_action_check;
+alter table employee_private_access_log add constraint employee_private_access_log_action_check
+  check (action in ('reveal', 'write', 'import', 'delete'));
 create index if not exists employee_private_access_log_employee_idx
   on employee_private_access_log (employee_id, at desc);
 
@@ -203,6 +211,15 @@ drop policy if exists "hr select access log" on employee_private_access_log;
 create policy "hr select access log" on employee_private_access_log
   for select to authenticated using ((select has_module('hr')));
 
+-- 不可改刪：API 角色本來就沒有 update／delete／truncate 權限；以下觸發器再擋住 postgres 等擁有者身分的
+-- 誤操作（含 truncate）。觸發器不是對資料表擁有者的絕對保證——擁有者（postgres）可停用觸發器，
+-- 這也是唯一的維運清理方式（例如依個資保存期限刪除過舊紀錄），須經使用者同意、先備份，並在單一交易內完成：
+--   begin;
+--   alter table employee_private_access_log disable trigger employee_private_access_log_no_change;
+--   delete from employee_private_access_log where at < now() - interval '<保存期限>';
+--   alter table employee_private_access_log enable trigger employee_private_access_log_no_change;
+--   commit;
+-- （alter table 在交易內持有 access exclusive 鎖，期間 hr 的 reveal 會等待；commit 後恢復。）
 create or replace function employee_private_access_log_immutable()
 returns trigger
 language plpgsql
@@ -722,3 +739,92 @@ grant execute on function hr_get_employee_private(uuid) to authenticated;
 grant execute on function hr_reveal_employee_private(uuid, text) to authenticated;
 grant execute on function hr_upsert_employee_private(uuid, jsonb) to authenticated;
 grant execute on function hr_import_employee_private(jsonb) to authenticated;
+
+-- ============================================================
+-- 7) employees 寫入防護（review 修正，決策 4、5 的風險）
+-- ============================================================
+-- (a) 刪除有敏感資料的員工：employee_private 為 on delete cascade，erp／service_report 使用者依 0027 的
+--     RLS 可以刪除未被引用的員工，等於間接刪除他看不到的敏感資料。改為：員工的 employee_private 有任何
+--     非空欄位時，只有 hr 或維運身分能刪除（其他人回 employee_has_private，前端提示改為停用）；
+--     hr 刪除時每個非空欄位寫一筆 action = 'delete' 的存取紀錄。沒有敏感資料（或整列皆空）照常 cascade。
+--     以觸發器而非改 FK：保留 cascade 讓 hr 刪除時不留孤兒列，且錯誤訊息明確。
+create or replace function employees_guard_private_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row   employee_private;
+  v_field text;
+begin
+  select * into v_row from employee_private where employee_id = old.id;
+  if v_row.employee_id is null then
+    return old;
+  end if;
+  if not (coalesce(has_module('hr'), false) or hr_caller_is_maintenance()) then
+    if v_row.national_id_enc is not null or v_row.household_address_enc is not null
+       or v_row.emergency_contact_enc is not null or v_row.marital_enc is not null
+       or v_row.education_enc is not null or v_row.experience_enc is not null then
+      raise exception using errcode = 'P0001', message = 'employee_has_private',
+        detail = '此員工有人事敏感資料，只有人事（hr）權限可以刪除；請改為停用';
+    end if;
+    return old;
+  end if;
+  foreach v_field in array hr_private_fields() loop
+    if hr_private_cipher(v_row, v_field) is not null then
+      perform hr_log_access(old.id, v_field, 'delete');
+    end if;
+  end loop;
+  return old;
+end;
+$$;
+revoke execute on function employees_guard_private_delete() from public, anon, authenticated, service_role;
+
+drop trigger if exists employees_private_delete_guard on employees;
+create trigger employees_private_delete_guard before delete on employees
+  for each row execute function employees_guard_private_delete();
+
+-- (b) admin_profile_id（日後對應登入身分）：只有 hr 或維運身分能設定或改成另一個帳號；
+--     其他人（erp／service_report 依 0027 的 RLS 可寫整列）寫入非空值 → admin_link_forbidden。
+--     清除（改為 null）不限制：不會提權，且 admin_profiles 刪除時 on delete set null 需要（該 cascade
+--     由刪除帳號的身分觸發，通常是 service_role）。本次沒有 UI 設定此欄。
+create or replace function employees_guard_admin_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.admin_profile_id is not null
+     and (tg_op = 'INSERT' or new.admin_profile_id is distinct from old.admin_profile_id)
+     and not (coalesce(has_module('hr'), false) or hr_caller_is_maintenance()) then
+    raise exception using errcode = 'P0001', message = 'admin_link_forbidden',
+      detail = '只有人事（hr）權限可以連結員工與後台帳號';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function employees_guard_admin_profile() from public, anon, authenticated, service_role;
+
+drop trigger if exists employees_admin_profile_guard on employees;
+create trigger employees_admin_profile_guard before insert or update of admin_profile_id on employees
+  for each row execute function employees_guard_admin_profile();
+
+-- (c) 只有 hr、沒有 erp／service_report 的帳號（例如人事主管）也能維護員工主檔（非敏感欄位），
+--     不必為了進員工頁而多授予 ERP（含財務資料）權限。以「另外的」具名 policy 加在 0027 的 policy 旁
+--     （permissive policy 以 OR 合併）：重跑 0027 只會重建它自己的 policy，不會移除這些。
+--     只影響 employees；hr 不因此取得任何 erp_*／sr_* 表或頁面的權限。
+drop policy if exists "hr select employees" on employees;
+create policy "hr select employees" on employees
+  for select to authenticated using ((select has_module('hr')));
+drop policy if exists "hr insert employees" on employees;
+create policy "hr insert employees" on employees
+  for insert to authenticated with check ((select has_module('hr')));
+drop policy if exists "hr update employees" on employees;
+create policy "hr update employees" on employees
+  for update to authenticated
+  using ((select has_module('hr'))) with check ((select has_module('hr')));
+drop policy if exists "hr delete employees" on employees;
+create policy "hr delete employees" on employees
+  for delete to authenticated using ((select has_module('hr')));

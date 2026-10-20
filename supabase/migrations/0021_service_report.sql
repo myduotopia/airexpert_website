@@ -50,8 +50,10 @@ begin
   end loop;
 end $$;
 
+-- 允許值與之後的 migration 同步（0031 加入 hr）：本檔可重跑，若在 0031 之後重跑仍只列 erp／service_report，
+-- 已授權的 hr 列會讓約束建立失敗。新增模組時請一併更新此處。
 alter table admin_module_grants add constraint admin_module_grants_module_check
-  check (module in ('erp', 'service_report'));
+  check (module in ('erp', 'service_report', 'hr'));
 
 -- seed：僅 office@airexpert.com.tw（帳號不存在時不插入任何列）
 insert into admin_module_grants (user_id, module)

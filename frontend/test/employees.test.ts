@@ -7,6 +7,7 @@ import {
   employeeRolesText,
   employeeWriteError,
   EMPLOYEE_CODE_TAKEN_MESSAGE,
+  EMPLOYEE_HAS_PRIVATE_MESSAGE,
   EMPLOYEE_IN_USE_MESSAGE,
   EMPLOYEE_NAME_TAKEN_MESSAGE,
   emptyEmployeeInput,
@@ -135,6 +136,15 @@ describe("employeeWriteError", () => {
       "離職日不可早於到職日",
     );
     expect(employeeWriteError({ message: "boom" })).toBe("儲存失敗：boom");
+  });
+
+  it("0031 觸發器：有敏感資料不可刪、後台帳號連結只限 hr", () => {
+    expect(
+      employeeWriteError({ code: "P0001", message: "employee_has_private" }),
+    ).toBe(EMPLOYEE_HAS_PRIVATE_MESSAGE);
+    expect(
+      employeeWriteError({ code: "P0001", message: "admin_link_forbidden" }),
+    ).toContain("人事（hr）");
   });
 });
 

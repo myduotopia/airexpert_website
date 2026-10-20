@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // 員工主檔 server actions（#223）測試。以假的 supabase query builder 記錄送進 DB 的操作：
-//   1. 權限：erp 或 service_report 任一模組即可；皆無 → 拒絕且不碰 DB
+//   1. 權限：erp、service_report 或 hr 任一模組即可；皆無 → 拒絕且不碰 DB
 //   2. 輸入正規化後寫入 employees；建立後回傳選取器選項（EMPLOYEE_OPTION_COLUMNS）
 //   3. 姓名／代號唯一（23505）、被引用不可刪（23503）→ 中文訊息
 //   4. 更新／刪除 0 列 → 找不到
@@ -94,6 +94,7 @@ import {
 import { EMPLOYEE_FORBIDDEN_MESSAGE } from "@/lib/employees/guard";
 import {
   EMPLOYEE_CODE_TAKEN_MESSAGE,
+  EMPLOYEE_HAS_PRIVATE_MESSAGE,
   EMPLOYEE_IN_USE_MESSAGE,
   EMPLOYEE_NAME_TAKEN_MESSAGE,
   emptyEmployeeInput,
@@ -115,7 +116,7 @@ beforeEach(() => {
   modules = ["erp"];
 });
 
-describe("權限：erp 或 service_report 任一即可", () => {
+describe("權限：erp、service_report 或 hr 任一即可", () => {
   const input = emptyEmployeeInput({ name: "王小明", roles: ["sales"] });
 
   it("皆無 → 拒絕，不碰 DB", async () => {
@@ -128,6 +129,14 @@ describe("權限：erp 或 service_report 任一即可", () => {
       expect(res).toEqual({ ok: false, error: EMPLOYEE_FORBIDDEN_MESSAGE });
     }
     expect(recorded).toHaveLength(0);
+  });
+
+  it("只有 hr（人事主管，#257）→ 可維護員工主檔", async () => {
+    modules = ["hr"];
+    responses["employees:insert"] = () => ({ data: OPTION, error: null });
+    const res = await createEmployeeAction(input);
+    expect(res.ok).toBe(true);
+    expect(recorded).toHaveLength(1);
   });
 
   it("只有 service_report（維護報告單使用者）→ 可就地新增師傅", async () => {
@@ -256,6 +265,15 @@ describe("deleteEmployeeAction", () => {
     });
     const res = await deleteEmployeeAction(EMP_ID);
     expect(res).toEqual({ ok: false, error: EMPLOYEE_IN_USE_MESSAGE });
+  });
+
+  it("有敏感資料、非 hr（0031 觸發器 employee_has_private）→ 請改為停用", async () => {
+    responses["employees:delete"] = () => ({
+      data: null,
+      error: { code: "P0001", message: "employee_has_private" },
+    });
+    const res = await deleteEmployeeAction(EMP_ID);
+    expect(res).toEqual({ ok: false, error: EMPLOYEE_HAS_PRIVATE_MESSAGE });
   });
 
   it("未被引用 → 刪除", async () => {

@@ -92,6 +92,17 @@ for f in "$ROOT"/migrations/*.sql; do
   psql_run -1 < "$f"
 done
 
+# 以下重跑在「已有 hr 授權與 office／manager／空角色員工」的狀態下進行：0031 之後重跑 0021／0027
+# 不可因收窄的模組／角色檢查而失敗。資料全為虛構，重跑完即刪除（最後「確認 rollback 未留資料」會檢查）。
+echo "==> 放入重跑用資料（hr 授權、新角色員工）"
+psql_run <<'SQL'
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000f0a1', 'rerun-test@example.invalid');
+insert into admin_module_grants (user_id, module) values ('00000000-0000-0000-0000-00000000f0a1', 'hr');
+insert into employees (id, name, roles) values
+  ('00000000-0000-0000-0000-00000000f0b1', '重跑測試甲', '{office,manager}'),
+  ('00000000-0000-0000-0000-00000000f0b2', '重跑測試乙', '{}');
+SQL
+
 echo "==> 重跑 0020（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0020_erp_foundation.sql"
 
@@ -130,9 +141,16 @@ psql_run -1 < "$ROOT/migrations/0029_payment_offset_refund.sql"
 echo "==> 重跑 0030（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0030_refund_cap_open_receivable.sql"
 
-# 0031 放寬 0021 的模組檢查與 0027 的角色檢查（重跑 0021／0027 會改回舊約束），需在其後、放最後重跑。
+# 0031 放寬 0021 的模組檢查與 0027 的角色檢查；0021／0027 的約束已同步為相同允許值。
 echo "==> 重跑 0031（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0031_employee_hr.sql"
+
+echo "==> 移除重跑用資料"
+psql_run <<'SQL'
+delete from employees where id in ('00000000-0000-0000-0000-00000000f0b1', '00000000-0000-0000-0000-00000000f0b2');
+delete from admin_module_grants where user_id = '00000000-0000-0000-0000-00000000f0a1';
+delete from auth.users where id = '00000000-0000-0000-0000-00000000f0a1';
+SQL
 
 echo "==> 執行 erp_posting_test.sql"
 psql_run < "$ROOT/tests/erp_posting_test.sql"

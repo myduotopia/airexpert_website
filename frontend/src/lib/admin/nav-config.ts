@@ -108,14 +108,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "維護",
   },
   // 員工主檔（#223，業務／維修師傅）：ERP 與維護報告單共用，路由 /admin/employees。
-  // 側欄只給 service_report 使用者一個入口（放在「維護」分組）；ERP 使用者從「基本資料」頁內的
+  // 側欄只給 service_report 與 hr（人事，#257）使用者一個入口（放在「維護」分組）；ERP 使用者從「基本資料」頁內的
   // 「員工」tab 進入（見 NAV_ACTIVE_ALIASES），避免只有 ERP 的人看到「維護」分組標題。
   {
     key: "employees",
     label: "員工",
     href: "/admin/employees",
     enabled: true,
-    modules: ["service_report"],
+    modules: ["service_report", "hr"],
     group: "維護",
   },
   // ── ERP（spec §3.2 / §6）：以模組授權 gating，與角色無關。

@@ -332,13 +332,13 @@ describe("機台維護報告單（service_report 模組 gating）", () => {
 });
 
 describe("員工主檔（#223，ERP 與維護報告單共用）", () => {
-  it("項目設定：/admin/employees、service_report 模組、group 維護", () => {
+  it("項目設定：/admin/employees、service_report／hr 模組、group 維護", () => {
     expect(ADMIN_NAV.find((i) => i.key === "employees")).toEqual({
       key: "employees",
       label: "員工",
       href: "/admin/employees",
       enabled: true,
-      modules: ["service_report"],
+      modules: ["service_report", "hr"],
       group: "維護",
     });
   });
@@ -362,6 +362,11 @@ describe("員工主檔（#223，ERP 與維護報告單共用）", () => {
       const hrefs = navForUser("office", [...mods]).map((i) => i.href);
       expect(activeNavHref("/admin/employees", hrefs)).toBe("/admin/employees");
     }
+  });
+
+  it("只有 hr（#257）：側欄只多「員工」，看不到 ERP 與機台維護報告單", () => {
+    const nav = navForUser("erp", ["hr"]);
+    expect(nav.map((i) => i.key)).toEqual(["employees"]);
   });
 
   it("無模組：看不到員工", () => {

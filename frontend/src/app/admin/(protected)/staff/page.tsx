@@ -87,7 +87,7 @@ export default async function AdminStaffPage() {
         <p className="text-text-muted mt-2 text-[14px]">
           「人事權限」（hr
           模組）可查看與修改員工的身份證號、戶籍地址等敏感資料，只授予需要的人；
-          員工主檔本身仍需 ERP 或機台維護報告單模組才能進入。
+          只有人事權限的帳號只能進入員工頁，看不到 ERP 與機台維護報告單。
         </p>
       </div>
 

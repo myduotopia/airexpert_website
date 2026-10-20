@@ -252,8 +252,8 @@ describe("importEmployeesAction", () => {
     },
   ];
 
-  it("沒有 erp／service_report → 拒絕且不碰 DB", async () => {
-    modules = ["hr"];
+  it("沒有 erp／service_report／hr → 拒絕且不碰 DB", async () => {
+    modules = [];
     const res = await importEmployeesAction({ rows, status: "keep" });
     expect(res.ok).toBe(false);
     expect(recorded).toHaveLength(0);

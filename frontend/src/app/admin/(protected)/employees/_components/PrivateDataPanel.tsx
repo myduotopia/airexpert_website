@@ -86,6 +86,8 @@ export function PrivateDataPanel({
         setError(res.error);
         return;
       }
+      // 等待回應期間已切到其他分頁 → 不顯示（與 visibilitychange 恢復遮罩一致）
+      if (document.visibilityState === "hidden") return;
       const n = nowMs();
       setNow(n);
       setRevealed((s) => addReveal(s, field, res.value, n));

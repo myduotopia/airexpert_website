@@ -203,6 +203,9 @@ export const EMPLOYEE_CODE_TAKEN_MESSAGE = "員工代號已存在，請改用其
 export const EMPLOYEE_IN_USE_MESSAGE =
   "此員工已被客戶、單據或維護報告單使用，無法刪除，請改為停用。";
 
+export const EMPLOYEE_HAS_PRIVATE_MESSAGE =
+  "此員工有人事敏感資料，只有人事（hr）權限可以刪除；請改為停用。";
+
 /** employees 寫入錯誤 → 中文訊息（唯一索引、外鍵、check、權限）。 */
 export function employeeWriteError(err: DbError | null | undefined): string {
   const code = err?.code ?? "";
@@ -218,6 +221,12 @@ export function employeeWriteError(err: DbError | null | undefined): string {
     return `員工資料不符規則（姓名必填且不超過 ${EMPLOYEE_NAME_MAX} 字、職務與電話不超過 ${EMPLOYEE_SHORT_TEXT_MAX} 字、離職日不可早於到職日）。`;
   }
   if (code === "42501") return "沒有權限維護員工主檔。";
+  // 0031 §7 的觸發器（P0001）
+  if (err?.message === "employee_has_private")
+    return EMPLOYEE_HAS_PRIVATE_MESSAGE;
+  if (err?.message === "admin_link_forbidden") {
+    return "只有人事（hr）權限可以連結員工與後台帳號。";
+  }
   const msg = err?.message?.trim();
   return msg ? `儲存失敗：${msg}` : "儲存失敗，請稍後再試。";
 }

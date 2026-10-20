@@ -17,10 +17,11 @@
 //     npx tsx scripts/import-employees.ts --file <路徑> --sheet B --status compare --compare-sheet A
 //
 // 連線：DATABASE_URL 會拆成 PGHOST／PGPORT／PGUSER／PGPASSWORD／PGDATABASE 環境變數交給 psql
-// （密碼不出現在命令列參數）；SQL（含敏感資料）經 stdin 傳給 psql，不寫入任何檔案。
+// （密碼不出現在命令列參數）；SQL 與資料經 stdin 傳給 psql，不寫入任何檔案。資料（含敏感欄位）以
+// COPY FROM STDIN 進交易內暫存表，不出現在 SQL 文字裡（語句出錯時 Postgres log 只會記到 SQL，見 copyPayload）。
 // psql 路徑：環境變數 PSQL，否則依序找 /opt/homebrew/opt/libpq/bin/psql、/usr/local/opt/libpq/bin/psql、psql。
 import { spawnSync } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
 import * as cptable from "xlsx/dist/cpexcel.full";
@@ -168,12 +169,27 @@ function psql(env: NodeJS.ProcessEnv, sql: string): string {
   return r.stdout;
 }
 
-/** 以隨機 tag 做 dollar quoting（內容不可能含此 tag，否則重抽）。 */
-function dollar(text: string): string {
-  for (;;) {
-    const tag = `$emp_${randomBytes(6).toString("hex")}$`;
-    if (!text.includes(tag)) return `${tag}${text}${tag}`;
-  }
+/**
+ * 資料（含敏感欄位明文）以 COPY … FROM STDIN 傳進交易內的暫存表（base64，COPY 文字格式不需跳脫），
+ * 而不是寫成 SQL 字面值：伺服器在語句出錯時會把整段 SQL 記進 Postgres log（log_min_error_statement），
+ * 字面值會讓明文進 log；COPY 的資料列不會。暫存表 on commit drop，rollback 時也一併消失。
+ */
+function copyPayload(payloads: Record<string, unknown>): string {
+  const rows = Object.entries(payloads).map(
+    ([k, v]) =>
+      `${k}\t${Buffer.from(JSON.stringify(v), "utf8").toString("base64")}`,
+  );
+  return [
+    "create temp table employee_import_payload (k text primary key, b64 text not null) on commit drop;",
+    "copy employee_import_payload (k, b64) from stdin;",
+    ...rows,
+    "\\.",
+  ].join("\n");
+}
+
+/** 取出 COPY 進暫存表的某份資料（jsonb）。 */
+function payload(k: string): string {
+  return `(select convert_from(decode(b64, 'base64'), 'UTF8')::jsonb from employee_import_payload where k = '${k}')`;
 }
 
 function hideName(name: string, hide: boolean): string {
@@ -217,7 +233,14 @@ function describe(r: PlanRow, hide: boolean): string {
 }
 
 function buildSql(ops: ReturnType<typeof planToOps>, commit: boolean): string {
-  const lines: string[] = ["begin;"];
+  const lines: string[] = [
+    "begin;",
+    copyPayload({
+      inserts: ops.inserts,
+      updates: ops.updates,
+      private: ops.private,
+    }),
+  ];
   if (ops.inserts.length > 0) {
     lines.push(`
 insert into employees (id, code, name, roles, active, title, phone, hired_on, left_on)
@@ -225,7 +248,7 @@ select (x->>'id')::uuid, x->>'code', x->>'name',
        array(select jsonb_array_elements_text(coalesce(x->'roles', '[]'::jsonb))),
        coalesce((x->>'active')::boolean, true), x->>'title', x->>'phone',
        (x->>'hired_on')::date, (x->>'left_on')::date
-  from jsonb_array_elements(${dollar(JSON.stringify(ops.inserts))}::jsonb) x;`);
+  from jsonb_array_elements(${payload("inserts")}) x;`);
   }
   if (ops.updates.length > 0) {
     lines.push(`
@@ -239,12 +262,12 @@ update employees e set
   hired_on = case when u.p ? 'hired_on' then (u.p->>'hired_on')::date   else e.hired_on end,
   left_on  = case when u.p ? 'left_on'  then (u.p->>'left_on')::date    else e.left_on  end
   from (select (x->>'id')::uuid as id, x->'patch' as p
-          from jsonb_array_elements(${dollar(JSON.stringify(ops.updates))}::jsonb) x) u
+          from jsonb_array_elements(${payload("updates")}) x) u
  where e.id = u.id;`);
   }
   if (ops.private.length > 0) {
     lines.push(
-      `select 'private=' || hr_import_employee_private(${dollar(JSON.stringify(ops.private))}::jsonb)::text;`,
+      `select 'private=' || hr_import_employee_private(${payload("private")})::text;`,
     );
   }
   lines.push(

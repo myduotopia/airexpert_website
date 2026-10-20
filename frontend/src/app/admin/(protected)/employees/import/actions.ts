@@ -1,7 +1,7 @@
 "use server";
 
 // 員工匯入 server action（#257）。檔案只在瀏覽器解析，這裡只收「解析後的列」（不收檔案、不存 storage）。
-//   1. ensureEmployeeAccess()（erp 或 service_report）。
+//   1. ensureEmployeeAccess()（erp、service_report 或 hr）。
 //   2. 驗證資料格式；非 hr 使用者一律丟棄敏感欄位（client 端已丟棄，此為第二道防線）。
 //   3. 以最新的既有員工重算寫入計畫（不信任 client 的預覽結果），依計畫新增／更新 employees（RLS 同 0027）。
 //   4. hr 使用者：敏感欄位經 hr_import_employee_private（加密、內容相同不重寫）寫入。
