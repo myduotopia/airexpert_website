@@ -79,10 +79,19 @@ export const getCurrentUserRole = cache(async (): Promise<AdminRole | null> => {
   return isAdminRole(data.role) ? data.role : null;
 });
 
-/** 後台模組授權（與角色正交；見 admin_module_grants / has_module()，spec §3）。 */
-export type AdminModule = "erp" | "service_report";
+/**
+ * 後台模組授權（與角色正交；見 admin_module_grants / has_module()，spec §3）。
+ *   erp            — ERP
+ *   service_report — 機台維護報告單
+ *   hr             — 人事：員工敏感資料（身份證號、地址…，0031），也可維護員工主檔（只有 /admin/employees）
+ */
+export type AdminModule = "erp" | "service_report" | "hr";
 
-const KNOWN_MODULES: readonly AdminModule[] = ["erp", "service_report"];
+export const KNOWN_MODULES: readonly AdminModule[] = [
+  "erp",
+  "service_report",
+  "hr",
+];
 
 /**
  * 取得目前登入者被授權的模組清單（未登入 / 查詢失敗回空陣列）。
@@ -121,7 +130,7 @@ export async function requireModule(module: AdminModule): Promise<void> {
 
 /**
  * 保護 server component / layout：擁有 modules 中任一模組即可，否則導向 /admin。
- * 例：員工主檔（ERP 與機台維護報告單共用）requireAnyModule(["erp", "service_report"])。
+ * 例：員工主檔（ERP、機台維護報告單與人事共用）requireAnyModule(EMPLOYEE_MODULES)。
  * 回傳目前登入者的模組清單（頁面可再依此決定顯示哪些入口）。
  */
 export async function requireAnyModule(

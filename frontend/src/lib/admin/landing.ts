@@ -14,7 +14,7 @@ export function dashboardSectionsFor(role: AdminRole) {
  * 登入者進入 /admin 時應導向的路徑；null = 留在總覽頁。
  * - office → /admin/maintenance（保養記錄卡是其唯一功能）；
  * - 角色本身沒有任何可見區段（例：erp 角色）時，依模組授權導向：
- *   erp → /admin/erp，否則 service_report → /admin/service-reports。
+ *   erp → /admin/erp，否則 service_report → /admin/service-reports，否則 hr → /admin/employees。
  * 只在「確實持有」該模組授權時導向：目標 layout 的 requireModule() 缺授權會
  * 導回 /admin，若無條件導向會變成無限轉址。
  */
@@ -26,5 +26,6 @@ export function landingPathFor(
   if (dashboardSectionsFor(role).length > 0) return null;
   if (modules.includes("erp")) return "/admin/erp";
   if (modules.includes("service_report")) return "/admin/service-reports";
+  if (modules.includes("hr")) return "/admin/employees";
   return null;
 }

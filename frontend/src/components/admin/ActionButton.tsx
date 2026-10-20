@@ -17,6 +17,8 @@ const VARIANT_CLASS = {
     "h-9 rounded-md px-3 text-[13px] font-medium text-red-600 hover:bg-red-50",
   primary:
     "bg-primary hover:bg-primary-deep h-10 justify-center rounded-lg px-4 text-[14px] font-semibold text-white",
+  secondary:
+    "border-border hover:bg-surface-muted h-9 rounded-md border bg-white px-3 text-[13px] font-medium whitespace-nowrap",
 } as const;
 
 export function ActionButton({

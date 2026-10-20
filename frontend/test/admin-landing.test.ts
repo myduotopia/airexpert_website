@@ -25,6 +25,14 @@ describe("landingPathFor", () => {
     );
   });
 
+  it("只有 hr（人事，#257）→ 員工頁；有 erp／service_report 時仍以其為優先", () => {
+    expect(landingPathFor("erp", ["hr"])).toBe("/admin/employees");
+    expect(landingPathFor("erp", ["hr", "erp"])).toBe("/admin/erp");
+    expect(landingPathFor("erp", ["hr", "service_report"])).toBe(
+      "/admin/service-reports",
+    );
+  });
+
   it("沒有授權時不導向（避免與 requireModule 互導的無限轉址）", () => {
     expect(landingPathFor("erp", [])).toBeNull();
   });
