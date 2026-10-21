@@ -8,7 +8,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   4. 沒有編號、離職、已有帳號 → 不呼叫 Auth。
 //   5. 批次只處理在職且尚無帳號者，一位失敗不影響其他人。
 //   6. 重設密碼：先 hr_flag_staff_password_reset（鎖在改密碼頁）再改密碼；RPC 拒絕時不改密碼。
+//      預設同時停用帳號（hr_log_staff_login 稽核 → 同一次 Auth 更新設定密碼與 ban）（#263）。
 //   7. 職位權限不可含 hr；只寫差異。
+//   8. 建立後先停用（#263，預設）：createUser 直接帶 ban_duration；回傳的使用者未停用時以 updateUserById 補設，
+//      補設失敗 → 刪除 auth 使用者，不留下可用預設密碼登入的帳號；批次結果標示已停用。
 
 interface Op {
   table: string;
@@ -101,13 +104,23 @@ const fakeSession = {
 };
 
 type AuthErr = { message: string; code?: string } | null;
+type AuthUser = { id: string; banned_until?: string | null };
+/** 模擬 GoTrue：帶 ban_duration（且不是 none）時回傳的使用者 banned_until 在未來。 */
+const FUTURE = "2126-10-21T00:00:00Z";
+function bannedFor(attrs: unknown): string | null {
+  const d = (attrs as { ban_duration?: string } | null)?.ban_duration;
+  return d && d !== "none" ? FUTURE : null;
+}
 const createUser = vi.fn<
   (
     input: unknown,
-  ) => Promise<{ data: { user: { id: string } } | null; error: AuthErr }>
->(async () => {
+  ) => Promise<{ data: { user: AuthUser } | null; error: AuthErr }>
+>(async (input) => {
   calls.push("auth:createUser");
-  return { data: { user: { id: "new-user-1" } }, error: null };
+  return {
+    data: { user: { id: "new-user-1", banned_until: bannedFor(input) } },
+    error: null,
+  };
 });
 const deleteUser = vi.fn<(id: string) => Promise<{ error: AuthErr }>>(
   async () => {
@@ -116,10 +129,16 @@ const deleteUser = vi.fn<(id: string) => Promise<{ error: AuthErr }>>(
   },
 );
 const updateUserById = vi.fn<
-  (id: string, attrs: unknown) => Promise<{ data: object; error: AuthErr }>
->(async () => {
+  (
+    id: string,
+    attrs: unknown,
+  ) => Promise<{ data: { user?: AuthUser }; error: AuthErr }>
+>(async (id, attrs) => {
   calls.push("auth:updateUserById");
-  return { data: {}, error: null };
+  return {
+    data: { user: { id, banned_until: bannedFor(attrs) } },
+    error: null,
+  };
 });
 const fakeAdmin = {
   auth: { admin: { createUser, deleteUser, updateUserById } },
@@ -186,7 +205,11 @@ describe("非 hr 一律拒絕，且不碰 DB／Auth", () => {
         await createStaffAccountAction(EMP),
         await createStaffAccountsBatchAction(),
         await resetStaffPasswordAction(EMP),
+        await resetStaffPasswordAction(EMP, false),
         await setStaffLoginDisabledAction(EMP, true),
+        await setStaffLoginDisabledAction(EMP, false),
+        await createStaffAccountAction(EMP, false),
+        await createStaffAccountsBatchAction(false),
         await createPositionAction({ name: "測試", description: "" }),
         await deletePositionAction(POS),
         await setPositionModulesAction(POS, ["erp"]),
@@ -200,7 +223,7 @@ describe("非 hr 一律拒絕，且不碰 DB／Auth", () => {
 });
 
 describe("建立帳號（單筆）", () => {
-  it("成功：createUser（email、預設密碼、email_confirm）→ hr session 連結；不回滾", async () => {
+  it("預設（建立後先停用）：createUser 直接帶 ban_duration → hr session 連結；不補設、不回滾", async () => {
     responses["employees:select"] = { data: employee(), error: null };
     const res = await createStaffAccountAction(EMP);
     expect(res).toEqual({ ok: true });
@@ -208,7 +231,38 @@ describe("建立帳號（單筆）", () => {
       email: "z901@airexpert.com.tw",
       password: "00000000",
       email_confirm: true,
+      ban_duration: "876000h",
     });
+    expect(calls).toEqual([
+      "employees:select",
+      "auth:createUser",
+      "rpc:hr_link_staff_account",
+    ]);
+    expect(updateUserById).not.toHaveBeenCalled();
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("只有明確傳 false 才不停用（其他值一律視為先停用）", async () => {
+    responses["employees:select"] = { data: employee(), error: null };
+    for (const v of [true, undefined, "false", 0, null]) {
+      createUser.mockClear();
+      await createStaffAccountAction(EMP, v as unknown as boolean);
+      expect(createUser.mock.calls[0][0], String(v)).toMatchObject({
+        ban_duration: "876000h",
+      });
+    }
+  });
+
+  it("startDisabled = false：createUser（email、預設密碼、email_confirm，不帶 ban）→ hr session 連結；不回滾", async () => {
+    responses["employees:select"] = { data: employee(), error: null };
+    const res = await createStaffAccountAction(EMP, false);
+    expect(res).toEqual({ ok: true });
+    expect(createUser).toHaveBeenCalledWith({
+      email: "z901@airexpert.com.tw",
+      password: "00000000",
+      email_confirm: true,
+    });
+    expect(updateUserById).not.toHaveBeenCalled();
     expect(rpcCalls).toEqual([
       {
         fn: "hr_link_staff_account",
@@ -292,6 +346,93 @@ describe("建立帳號（單筆）", () => {
   });
 });
 
+describe("建立後先停用：Auth 未在建立時停用 → 補設；補設失敗 → 回滾", () => {
+  it("createUser 回傳的使用者未停用 → updateUserById 補設 ban，成功後才連結", async () => {
+    responses["employees:select"] = { data: employee(), error: null };
+    createUser.mockResolvedValueOnce({
+      data: { user: { id: "new-user-1", banned_until: null } },
+      error: null,
+    });
+    const res = await createStaffAccountAction(EMP);
+    expect(res).toEqual({ ok: true });
+    expect(updateUserById).toHaveBeenCalledWith("new-user-1", {
+      ban_duration: "876000h",
+    });
+    // createUser 以 mockResolvedValueOnce 覆寫，不經預設實作，故不在 calls 內
+    expect(createUser).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([
+      "employees:select",
+      "auth:updateUserById",
+      "rpc:hr_link_staff_account",
+    ]);
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("補設 ban 失敗 → 刪除 auth 使用者、不連結，回錯誤", async () => {
+    responses["employees:select"] = { data: employee(), error: null };
+    createUser.mockResolvedValueOnce({
+      data: { user: { id: "new-user-1" } },
+      error: null,
+    });
+    updateUserById.mockResolvedValueOnce({
+      data: {},
+      error: { message: "boom" },
+    });
+    const res = await createStaffAccountAction(EMP);
+    expect(res.ok).toBe(false);
+    expect(!res.ok && res.error).toMatch(/無法停用.*boom.*未建立/);
+    expect(deleteUser).toHaveBeenCalledWith("new-user-1");
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("補設後仍未停用（Auth 回傳未停用）→ 同樣回滾", async () => {
+    responses["employees:select"] = { data: employee(), error: null };
+    createUser.mockResolvedValueOnce({
+      data: { user: { id: "new-user-1" } },
+      error: null,
+    });
+    updateUserById.mockResolvedValueOnce({
+      data: {
+        user: { id: "new-user-1", banned_until: "2020-01-01T00:00:00Z" },
+      },
+      error: null,
+    });
+    const res = await createStaffAccountAction(EMP);
+    expect(res.ok).toBe(false);
+    expect(deleteUser).toHaveBeenCalledWith("new-user-1");
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("補設失敗且回滾也失敗 → 錯誤訊息點名帳號、請管理員刪除", async () => {
+    responses["employees:select"] = { data: employee(), error: null };
+    createUser.mockResolvedValueOnce({
+      data: { user: { id: "new-user-1" } },
+      error: null,
+    });
+    updateUserById.mockResolvedValueOnce({
+      data: {},
+      error: { message: "boom" },
+    });
+    deleteUser.mockResolvedValueOnce({ error: { message: "network" } });
+    const res = await createStaffAccountAction(EMP);
+    expect(!res.ok && res.error).toMatch(
+      /回滾失敗.*z901@airexpert\.com\.tw.*刪除/,
+    );
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("已停用的帳號連結失敗 → 一樣刪除回滾", async () => {
+    responses["employees:select"] = { data: employee(), error: null };
+    rpcResponses.hr_link_staff_account = {
+      data: null,
+      error: { message: "account_not_new" },
+    };
+    const res = await createStaffAccountAction(EMP);
+    expect(res.ok).toBe(false);
+    expect(deleteUser).toHaveBeenCalledWith("new-user-1");
+  });
+});
+
 describe("批次建立", () => {
   it("只查在職且尚無帳號者；逐一建立，失敗者列出、不影響其他人", async () => {
     responses["employees:select"] = {
@@ -329,9 +470,13 @@ describe("批次建立", () => {
     const res = await createStaffAccountsBatchAction();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
+    expect(res.disabled).toBe(true);
     expect(res.created).toEqual([
-      { name: "甲", email: "z901@airexpert.com.tw" },
+      { name: "甲", email: "z901@airexpert.com.tw", disabled: true },
     ]);
+    expect(createUser.mock.calls[0][0]).toMatchObject({
+      ban_duration: "876000h",
+    });
     expect(res.failed.map((f) => f.name)).toEqual(["乙", "丙"]);
     // 離職（離職日已到）的丁不在處理範圍
     expect(createUser).toHaveBeenCalledTimes(2);
@@ -346,10 +491,94 @@ describe("批次建立", () => {
   });
 });
 
+describe("批次建立：建立後先停用的選項", () => {
+  const two = [
+    employee({
+      id: "00000000-0000-0000-0000-0000000000e1",
+      code: "Z901",
+      name: "甲",
+    }),
+    employee({
+      id: "00000000-0000-0000-0000-0000000000e2",
+      code: "Z902",
+      name: "乙",
+    }),
+  ];
+
+  it("預設：每位都帶 ban；某位補設失敗 → 只回滾該位，其他照常", async () => {
+    responses["employees:select"] = { data: two, error: null };
+    createUser
+      .mockResolvedValueOnce({
+        data: { user: { id: "u-1", banned_until: FUTURE } },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: { user: { id: "u-2" } }, error: null });
+    updateUserById.mockResolvedValueOnce({
+      data: {},
+      error: { message: "boom" },
+    });
+    const res = await createStaffAccountsBatchAction();
+    if (!res.ok) throw new Error("expected ok");
+    expect(res.created).toEqual([
+      { name: "甲", email: "z901@airexpert.com.tw", disabled: true },
+    ]);
+    expect(res.failed.map((f) => f.name)).toEqual(["乙"]);
+    expect(deleteUser).toHaveBeenCalledTimes(1);
+    expect(deleteUser).toHaveBeenCalledWith("u-2");
+    expect(
+      rpcCalls.map((c) => (c.args as { p_user_id: string }).p_user_id),
+    ).toEqual(["u-1"]);
+  });
+
+  it("startDisabled = false：不帶 ban、結果標示未停用", async () => {
+    responses["employees:select"] = { data: two, error: null };
+    createUser
+      .mockResolvedValueOnce({ data: { user: { id: "u-1" } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: "u-2" } }, error: null });
+    const res = await createStaffAccountsBatchAction(false);
+    if (!res.ok) throw new Error("expected ok");
+    expect(res.disabled).toBe(false);
+    expect(res.created.every((c) => c.disabled === false)).toBe(true);
+    for (const [input] of createUser.mock.calls) {
+      expect(input).not.toHaveProperty("ban_duration");
+    }
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+});
+
 describe("重設為預設密碼", () => {
-  it("先鎖（hr_flag_staff_password_reset）再把密碼改回 00000000", async () => {
+  it("預設：先鎖（hr_flag_staff_password_reset）→ 停用稽核 → 同一次 Auth 更新改密碼並停用", async () => {
     rpcResponses.hr_flag_staff_password_reset = { data: "user-9", error: null };
+    rpcResponses.hr_log_staff_login = { data: "user-9", error: null };
     const res = await resetStaffPasswordAction(EMP);
+    expect(res).toEqual({ ok: true });
+    expect(calls).toEqual([
+      "rpc:hr_flag_staff_password_reset",
+      "rpc:hr_log_staff_login",
+      "auth:updateUserById",
+    ]);
+    expect(rpcCalls[1].args).toEqual({ p_employee_id: EMP, p_disabled: true });
+    expect(updateUserById).toHaveBeenCalledTimes(1);
+    expect(updateUserById).toHaveBeenCalledWith("user-9", {
+      password: "00000000",
+      ban_duration: "876000h",
+    });
+  });
+
+  it("停用稽核被拒 → 不改密碼也不停用（帳號已在必改密碼狀態）", async () => {
+    rpcResponses.hr_flag_staff_password_reset = { data: "user-9", error: null };
+    rpcResponses.hr_log_staff_login = {
+      data: null,
+      error: { message: "forbidden" },
+    };
+    const res = await resetStaffPasswordAction(EMP);
+    expect(res.ok).toBe(false);
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+
+  it("alsoDisable = false：維持目前的啟用狀態，只改密碼（不寫停用稽核）", async () => {
+    rpcResponses.hr_flag_staff_password_reset = { data: "user-9", error: null };
+    const res = await resetStaffPasswordAction(EMP, false);
     expect(res).toEqual({ ok: true });
     expect(calls).toEqual([
       "rpc:hr_flag_staff_password_reset",
@@ -382,13 +611,13 @@ describe("重設為預設密碼", () => {
       data: {},
       error: { message: "boom" },
     });
-    const res = await resetStaffPasswordAction(EMP);
+    const res = await resetStaffPasswordAction(EMP, false);
     expect(res.ok).toBe(false);
     expect(!res.ok && res.error).toMatch(/下次登入改密碼.*boom/);
   });
 });
 
-describe("停用／恢復登入", () => {
+describe("啟用／停用帳號", () => {
   it("先寫稽核（hr_log_staff_login）再設定 ban_duration", async () => {
     rpcResponses.hr_log_staff_login = { data: "user-9", error: null };
     expect(await setStaffLoginDisabledAction(EMP, true)).toEqual({ ok: true });
@@ -403,6 +632,17 @@ describe("停用／恢復登入", () => {
       { p_employee_id: EMP, p_disabled: true },
       { p_employee_id: EMP, p_disabled: false },
     ]);
+  });
+
+  it("啟用／停用的參數必須是布林值（不明確的值不當成啟用）", async () => {
+    for (const v of [undefined, null, "false", 0, 1]) {
+      const res = await setStaffLoginDisabledAction(
+        EMP,
+        v as unknown as boolean,
+      );
+      expect(res.ok, String(v)).toBe(false);
+    }
+    expect(calls).toEqual([]);
   });
 
   it("RPC 拒絕 → 不呼叫 Auth", async () => {

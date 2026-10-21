@@ -12,7 +12,7 @@ import type { ActionResult } from "@/lib/admin/crud";
 // 看不到「該怎麼處理」（#167 / #168）。
 //
 // 錯誤狀態掛在每個按鈕自己的 state 上，同一張表的不同列不會互相汙染。
-const VARIANT_CLASS = {
+export const ACTION_BUTTON_VARIANT_CLASS = {
   danger:
     "h-9 rounded-md px-3 text-[13px] font-medium text-red-600 hover:bg-red-50",
   primary:
@@ -33,7 +33,7 @@ export function ActionButton({
   pendingLabel: string;
   /** 有給才會先跳確認視窗；不給就直接執行。 */
   confirmText?: string;
-  variant?: keyof typeof VARIANT_CLASS;
+  variant?: keyof typeof ACTION_BUTTON_VARIANT_CLASS;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +66,7 @@ export function ActionButton({
             }
           });
         }}
-        className={`inline-flex items-center transition-colors disabled:opacity-60 ${VARIANT_CLASS[variant]}`}
+        className={`inline-flex items-center transition-colors disabled:opacity-60 ${ACTION_BUTTON_VARIANT_CLASS[variant]}`}
       >
         {pending ? pendingLabel : label}
       </button>

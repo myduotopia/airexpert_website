@@ -13,21 +13,35 @@
 //      { role: 'staff', must_change_password: true }、連結 employees.admin_profile_id、寫稽核。
 //      （employees.admin_profile_id 的觸發器只允許 hr／維運身分，service_role 不行，故必須以 hr 身分執行。）
 //   4. 步驟 3 失敗 → 刪除步驟 2 的 auth 使用者回滾（admin_profiles 與連結在同一交易內，失敗時不會殘留）。
+//   建立後先停用（#263，預設；只有明確傳 false 才不停用）：步驟 2 的 createUser 直接帶 ban_duration（GoTrue
+//     admin 建立使用者支援，AdminUserAttributes.ban_duration），使用者一建立就無法登入。若回傳的使用者沒有停用
+//     （舊版 Auth 忽略此參數），在連結前以 updateUserById 補設；補設失敗或仍未停用 → 刪除 auth 使用者回滾，
+//     不留下可用預設密碼登入的帳號。停用不影響 created_at／last_sign_in_at，hr_link_staff_account 的
+//     「15 分鐘內建立、從未登入」檢查照常通過；0033 起 account_create 稽核的 detail.login_disabled 記錄建立當下
+//     Auth 是否已停用（由 DB 讀 auth.users.banned_until，不是前端宣稱）。
 //
 // 重設為預設密碼：先以 hr session 呼叫 hr_flag_staff_password_reset（設 must_change_password = true、寫稽核，
 //   只限 staff 帳號），再以 service_role 把密碼改回 00000000。順序刻意如此：任何一步失敗時帳號都停在
 //   「必須改密碼」的安全狀態，不會出現「預設密碼但已解鎖」。
-// 停用／恢復登入：hr_log_staff_login（稽核、只限 staff 帳號）→ service_role 設定 ban_duration。
+//   預設同時停用帳號（#263；只有明確傳 false 才維持目前的啟用狀態）：hr_log_staff_login(disabled) 寫停用稽核後，
+//   以「同一次」updateUserById 同時改密碼與設定 ban_duration（Auth 在同一交易內更新），不會出現「已是預設密碼但
+//   尚未停用」的中間狀態；稽核被拒則密碼與停用都不變。員工本人在場時再由人事按「啟用帳號」。
+// 啟用／停用帳號：hr_log_staff_login（稽核 login_enable／login_disable、只限 staff 帳號）→ service_role 設定
+//   ban_duration。稽核動作碼沿用 #261 的 login_enable／login_disable（同一件事：Auth 停用登入），只改顯示標籤，
+//   避免改 DB check 約束與既有紀錄的意義。
 import { revalidatePath } from "next/cache";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase-server";
 import type { ActionResult } from "@/lib/admin/crud";
 import {
+  BAN_FOREVER,
   DEFAULT_STAFF_PASSWORD,
+  isBanned,
   isEmailTakenError,
   isPositionModule,
   staffEmailFor,
   staffRpcError,
+  type BatchCreateResult,
   type PositionModule,
 } from "@/lib/admin/staff-accounts";
 import { ensureHrAccess } from "@/lib/employees/guard";
@@ -37,8 +51,6 @@ import { isEmployeeCurrent, taipeiToday } from "@/lib/employees/status";
 const PAGE = "/admin/employees/permissions";
 const NOT_FOUND = "找不到此員工，請重新整理後再試。";
 const POSITION_NOT_FOUND = "找不到此職位，請重新整理後再試。";
-/** 停用登入的期間（Supabase Auth ban_duration；約 100 年 = 直到人事恢復）。 */
-const BAN_FOREVER = "876000h";
 
 const POSITION_NAME_MAX = 30;
 const POSITION_DESCRIPTION_MAX = 200;
@@ -297,12 +309,23 @@ function accountEligibility(
   return { ok: true, email };
 }
 
-/** 建立一位員工的帳號（呼叫端已確認 hr 權限）。失敗時刪除剛建立的 auth 使用者。 */
+/** 只有明確傳 false 才關閉「先停用」（server action 的參數來自 client，其他值一律走較安全的一方）。 */
+function wantsDisabled(v: unknown): boolean {
+  return v !== false;
+}
+
+/**
+ * 建立一位員工的帳號（呼叫端已確認 hr 權限）。startDisabled 時 auth 使用者一建立就是停用狀態。
+ * 連結失敗、或要求停用卻無法停用時，刪除剛建立的 auth 使用者。
+ */
 async function createAccountFor(
   supabase: Sb,
   e: AccountEmployee,
   today: string,
-): Promise<{ ok: true; email: string } | { ok: false; error: string }> {
+  startDisabled: boolean,
+): Promise<
+  { ok: true; email: string; disabled: boolean } | { ok: false; error: string }
+> {
   const eligible = accountEligibility(e, today);
   if (!eligible.ok) return eligible;
   const { email } = eligible;
@@ -313,6 +336,7 @@ async function createAccountFor(
       email,
       password: DEFAULT_STAFF_PASSWORD,
       email_confirm: true,
+      ...(startDisabled ? { ban_duration: BAN_FOREVER } : {}),
     },
   );
   if (createErr || !created?.user) {
@@ -329,13 +353,10 @@ async function createAccountFor(
   }
 
   const userId = created.user.id;
-  const { error: linkErr } = await supabase.rpc("hr_link_staff_account", {
-    p_employee_id: e.id,
-    p_user_id: userId,
-  });
-  if (linkErr) {
+  const rollback = async (
+    reason: string,
+  ): Promise<{ ok: false; error: string }> => {
     const { error: rollbackErr } = await admin.auth.admin.deleteUser(userId);
-    const reason = staffRpcError(linkErr, "建立帳號失敗。");
     if (rollbackErr) {
       return {
         ok: false,
@@ -343,13 +364,36 @@ async function createAccountFor(
       };
     }
     return { ok: false, error: reason };
+  };
+
+  // 縱深防禦：確認 Auth 真的已停用（舊版 Auth 可能忽略建立時的 ban_duration）→ 補設 → 仍未停用就回滾。
+  if (startDisabled && !isBanned(created.user.banned_until)) {
+    const { data: banned, error: banErr } =
+      await admin.auth.admin.updateUserById(userId, {
+        ban_duration: BAN_FOREVER,
+      });
+    if (banErr || !isBanned(banned?.user?.banned_until)) {
+      return rollback(
+        `登入帳號建立後無法停用${banErr ? `：${banErr.message}` : ""}，已取消，帳號未建立。`,
+      );
+    }
   }
-  return { ok: true, email };
+
+  const { error: linkErr } = await supabase.rpc("hr_link_staff_account", {
+    p_employee_id: e.id,
+    p_user_id: userId,
+  });
+  if (linkErr) return rollback(staffRpcError(linkErr, "建立帳號失敗。"));
+  return { ok: true, email, disabled: startDisabled };
 }
 
-/** 建立單一員工的帳號（預設密碼 00000000，首次登入必須改密碼）。 */
+/**
+ * 建立單一員工的帳號（預設密碼 00000000，首次登入必須改密碼）。
+ * startDisabled（預設 true）：建立後先停用，由人事按「啟用帳號」後員工才能登入。
+ */
 export async function createStaffAccountAction(
   employeeId: string,
+  startDisabled: boolean = true,
 ): Promise<ActionResult> {
   const denied = await ensureHrAccess();
   if (denied) return denied;
@@ -367,23 +411,22 @@ export async function createStaffAccountAction(
     supabase,
     data as AccountEmployee,
     taipeiToday(),
+    wantsDisabled(startDisabled),
   );
   revalidate();
   return res.ok ? { ok: true } : res;
 }
 
-export type BatchCreateResult =
-  | {
-      ok: true;
-      created: { name: string; email: string }[];
-      failed: { name: string; error: string }[];
-    }
-  | { ok: false; error: string };
-
-/** 批次建立：所有在職、有員工編號且尚無帳號的員工（逐一建立，一位失敗不影響其他人）。 */
-export async function createStaffAccountsBatchAction(): Promise<BatchCreateResult> {
+/**
+ * 批次建立：所有在職、有員工編號且尚無帳號的員工（逐一建立，一位失敗不影響其他人）。
+ * startDisabled（預設 true）同單筆建立。
+ */
+export async function createStaffAccountsBatchAction(
+  startDisabled: boolean = true,
+): Promise<BatchCreateResult> {
   const denied = await ensureHrAccess();
   if (denied) return denied;
+  const disabled = wantsDisabled(startDisabled);
   const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("employees")
@@ -398,25 +441,34 @@ export async function createStaffAccountsBatchAction(): Promise<BatchCreateResul
   const targets = ((data ?? []) as AccountEmployee[]).filter((e) =>
     isEmployeeCurrent(e, today),
   );
-  const created: { name: string; email: string }[] = [];
+  const created: { name: string; email: string; disabled: boolean }[] = [];
   const failed: { name: string; error: string }[] = [];
   // 逐一執行（不平行）：Auth admin API 有速率限制，且失敗訊息要能對應到每位員工。
   for (const e of targets) {
-    const res = await createAccountFor(supabase, e, today);
-    if (res.ok) created.push({ name: e.name, email: res.email });
-    else failed.push({ name: e.name, error: res.error });
+    const res = await createAccountFor(supabase, e, today, disabled);
+    if (res.ok) {
+      created.push({ name: e.name, email: res.email, disabled: res.disabled });
+    } else {
+      failed.push({ name: e.name, error: res.error });
+    }
   }
   revalidate();
-  return { ok: true, created, failed };
+  return { ok: true, disabled, created, failed };
 }
 
-/** 重設為預設密碼（00000000），並要求下次登入改密碼。只限員工帳號（staff）。 */
+/**
+ * 重設為預設密碼（00000000），並要求下次登入改密碼。只限員工帳號（staff）。
+ * alsoDisable（預設 true）：同時停用帳號（同一次 Auth 更新），員工本人在場時再由人事啟用；
+ * false → 維持目前的啟用狀態（若帳號已啟用，任何知道員工編號的人都可用預設密碼登入）。
+ */
 export async function resetStaffPasswordAction(
   employeeId: string,
+  alsoDisable: boolean = true,
 ): Promise<ActionResult> {
   const denied = await ensureHrAccess();
   if (denied) return denied;
   if (!isEmployeeId(employeeId)) return { ok: false, error: NOT_FOUND };
+  const disable = wantsDisabled(alsoDisable);
   const supabase = await getServerSupabase();
   const { data: userId, error } = await supabase.rpc(
     "hr_flag_staff_password_reset",
@@ -425,9 +477,24 @@ export async function resetStaffPasswordAction(
   if (error || typeof userId !== "string") {
     return { ok: false, error: staffRpcError(error, "重設密碼失敗。") };
   }
+  if (disable) {
+    const { data: logged, error: logErr } = await supabase.rpc(
+      "hr_log_staff_login",
+      { p_employee_id: employeeId, p_disabled: true },
+    );
+    if (logErr || logged !== userId) {
+      revalidate();
+      return {
+        ok: false,
+        error: `已要求此帳號下次登入改密碼，但未能停用帳號，密碼未變更：${staffRpcError(logErr)}`,
+      };
+    }
+  }
   const { error: updErr } = await getAdminSupabase().auth.admin.updateUserById(
     userId,
-    { password: DEFAULT_STAFF_PASSWORD },
+    disable
+      ? { password: DEFAULT_STAFF_PASSWORD, ban_duration: BAN_FOREVER }
+      : { password: DEFAULT_STAFF_PASSWORD },
   );
   revalidate();
   if (updErr) {
@@ -439,7 +506,7 @@ export async function resetStaffPasswordAction(
   return { ok: true };
 }
 
-/** 停用（disabled = true）或恢復（false）員工帳號的登入。只限員工帳號（staff）。 */
+/** 停用（disabled = true，「停用帳號」）或啟用（false，「啟用帳號」）員工帳號。只限員工帳號（staff）。 */
 export async function setStaffLoginDisabledAction(
   employeeId: string,
   disabled: boolean,
@@ -447,17 +514,18 @@ export async function setStaffLoginDisabledAction(
   const denied = await ensureHrAccess();
   if (denied) return denied;
   if (!isEmployeeId(employeeId)) return { ok: false, error: NOT_FOUND };
+  if (typeof disabled !== "boolean") return { ok: false, error: "操作失敗。" };
   const supabase = await getServerSupabase();
   const { data: userId, error } = await supabase.rpc("hr_log_staff_login", {
     p_employee_id: employeeId,
-    p_disabled: disabled === true,
+    p_disabled: disabled,
   });
   if (error || typeof userId !== "string") {
     return { ok: false, error: staffRpcError(error, "操作失敗。") };
   }
   const { error: updErr } = await getAdminSupabase().auth.admin.updateUserById(
     userId,
-    { ban_duration: disabled === true ? BAN_FOREVER : "none" },
+    { ban_duration: disabled ? BAN_FOREVER : "none" },
   );
   revalidate();
   if (updErr) return { ok: false, error: `操作失敗：${updErr.message}` };

@@ -40,7 +40,10 @@ export interface StaffPersonRow {
   expected_email: string | null;
   /** 已連結帳號的 email（未連結 → null）。 */
   account_email: string | null;
+  /** 已啟用／已停用（未建立、非員工帳號另計）。 */
   status: StaffAccountStatus;
+  /** 需改密碼（首次登入或重設後，尚未改掉預設密碼）；與啟用狀態分開顯示。 */
+  must_change_password: boolean;
 }
 
 export interface AccessAuditRow {
@@ -155,7 +158,7 @@ async function loadAccounts(ids: string[]): Promise<
       banned_until: null,
     });
   }
-  // 停用登入狀態只存在 Auth：逐一讀取（員工帳號數量少；失敗時視為未停用並照常顯示）。
+  // 啟用／停用狀態只存在 Auth：逐一讀取（員工帳號數量少；失敗時視為已啟用並照常顯示）。
   await Promise.all(
     ids.map(async (id) => {
       const { data: u } = await admin.auth.admin.getUserById(id);
@@ -209,9 +212,9 @@ export async function listStaffPeople(
       status: staffAccountStatus({
         linked: !!e.admin_profile_id,
         role: acc?.role ?? null,
-        mustChangePassword: acc?.must_change_password ?? false,
         bannedUntil: acc?.banned_until ?? null,
       }),
+      must_change_password: acc?.must_change_password ?? false,
     };
   });
 }

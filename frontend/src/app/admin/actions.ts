@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { isAdminRole } from "@/lib/admin/auth";
+import { isUserBannedError } from "@/lib/admin/staff-accounts";
 import { getServerSupabase } from "@/lib/supabase-server";
 
 export type LoginState = { error?: string };
@@ -20,6 +21,10 @@ export async function loginAction(
   const supabase = await getServerSupabase();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
+    // 員工帳號建立後預設停用（#263），由人事主管啟用後才能登入：明確告知，而不是「帳號或密碼錯誤」。
+    if (isUserBannedError(error)) {
+      return { error: "此帳號尚未啟用或已停用，請洽人事主管。" };
+    }
     return { error: "登入失敗：帳號或密碼錯誤" };
   }
 

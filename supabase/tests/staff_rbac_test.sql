@@ -10,6 +10,7 @@
 --       has_module 仍為 stable + security definer。
 --       review 修正：停用登入（banned_until）時 has_module 立即失效、hr_link_staff_account 不收編既有／已登入過的
 --       auth 使用者且只接受 ASCII 員工編號、已連結帳號的員工只有 hr 能解除連結或刪除。
+--       #263（0033）：已停用（建立後先停用）的新 auth 使用者照常可連結，account_create 稽核記錄 login_disabled。
 
 \set ON_ERROR_STOP 1
 \o /dev/null
@@ -548,6 +549,60 @@ do $$ begin
     '經 hr_link_staff_account 建立時不重複記 account_link';
   raise notice 'ok  hr_link_staff_account';
 end $$;
+
+-- ============================================================
+-- 8c) 建立後先停用（#263、0033）：已停用（banned_until 在未來）的新 auth 使用者照常可連結，
+--     account_create 稽核的 detail.login_disabled 反映 Auth 的實際狀態
+-- ============================================================
+insert into auth.users (id, email, banned_until) values
+  ('00000000-0000-0000-0000-0000000003c1', 'z931@airexpert.com.tw', now() + interval '876000 hours');
+-- 已停用、但已登入過或並非剛建立 → 仍拒絕（停用不會讓收編既有帳號變得可行）
+insert into auth.users (id, email, banned_until, last_sign_in_at) values
+  ('00000000-0000-0000-0000-0000000003c2', 'z932@airexpert.com.tw', now() + interval '876000 hours', now());
+insert into auth.users (id, email, banned_until, created_at) values
+  ('00000000-0000-0000-0000-0000000003c3', 'z933@airexpert.com.tw', now() + interval '876000 hours', now() - interval '16 minutes');
+insert into employees (id, code, name, roles) values
+  ('00000000-0000-0000-0000-0000000005f1', 'Z931', '權限測試卯', '{sales}'),
+  ('00000000-0000-0000-0000-0000000005f2', 'Z932', '權限測試辰', '{sales}'),
+  ('00000000-0000-0000-0000-0000000005f3', 'Z933', '權限測試巳', '{sales}');
+set local role authenticated;
+select rbac_test.login('00000000-0000-0000-0000-0000000003a1');   -- hr
+select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005f2', '00000000-0000-0000-0000-0000000003c2')$q$, 'account_not_new');
+select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005f3', '00000000-0000-0000-0000-0000000003c3')$q$, 'account_not_new');
+select hr_link_staff_account('00000000-0000-0000-0000-0000000005f1', '00000000-0000-0000-0000-0000000003c1');
+reset role;
+do $$ begin
+  assert (select role = 'staff' and must_change_password from admin_profiles
+           where id = '00000000-0000-0000-0000-0000000003c1'), '已停用的新帳號：建立 staff、必改密碼';
+  assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000005f1')
+         = '00000000-0000-0000-0000-0000000003c1', '已停用的新帳號：已連結員工';
+  assert (select banned_until > now() from auth.users where id = '00000000-0000-0000-0000-0000000003c1'),
+    '連結不改 Auth 停用狀態';
+  assert (select (detail ->> 'login_disabled')::boolean from admin_access_audit
+           where action = 'account_create' and employee_id = '00000000-0000-0000-0000-0000000005f1'),
+    'account_create 稽核：login_disabled = true';
+  assert (select (detail ->> 'login_disabled')::boolean = false from admin_access_audit
+           where action = 'account_create' and employee_id = '00000000-0000-0000-0000-0000000005d5'),
+    '未停用建立的帳號：login_disabled = false';
+  assert not exists (select 1 from admin_profiles where id in ('00000000-0000-0000-0000-0000000003c2',
+    '00000000-0000-0000-0000-0000000003c3')), '已停用的既有／已登入帳號未被收編';
+  raise notice 'ok  建立後先停用：已停用的新帳號可連結，稽核記錄 login_disabled';
+end $$;
+-- 已停用的新帳號沒有任何模組（必改密碼 + 停用），啟用後（banned_until 清除）仍因必改密碼而沒有模組
+update employees set position_id = '00000000-0000-0000-0000-0000000004c2' where id = '00000000-0000-0000-0000-0000000005f1';
+set local role authenticated;
+do $$ begin
+  perform rbac_test.login('00000000-0000-0000-0000-0000000003c1');
+  assert not has_module('maintenance'), '已停用的新帳號沒有模組';
+end $$;
+reset role;
+update auth.users set banned_until = null where id = '00000000-0000-0000-0000-0000000003c1';
+set local role authenticated;
+do $$ begin
+  perform rbac_test.login('00000000-0000-0000-0000-0000000003c1');
+  assert not has_module('maintenance'), '啟用後、改密碼前仍沒有模組';
+end $$;
+reset role;
 -- 新帳號：必改密碼 → 即使職位有保養也沒有模組
 set local role authenticated;
 do $$ begin

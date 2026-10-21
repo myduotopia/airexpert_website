@@ -164,7 +164,11 @@ psql_run -1 < "$ROOT/migrations/0031_employee_hr.sql"
 echo "==> 重跑 0032（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0032_staff_rbac.sql"
 
-echo "==> 確認 0032 重跑後的狀態"
+# 0033 以 0032 為底 create or replace hr_link_staff_account（稽核加 login_disabled）；重跑 0032 會蓋回舊版，故需在其後重跑。
+echo "==> 重跑 0033（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0033_staff_account_disabled.sql"
+
+echo "==> 確認 0032／0033 重跑後的狀態"
 psql_run <<'SQL'
 do $$ begin
   assert not exists (select 1 from positions where name = '業務'), '重跑不建回已改名的初始職位';
@@ -172,6 +176,7 @@ do $$ begin
   assert (select position_id is not null from employees where id = '00000000-0000-0000-0000-00000000f0b2'), '職位指派保留';
   assert (select must_change_password from admin_profiles where id = '00000000-0000-0000-0000-00000000f0a2'), 'must_change_password 保留';
   assert pg_get_functiondef('public.has_module(text)'::regprocedure) like '%position_permissions%', 'has_module 為 0032 版';
+  assert pg_get_functiondef('public.hr_link_staff_account(uuid,uuid)'::regprocedure) like '%login_disabled%', 'hr_link_staff_account 為 0033 版';
 end $$;
 SQL
 

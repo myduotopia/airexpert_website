@@ -121,29 +121,18 @@ describe("帳號狀態", () => {
 
   it("未連結 → none；連結非 staff → not_staff", () => {
     expect(
-      staffAccountStatus({
-        linked: false,
-        role: null,
-        mustChangePassword: false,
-        bannedUntil: null,
-      }),
+      staffAccountStatus({ linked: false, role: null, bannedUntil: null }),
     ).toBe("none");
     expect(
-      staffAccountStatus({
-        linked: true,
-        role: "office",
-        mustChangePassword: false,
-        bannedUntil: null,
-      }),
+      staffAccountStatus({ linked: true, role: "office", bannedUntil: null }),
     ).toBe("not_staff");
   });
 
-  it("停用登入優先於需改密碼；過期的 banned_until 不算停用", () => {
+  it("已啟用／已停用只看 Auth banned_until（需改密碼另外標示）；過期的 banned_until 不算停用", () => {
     expect(
       staffAccountStatus({
         linked: true,
         role: "staff",
-        mustChangePassword: true,
         bannedUntil: "2126-01-01T00:00:00Z",
         now,
       }),
@@ -152,20 +141,18 @@ describe("帳號狀態", () => {
       staffAccountStatus({
         linked: true,
         role: "staff",
-        mustChangePassword: true,
         bannedUntil: "2020-01-01T00:00:00Z",
         now,
       }),
-    ).toBe("must_change");
+    ).toBe("enabled");
     expect(
       staffAccountStatus({
         linked: true,
         role: "staff",
-        mustChangePassword: false,
         bannedUntil: null,
         now,
       }),
-    ).toBe("active");
+    ).toBe("enabled");
     expect(isBanned("not-a-date", now)).toBe(false);
   });
 });

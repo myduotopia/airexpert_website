@@ -29,7 +29,7 @@ function parseTab(v: string): Tab {
 
 // 權限管理（#261）：只限 hr 模組（人事主管）。上層 employees/layout 只要求任一員工模組，故此頁再 requireModule('hr')。
 //   職位：新增、改名、停用、刪除職位，勾選每個職位可用的模組（不含 hr）。
-//   人員：指派員工職位、建立員工帳號（單筆／批次）、重設為預設密碼、停用／恢復登入。
+//   人員：指派員工職位、建立員工帳號（單筆／批次，預設建立後先停用）、重設為預設密碼、啟用／停用帳號。
 //   稽核紀錄：帳號與權限的變更紀錄。
 export default async function EmployeePermissionsPage({
   searchParams,
