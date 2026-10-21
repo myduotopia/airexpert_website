@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 // 人員管理 server actions（建立 / 移除後台帳號）。重點在新增的 erp 角色：
 //   1. 建立 erp 帳號 = auth 使用者 + admin_profiles{role:'erp'} + admin_module_grants{module:'erp'}
@@ -159,6 +161,36 @@ describe("createSeoManager — 建立 ERP 行政帳號", () => {
     expect(deleteUser).toHaveBeenCalledWith("new-user-1");
   });
 
+  it("建立人事（hr，#259）帳號：admin_profiles{role:'hr'} + admin_module_grants{module:'hr'}", async () => {
+    const res = await createSeoManager({}, form("hr"));
+
+    expect(res).toEqual({ ok: true });
+    expect(opsOn("admin_profiles", "insert")[0]?.payload).toEqual({
+      id: "new-user-1",
+      email: "erp@airexpert.com.tw",
+      role: "hr",
+    });
+    expect(opsOn("admin_module_grants", "insert")).toHaveLength(1);
+    expect(opsOn("admin_module_grants", "insert")[0]?.payload).toEqual({
+      user_id: "new-user-1",
+      module: "hr",
+    });
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("人事帳號的 hr 授權寫入失敗 → 回滾刪除 profile 與 auth 使用者", async () => {
+    responses["admin_module_grants:insert"] = {
+      data: null,
+      error: { message: "grant boom" },
+    };
+
+    const res = await createSeoManager({}, form("hr"));
+
+    expect(res.error).toContain("建立模組授權失敗");
+    expect(opsOn("admin_profiles", "delete")).toHaveLength(1);
+    expect(deleteUser).toHaveBeenCalledWith("new-user-1");
+  });
+
   it("其他角色不會拿到模組授權", async () => {
     for (const role of ["office", "seo_manager"]) {
       ops = [];
@@ -240,5 +272,22 @@ describe("removeSeoManager — 移除帳號", () => {
     await expect(removeSeoManager("u-9")).rejects.toThrow("REDIRECT:/admin");
     expect(ops).toHaveLength(0);
     expect(deleteUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("人員管理頁 UI（#259：角色選單與列表顯示「人事」）", () => {
+  const dir = path.resolve(__dirname, "../src/app/admin/(protected)/staff");
+
+  it("建立表單的角色選單有人事（value=hr）", () => {
+    const src = readFileSync(
+      path.join(dir, "CreateSeoManagerForm.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/<option value="hr">人事[^<]*<\/option>/);
+  });
+
+  it("列表的角色欄以 ROLE_LABELS 顯示（hr → 人事）", () => {
+    const src = readFileSync(path.join(dir, "page.tsx"), "utf8");
+    expect(src.includes("ROLE_LABELS")).toBe(true);
   });
 });

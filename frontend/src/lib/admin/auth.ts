@@ -1,5 +1,5 @@
 // 後台授權 DAL（Data Access Layer）— SERVER ONLY。
-// 集中「目前使用者是否為 admin / seo_manager」的判斷，貼近資料源做 secure check。
+// 集中「目前使用者的後台角色 / 模組授權」的判斷，貼近資料源做 secure check。
 import "server-only";
 
 import { cache } from "react";
@@ -7,26 +7,15 @@ import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getServerSupabase } from "../supabase-server";
 
-/**
- * 後台角色的單一事實來源。新增角色只需改這一行，
- * getCurrentUserRole()、登入檢查（app/admin/actions.ts）等皆走 isAdminRole()。
- *   admin       — 管理員（全站）
- *   seo_manager — SEO 代管（只編各內容的 SEO meta）
- *   office      — 行政（保養記錄卡）
- *   erp         — ERP 行政（只用 ERP 模組；實際可見性另由 admin_module_grants 決定）
- */
-export const ADMIN_ROLES = ["admin", "seo_manager", "office", "erp"] as const;
-
-/** 後台角色。null = 未登入或非後台人員。 */
-export type AdminRole = (typeof ADMIN_ROLES)[number];
-
-/** 字串是否為合法後台角色（admin_profiles.role 為自由文字，讀出後一律先過此檢查）。 */
-export function isAdminRole(value: unknown): value is AdminRole {
-  return (
-    typeof value === "string" &&
-    (ADMIN_ROLES as readonly string[]).includes(value)
-  );
-}
+// 角色清單（ADMIN_ROLES / AdminRole / isAdminRole / CONTENT_ROLES）放在純資料模組 ./roles，
+// 側欄（client）也能引用；這裡 re-export，既有 `from "@/lib/admin/auth"` 不必改。
+import { isAdminRole, type AdminRole } from "./roles";
+export {
+  ADMIN_ROLES,
+  CONTENT_ROLES,
+  isAdminRole,
+  type AdminRole,
+} from "./roles";
 
 /**
  * 取得目前登入且為 admin 的使用者；否則回 null。
@@ -143,7 +132,7 @@ export async function requireAnyModule(
 
 /**
  * 保護 server component / layout：非 admin 導離。
- * 已是後台人員但非 admin（seo_manager / office / erp）→ 總覽 /admin（他已登入，
+ * 已是後台人員但非 admin（seo_manager / office / erp / hr）→ 總覽 /admin（他已登入，
  * 丟回登入頁會讓人以為 session 過期）；非後台人員 / 未登入 → 登入頁。
  */
 export async function requireAdmin(): Promise<User> {
@@ -154,7 +143,7 @@ export async function requireAdmin(): Promise<User> {
 
 /**
  * 保護 server component / layout：角色不在 allowed 內一律導離。
- * 回傳目前登入者的角色。例：requireRole(['admin','seo_manager'])。
+ * 回傳目前登入者的角色。例：requireRole(['admin','seo_manager'])、requireRole(CONTENT_ROLES)。
  *
  * 導向規則（與 requireModule 一致）：
  *   未登入 / 無 admin_profiles 列（非後台人員）→ /admin/login
@@ -163,7 +152,9 @@ export async function requireAdmin(): Promise<User> {
  * 注意「非後台人員」必須導登入頁而非 /admin：/admin 自己也在 requireRole 底下，
  * 導過去會無限轉址。
  */
-export async function requireRole(allowed: AdminRole[]): Promise<AdminRole> {
+export async function requireRole(
+  allowed: readonly AdminRole[],
+): Promise<AdminRole> {
   const role = await getCurrentUserRole();
   if (!role) redirect("/admin/login");
   if (!allowed.includes(role)) redirect("/admin");

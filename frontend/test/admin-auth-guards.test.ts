@@ -51,11 +51,13 @@ vi.mock("@/lib/supabase-server", () => ({
 
 import {
   ADMIN_ROLES,
+  CONTENT_ROLES,
   isAdminRole,
   getCurrentUserRole,
   requireAdmin,
   requireRole,
 } from "@/lib/admin/auth";
+import { ROLE_LABELS } from "@/lib/admin/roles";
 import { loginAction } from "@/app/admin/actions";
 
 /** 執行 fn，回傳它 redirect 到的路徑；沒 redirect 回 null。 */
@@ -92,9 +94,24 @@ beforeEach(() => {
 });
 
 describe("角色清單（ADMIN_ROLES / isAdminRole）", () => {
-  it("包含 erp，且四個角色皆為合法值", () => {
-    expect([...ADMIN_ROLES]).toEqual(["admin", "seo_manager", "office", "erp"]);
+  it("包含 erp 與 hr（人事，#259），且五個角色皆為合法值", () => {
+    expect([...ADMIN_ROLES]).toEqual([
+      "admin",
+      "seo_manager",
+      "office",
+      "erp",
+      "hr",
+    ]);
     for (const r of ADMIN_ROLES) expect(isAdminRole(r)).toBe(true);
+  });
+
+  it("每個角色都有顯示名稱；hr 顯示為「人事」", () => {
+    for (const r of ADMIN_ROLES) expect(ROLE_LABELS[r]).toBeTruthy();
+    expect(ROLE_LABELS.hr).toBe("人事");
+  });
+
+  it("內容團隊角色（CONTENT_ROLES）只有 admin 與 seo_manager，不含 hr", () => {
+    expect([...CONTENT_ROLES]).toEqual(["admin", "seo_manager"]);
   });
 
   it("未知字串 / 非字串不是合法角色", () => {
@@ -157,6 +174,21 @@ describe("requireRole 轉址目標", () => {
     ).toBe("/admin");
   });
 
+  it("hr（人事）進 CMS／保養卡／SEO 頁 → /admin；可進後台殼層", async () => {
+    sessionUser = { id: "u-1", email: "hr@example.com" };
+    profileRole = "hr";
+    expect(await redirectedTo(() => requireRole([...CONTENT_ROLES]))).toBe(
+      "/admin",
+    );
+    expect(await redirectedTo(() => requireRole(["office"]))).toBe("/admin");
+    expect(
+      await redirectedTo(() => requireRole(["admin", "seo_manager"])),
+    ).toBe("/admin");
+    redirectSpy.mockClear();
+    expect(await requireRole([...ADMIN_ROLES])).toBe("hr");
+    expect(redirectSpy).not.toHaveBeenCalled();
+  });
+
   it("角色符合 → 回傳角色且不轉址（erp 可進後台殼層）", async () => {
     sessionUser = { id: "u-1", email: "erp@example.com" };
     profileRole = "erp";
@@ -176,7 +208,7 @@ describe("requireAdmin 轉址目標", () => {
 
   it("已登入的後台人員但非 admin → /admin", async () => {
     sessionUser = { id: "u-1", email: "erp@example.com" };
-    for (const role of ["erp", "office", "seo_manager"]) {
+    for (const role of ["erp", "office", "seo_manager", "hr"]) {
       profileRole = role;
       expect(await redirectedTo(() => requireAdmin())).toBe("/admin");
     }
@@ -191,6 +223,11 @@ describe("requireAdmin 轉址目標", () => {
 describe("loginAction 的後台人員檢查（與 isAdminRole 同一份清單）", () => {
   it("erp 角色可登入 → 轉到 /admin，不登出", async () => {
     expect(await redirectedTo(login("erp"))).toBe("/admin");
+    expect(signOutSpy).not.toHaveBeenCalled();
+  });
+
+  it("hr（人事）角色可登入 → 轉到 /admin（總覽再導向員工頁），不登出", async () => {
+    expect(await redirectedTo(login("hr"))).toBe("/admin");
     expect(signOutSpy).not.toHaveBeenCalled();
   });
 

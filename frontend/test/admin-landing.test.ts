@@ -35,5 +35,16 @@ describe("landingPathFor", () => {
 
   it("沒有授權時不導向（避免與 requireModule 互導的無限轉址）", () => {
     expect(landingPathFor("erp", [])).toBeNull();
+    expect(landingPathFor("hr", [])).toBeNull();
+  });
+
+  it("hr（人事，#259）角色：沒有總覽區段，有 hr 模組一律導向員工頁", () => {
+    expect(dashboardSectionsFor("hr")).toHaveLength(0);
+    expect(landingPathFor("hr", ["hr"])).toBe("/admin/employees");
+    // 人事角色即使另被授予其他模組，落地仍是員工頁（人事帳號的主要工作區）。
+    expect(landingPathFor("hr", ["erp", "hr"])).toBe("/admin/employees");
+    expect(landingPathFor("hr", ["service_report", "hr"])).toBe(
+      "/admin/employees",
+    );
   });
 });

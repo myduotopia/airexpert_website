@@ -123,7 +123,13 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
   });
 
   it("navForRole 不回傳任何 ERP 項目（任何角色）", () => {
-    for (const role of ["admin", "seo_manager", "office", "erp"] as const) {
+    for (const role of [
+      "admin",
+      "seo_manager",
+      "office",
+      "erp",
+      "hr",
+    ] as const) {
       expect(navForRole(role).some((i) => i.modules)).toBe(false);
     }
   });
@@ -316,7 +322,13 @@ describe("機台維護報告單（service_report 模組 gating）", () => {
   });
 
   it("navForRole 不回傳報告單（任何角色）", () => {
-    for (const role of ["admin", "seo_manager", "office", "erp"] as const) {
+    for (const role of [
+      "admin",
+      "seo_manager",
+      "office",
+      "erp",
+      "hr",
+    ] as const) {
       expect(navForRole(role).some((i) => i.key === "service-reports")).toBe(
         false,
       );
@@ -367,6 +379,21 @@ describe("員工主檔（#223，ERP 與維護報告單共用）", () => {
   it("只有 hr（#257）：側欄只多「員工」，看不到 ERP 與機台維護報告單", () => {
     const nav = navForUser("erp", ["hr"]);
     expect(nav.map((i) => i.key)).toEqual(["employees"]);
+  });
+
+  it("hr（人事，#259）角色 + hr 模組：側欄只有「員工」", () => {
+    expect(navForUser("hr", ["hr"]).map((i) => i.key)).toEqual(["employees"]);
+  });
+
+  it("hr 角色無模組：側欄為空；navForRole 也不回傳任何項目", () => {
+    expect(navForUser("hr", [])).toEqual([]);
+    expect(navForRole("hr")).toEqual([]);
+  });
+
+  it("hr 不在任何項目的 roles 內（不會因角色看到 CMS／設定／保養卡）", () => {
+    for (const item of ADMIN_NAV) {
+      expect(item.roles ?? []).not.toContain("hr");
+    }
   });
 
   it("無模組：看不到員工", () => {

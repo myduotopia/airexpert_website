@@ -7,7 +7,8 @@
 // 服務 / 節能實績 / 公司活動），看不到「網站設定」與「人員管理」。以每項的 roles 標示
 // 可見角色，再用 navForRole() 過濾。
 
-import type { AdminModule, AdminRole } from "./auth";
+import type { AdminModule } from "./auth";
+import { CONTENT_ROLES, type AdminRole } from "./roles";
 
 export interface AdminNavItem {
   key: string;
@@ -20,7 +21,8 @@ export interface AdminNavItem {
    *  admin-only 的項目（網站設定 / 人員管理）標 roles: ['admin']。
    *  office（行政）是獨立 persona，只看得到明確標 roles: ['office'] 的項目
    *  （保養記錄卡），不會因「未指定」而看到 CMS 內容區。
-   *  erp（ERP 行政）同理：不在任何項目的 roles 內，故只會透過 modules 看到 ERP 區。 */
+   *  erp（ERP 行政）同理：不在任何項目的 roles 內，故只會透過 modules 看到 ERP 區。
+   *  hr（人事，#259）亦同：只會透過 hr 模組看到「員工」。 */
   roles?: AdminRole[];
   /** 需要哪些模組授權（admin_module_grants）。有指定時「擁有其中任一模組即可見」，
    *  且**忽略 roles**；navForRole() 一律不回傳這類項目（見 navForUser）。 */
@@ -186,10 +188,11 @@ export const ADMIN_NAV: AdminNavItem[] = [
   },
 ];
 
-// 未指定 roles 的項目預設可見角色 = 內容團隊（admin + seo_manager）。
-// office / erp 為獨立 persona，不含在預設內：office 只看到明確標 roles:['office'] 的項目，
-// erp 不在任何 roles 內，只透過模組授權看到 ERP 區（無授權 → 側欄為空）。
-const DEFAULT_ROLES: AdminRole[] = ["admin", "seo_manager"];
+// 未指定 roles 的項目預設可見角色 = 內容團隊（CONTENT_ROLES：admin + seo_manager）。
+// office / erp / hr 為獨立 persona，不含在預設內：office 只看到明確標 roles:['office'] 的項目，
+// erp / hr 不在任何 roles 內，只透過模組授權看到 ERP 區 / 員工（無授權 → 側欄為空）。
+// 與 CMS 頁面的 server 端守門 requireRole(CONTENT_ROLES) 同一份清單。
+const DEFAULT_ROLES: readonly AdminRole[] = CONTENT_ROLES;
 
 /** 依角色過濾側欄項目（未指定 roles → 內容團隊 admin + seo_manager 可見，office 除外）。
  *  需模組授權的項目（modules）一律不在此結果中（向下相容；請改用 navForUser）。 */

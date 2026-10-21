@@ -1,3 +1,4 @@
+import { CONTENT_ROLES, requireRole } from "@/lib/admin/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductForm } from "@/components/admin/ProductForm";
@@ -9,6 +10,9 @@ export const metadata = { title: "編輯商品 · 後台" };
 type EditPageProps = { params: Promise<{ id: string }> };
 
 export default async function EditProductPage(props: EditPageProps) {
+  // 內容團隊（admin / seo_manager）才可進；(protected) 根 layout 只判斷是否為後台人員，
+  // office / erp / hr 等其他後台角色在此被導回 /admin（#259）。
+  await requireRole(CONTENT_ROLES);
   const { id } = await props.params;
   const product = (await getProductForAdmin(id)) as Product | null;
 

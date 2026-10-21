@@ -1,17 +1,17 @@
 "use server";
 
 // 人員管理 server actions（admin only）。建立 / 移除 SEO 代管（seo_manager）、
-// 行政（office）或 ERP 行政（erp）帳號。
+// 行政（office）、ERP 行政（erp）或人事（hr，#259）帳號。
 //
-// 流程（建立 seo_manager / office / erp）：
+// 流程（建立 seo_manager / office / erp / hr）：
 //   1. requireAdmin() 驗證身分（非 admin 一律導離）。
 //   2. getAdminSupabase().auth.admin.createUser({ email, password, email_confirm:true })
 //      —— service_role 才能呼叫 Auth admin API；email_confirm 直接標記已驗證，免寄信。
 //   3. 以表單帶入的 role（限白名單 CREATABLE_ROLES）與回傳的 user.id 寫入
 //      admin_profiles 列 { id, email, role }。（admin_profiles 無 insert policy；
 //      service_role 繞過 RLS。）
-//   4. 該角色若對應模組（ROLE_MODULES；erp → 'erp'），再寫一列 admin_module_grants
-//      { user_id, module }。ERP 的可見性與 RLS 都看模組授權而非角色（has_module），
+//   4. 該角色若對應模組（ROLE_MODULES；erp → 'erp'、hr → 'hr'），再寫一列 admin_module_grants
+//      { user_id, module }。ERP／員工頁的可見性與 RLS 都看模組授權而非角色（has_module），
 //      故少了這列帳號登入後會什麼都看不到。（該表同樣只有 service_role 能寫。）
 //   步驟 3 / 4 失敗都會回滾（刪掉已寫入的列與步驟 2 的 auth 使用者），避免孤兒帳號。
 //
@@ -25,12 +25,14 @@ import type { ActionResult } from "@/lib/admin/crud";
 
 export type StaffFormState = { ok?: boolean; error?: string };
 
-const CREATABLE_ROLES = ["seo_manager", "office", "erp"] as const;
+const CREATABLE_ROLES = ["seo_manager", "office", "erp", "hr"] as const;
 type CreatableRole = (typeof CREATABLE_ROLES)[number];
 
 /** 建立該角色時要一併授權的模組（無對應者不寫 admin_module_grants）。 */
 const ROLE_MODULES: Partial<Record<CreatableRole, AdminModule>> = {
   erp: "erp",
+  // 人事（#259）：員工頁與員工敏感資料都看 hr 模組（0031 的 RLS / hr_* RPC）。
+  hr: "hr",
 };
 
 function parseRole(v: FormDataEntryValue | null): CreatableRole | null {
@@ -44,7 +46,7 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-/** 建立一個 SEO 代管（seo_manager）／行政（office）／ERP 行政（erp）帳號。useActionState 簽章。 */
+/** 建立一個 SEO 代管（seo_manager）／行政（office）／ERP 行政（erp）／人事（hr）帳號。useActionState 簽章。 */
 export async function createSeoManager(
   _prev: StaffFormState,
   fd: FormData,
@@ -96,7 +98,7 @@ export async function createSeoManager(
       .from("admin_module_grants")
       .insert({ user_id: created.user.id, module: grantModule });
     if (grantErr) {
-      // 回滾：沒有模組授權的 erp 帳號登入後看不到任何東西，等同無效帳號，全部刪掉重來。
+      // 回滾：沒有模組授權的 erp / hr 帳號登入後看不到任何東西，等同無效帳號，全部刪掉重來。
       await admin.from("admin_profiles").delete().eq("id", created.user.id);
       await admin.auth.admin.deleteUser(created.user.id);
       return { error: `建立模組授權失敗：${grantErr.message}` };
@@ -108,7 +110,7 @@ export async function createSeoManager(
 }
 
 /**
- * 移除一個 SEO 代管 / 行政 / ERP 行政帳號（DeleteButton 以 bind 帶入 id）。
+ * 移除一個 SEO 代管 / 行政 / ERP 行政 / 人事帳號（DeleteButton 以 bind 帶入 id）。
  * 安全：先確認該列非 admin，避免誤刪管理員帳號。
  */
 export async function removeSeoManager(id: string): Promise<ActionResult> {

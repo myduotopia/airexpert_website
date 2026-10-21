@@ -1,10 +1,14 @@
+import { CONTENT_ROLES, requireRole } from "@/lib/admin/auth";
 import Link from "next/link";
 import { ProductForm } from "@/components/admin/ProductForm";
 import { createProductAction } from "../actions";
 
 export const metadata = { title: "新增商品 · 後台" };
 
-export default function NewProductPage() {
+export default async function NewProductPage() {
+  // 內容團隊（admin / seo_manager）才可進；(protected) 根 layout 只判斷是否為後台人員，
+  // office / erp / hr 等其他後台角色在此被導回 /admin（#259）。
+  await requireRole(CONTENT_ROLES);
   return (
     <div className="mx-auto max-w-[820px]">
       <nav className="text-text-muted mb-2 text-[13px]">
