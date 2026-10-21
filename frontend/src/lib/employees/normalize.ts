@@ -227,6 +227,19 @@ export function employeeWriteError(err: DbError | null | undefined): string {
   if (err?.message === "admin_link_forbidden") {
     return "只有人事（hr）權限可以連結員工與後台帳號。";
   }
+  // 0032 §6 的觸發器（P0001）
+  if (err?.message === "position_assign_forbidden") {
+    return "只有人事（hr）權限可以指派員工職位。";
+  }
+  if (err?.message === "employee_reactivate_forbidden") {
+    return "此員工已有後台帳號，改回在職會恢復帳號權限，請由人事主管操作。";
+  }
+  if (err?.message === "admin_unlink_forbidden") {
+    return "此員工已有後台帳號，只有人事主管可以解除連結。";
+  }
+  if (err?.message === "employee_linked_delete_forbidden") {
+    return "此員工已有後台帳號，只有人事主管可以刪除；請改為停用。";
+  }
   const msg = err?.message?.trim();
   return msg ? `儲存失敗：${msg}` : "儲存失敗，請稍後再試。";
 }

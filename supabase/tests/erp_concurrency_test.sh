@@ -22,7 +22,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> 啟動 $IMAGE（容器 $NAME）"
+echo "==> 啟動 ${IMAGE}（容器 ${NAME}）"
 docker run -d --name "$NAME" -e POSTGRES_PASSWORD=postgres "$IMAGE" >/dev/null
 for _ in $(seq 1 60); do
   if docker exec "$NAME" pg_isready -U postgres -q 2>/dev/null \
@@ -41,7 +41,8 @@ create role anon nologin noinherit;
 create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
 create schema auth;
-create table auth.users (id uuid primary key, email text);
+create table auth.users (id uuid primary key, email text, created_at timestamptz not null default now(),
+  last_sign_in_at timestamptz, banned_until timestamptz);
 create or replace function auth.uid() returns uuid
 language sql stable as $$
   select nullif(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', '')::uuid;
@@ -59,7 +60,7 @@ alter default privileges in schema public grant all on sequences to anon, authen
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 SQL
 
-echo "==> 套用 migrations（$MIGRATIONS_DIR）"
+echo "==> 套用 migrations（${MIGRATIONS_DIR}）"
 for f in "$MIGRATIONS_DIR"/*.sql; do
   q -1 < "$f" >/dev/null
 done

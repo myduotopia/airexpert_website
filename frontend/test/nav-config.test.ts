@@ -122,15 +122,19 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
     // 各 W1 區段上線時會把自己那行改 enabled，故此處不鎖定其餘項目的狀態。
   });
 
-  it("navForRole 不回傳任何 ERP 項目（任何角色）", () => {
+  it("navForRole 不回傳只以模組 gating 的項目（任何角色；含 ERP 全部項目）", () => {
     for (const role of [
       "admin",
       "seo_manager",
       "office",
       "erp",
       "hr",
+      "staff",
     ] as const) {
-      expect(navForRole(role).some((i) => i.modules)).toBe(false);
+      expect(navForRole(role).some((i) => i.modules && !i.roles)).toBe(false);
+      expect(navForRole(role).some((i) => i.modules?.includes("erp"))).toBe(
+        false,
+      );
     }
   });
 
@@ -285,7 +289,8 @@ describe("機台維護報告單（service_report 模組 gating）", () => {
     const idx = keys.indexOf("service-reports");
     expect(keys[idx - 1]).toBe("maintenance-customers");
     expect(keys[idx + 1]).toBe("employees");
-    expect(keys[idx + 2]).toBe("erp");
+    expect(keys[idx + 2]).toBe("employees-permissions");
+    expect(keys[idx + 3]).toBe("erp");
   });
 
   it("office 有 service_report 授權：保養卡兩項 + 報告單 + 員工", () => {
@@ -344,13 +349,13 @@ describe("機台維護報告單（service_report 模組 gating）", () => {
 });
 
 describe("員工主檔（#223，ERP 與維護報告單共用）", () => {
-  it("項目設定：/admin/employees、service_report／hr 模組、group 維護", () => {
+  it("項目設定：/admin/employees、service_report／hr／employees 模組、group 維護", () => {
     expect(ADMIN_NAV.find((i) => i.key === "employees")).toEqual({
       key: "employees",
       label: "員工",
       href: "/admin/employees",
       enabled: true,
-      modules: ["service_report", "hr"],
+      modules: ["service_report", "hr", "employees"],
       group: "維護",
     });
   });
@@ -376,13 +381,19 @@ describe("員工主檔（#223，ERP 與維護報告單共用）", () => {
     }
   });
 
-  it("只有 hr（#257）：側欄只多「員工」，看不到 ERP 與機台維護報告單", () => {
+  it("只有 hr（#257）：側欄只多「員工」與「權限管理」（#261），看不到 ERP 與機台維護報告單", () => {
     const nav = navForUser("erp", ["hr"]);
-    expect(nav.map((i) => i.key)).toEqual(["employees"]);
+    expect(nav.map((i) => i.key)).toEqual([
+      "employees",
+      "employees-permissions",
+    ]);
   });
 
-  it("hr（人事，#259）角色 + hr 模組：側欄只有「員工」", () => {
-    expect(navForUser("hr", ["hr"]).map((i) => i.key)).toEqual(["employees"]);
+  it("hr（人事，#259）角色 + hr 模組：側欄只有「員工」與「權限管理」", () => {
+    expect(navForUser("hr", ["hr"]).map((i) => i.key)).toEqual([
+      "employees",
+      "employees-permissions",
+    ]);
   });
 
   it("hr 角色無模組：側欄為空；navForRole 也不回傳任何項目", () => {
@@ -401,5 +412,133 @@ describe("員工主檔（#223，ERP 與維護報告單共用）", () => {
       false,
     );
     expect(navForRole("admin").some((i) => i.key === "employees")).toBe(false);
+  });
+});
+
+describe("員工帳號（staff，#261）與職位權限", () => {
+  const ALL_POSITION_MODULES = [
+    "erp",
+    "service_report",
+    "maintenance",
+    "employees",
+  ] as const;
+
+  it("staff 無模組：側欄只有「帳號設定」", () => {
+    expect(navForUser("staff", []).map((i) => i.key)).toEqual(["account"]);
+    expect(navForRole("staff").map((i) => i.key)).toEqual(["account"]);
+  });
+
+  it("「帳號設定」只給 staff：共用／管理帳號（admin、seo_manager、office、erp、hr）看不到", () => {
+    const item = ADMIN_NAV.find((i) => i.key === "account");
+    expect(item?.href).toBe("/admin/settings/account");
+    expect(item?.roles).toEqual(["staff"]);
+    expect(item?.modules).toBeUndefined();
+    for (const role of [
+      "admin",
+      "seo_manager",
+      "office",
+      "erp",
+      "hr",
+    ] as const) {
+      expect(
+        navForUser(role, [...ALL_POSITION_MODULES, "hr"]).some(
+          (i) => i.key === "account",
+        ),
+        role,
+      ).toBe(false);
+    }
+  });
+
+  it("staff 只有 maintenance：保養卡兩項 + 帳號設定", () => {
+    expect(navForUser("staff", ["maintenance"]).map((i) => i.key)).toEqual([
+      "maintenance",
+      "maintenance-customers",
+      "account",
+    ]);
+  });
+
+  it("staff 只有 employees：員工 + 帳號設定（沒有權限管理）", () => {
+    expect(navForUser("staff", ["employees"]).map((i) => i.key)).toEqual([
+      "employees",
+      "account",
+    ]);
+  });
+
+  it("staff 只有 erp：ERP 全部項目 + 帳號設定（沒有維護分組）", () => {
+    const erpKeys = ADMIN_NAV.filter((i) => i.modules?.includes("erp")).map(
+      (i) => i.key,
+    );
+    expect(navForUser("staff", ["erp"]).map((i) => i.key)).toEqual([
+      ...erpKeys,
+      "account",
+    ]);
+  });
+
+  it("staff 全部職位權限：維護分組 + ERP + 帳號設定；永遠沒有 CMS／設定／人員管理／權限管理", () => {
+    const keys = navForUser("staff", [...ALL_POSITION_MODULES]).map(
+      (i) => i.key,
+    );
+    expect(keys).toContain("maintenance");
+    expect(keys).toContain("service-reports");
+    expect(keys).toContain("employees");
+    expect(keys).toContain("erp-items");
+    expect(keys).toContain("account");
+    for (const k of [
+      "dashboard",
+      "seo",
+      "analytics",
+      "home",
+      "products",
+      "news",
+      "services",
+      "cases",
+      "events",
+      "contact",
+      "settings",
+      "staff",
+      "employees-permissions",
+    ]) {
+      expect(keys, k).not.toContain(k);
+    }
+  });
+
+  it("必改密碼：不論角色與模組，側欄只有「帳號設定」", () => {
+    expect(
+      navForUser("staff", [...ALL_POSITION_MODULES, "hr"], {
+        mustChangePassword: true,
+      }).map((i) => i.key),
+    ).toEqual(["account"]);
+  });
+
+  it("保養卡兩項：office 角色或 maintenance 模組皆可見；其他角色有 maintenance 也可見，但 office 不需模組", () => {
+    for (const key of ["maintenance", "maintenance-customers"]) {
+      const item = ADMIN_NAV.find((i) => i.key === key);
+      expect(item?.roles).toEqual(["office"]);
+      expect(item?.modules).toEqual(["maintenance"]);
+    }
+    expect(navForUser("office", []).map((i) => i.key)).toEqual([
+      "maintenance",
+      "maintenance-customers",
+    ]);
+    expect(navForUser("erp", []).some((i) => i.key === "maintenance")).toBe(
+      false,
+    );
+  });
+
+  it("停在權限管理頁時只亮「權限管理」（最長匹配），停在員工頁時亮「員工」", () => {
+    const hrefs = navForUser("hr", ["hr"]).map((i) => i.href);
+    expect(activeNavHref("/admin/employees/permissions", hrefs)).toBe(
+      "/admin/employees/permissions",
+    );
+    expect(activeNavHref("/admin/employees/abc", hrefs)).toBe(
+      "/admin/employees",
+    );
+  });
+
+  it("停在帳號設定頁時亮「帳號設定」", () => {
+    const hrefs = navForUser("staff", ["maintenance"]).map((i) => i.href);
+    expect(activeNavHref("/admin/settings/account", hrefs)).toBe(
+      "/admin/settings/account",
+    );
   });
 });

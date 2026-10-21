@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { listCustomers } from "@/lib/admin/maintenance";
 import {
   AdminTable,
@@ -11,7 +11,7 @@ import { rocDate } from "@/lib/admin/minguo";
 export const metadata = { title: "客戶 · 後台" };
 
 export default async function CustomersListPage() {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const customers = await listCustomers();
 
   const columns: AdminColumn[] = [

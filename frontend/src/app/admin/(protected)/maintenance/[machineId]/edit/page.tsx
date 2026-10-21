@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { getMachine } from "@/lib/admin/maintenance";
 import { EditMachineForm } from "@/components/admin/maintenance/EditMachineForm";
 
@@ -10,7 +10,7 @@ export default async function EditMachinePage({
 }: {
   params: Promise<{ machineId: string }>;
 }) {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const { machineId } = await params;
   const data = await getMachine(machineId);
   if (!data) notFound();

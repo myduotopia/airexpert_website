@@ -1,6 +1,6 @@
 // 員工主檔權限檢查（server action 用）— SERVER ONLY。
-// 員工主檔由 ERP、機台維護報告單與人事共用：有 erp、service_report 或 hr 任一模組授權即可讀寫
-// 非敏感欄位（與 0027 + 0031 §7c 的 RLS 一致）。layout 不保護 server action，每個 action 開頭仍須自行檢查。
+// 員工主檔由 ERP、機台維護報告單、人事與員工清單共用：有 erp、service_report、hr 或 employees（#261，
+// 只能經職位授予）任一模組即可讀寫非敏感欄位（與 0027 + 0031 §7c + 0032 §8 的 RLS 一致）。layout 不保護 server action，每個 action 開頭仍須自行檢查。
 import "server-only";
 
 import { hasModule } from "@/lib/admin/auth";
@@ -8,7 +8,12 @@ import { hasModule } from "@/lib/admin/auth";
 export const EMPLOYEE_FORBIDDEN_MESSAGE = "沒有員工主檔權限";
 
 /** 員工主檔可用的模組（任一即可）。 */
-export const EMPLOYEE_MODULES = ["erp", "service_report", "hr"] as const;
+export const EMPLOYEE_MODULES = [
+  "erp",
+  "service_report",
+  "hr",
+  "employees",
+] as const;
 
 /** 有權限回 null；否則回 { ok:false, error } 可直接 return 給 client。 */
 export async function ensureEmployeeAccess(): Promise<{

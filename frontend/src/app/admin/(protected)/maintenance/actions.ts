@@ -1,8 +1,8 @@
 "use server";
 
-// 保養卡 server actions（office only）。讀寫走登入者 session，靠 mx_* 的 office RLS 擋。
+// 保養卡 server actions（office 角色或 maintenance 模組，#261）。讀寫走登入者 session，靠 mx_* 的 RLS（mx_has_access()）擋。
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import type { ActionResult } from "@/lib/admin/crud";
 import {
@@ -129,7 +129,7 @@ function identityConflictMessage(payload: {
 }
 
 // ── 表單 autocomplete（typeahead）搜尋 ─────────────────────────────
-// 皆走登入者 session（office RLS）；以逐欄 .ilike(column, %q%) 查詢，值由 client
+// 皆走登入者 session（mx_* RLS）；以逐欄 .ilike(column, %q%) 查詢，值由 client
 // 參數化，避免 PostgREST or-filter 的字串注入（客戶名含「(股)」等字元亦安全）。
 
 export interface CustomerHit {
@@ -142,7 +142,7 @@ export interface CustomerHit {
 export async function searchCustomersAction(
   query: string,
 ): Promise<CustomerHit[]> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const q = query.trim();
   if (!q) return [];
   const supabase = await getServerSupabase();
@@ -208,7 +208,7 @@ export async function searchMachinesAction(
   query: string,
   cardType?: MxCardType,
 ): Promise<MachineHit[]> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const q = query.trim();
   if (!q) return [];
   const supabase = await getServerSupabase();
@@ -316,7 +316,7 @@ export type CreateMachineResult =
 export async function createMachineAction(
   fd: FormData,
 ): Promise<CreateMachineResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
 
   try {
@@ -379,7 +379,7 @@ export async function updateMachineAction(
   machineId: string,
   fd: FormData,
 ): Promise<ActionResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
 
   const customerName = String(fd.get("customer_name") ?? "").trim();
@@ -485,7 +485,7 @@ export async function addRecordAction(
   machineId: string,
   fd: FormData,
 ): Promise<AddRecordResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   try {
     // recordPayloadForMachine 找不到卡時會 throw，由下方 catch 收成 result。
@@ -510,7 +510,7 @@ export async function updateRecordAction(
   machineId: string,
   fd: FormData,
 ): Promise<ActionResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   try {
     const payload = await recordPayloadForMachine(machineId, fd);
@@ -535,7 +535,7 @@ export async function deleteRecordAction(
   recordId: string,
   machineId: string,
 ): Promise<ActionResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   const { error } = await supabase
     .from("mx_records")
@@ -659,7 +659,7 @@ export async function extractCardFromImageAction(input: {
   mimeType: string;
   photoPath: string;
 }): Promise<ExtractResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   try {
     const { raw } = await extractMaintenanceCard(
@@ -836,7 +836,7 @@ async function insertImportedMachine(
 export async function commitImportAction(
   input: CommitImportInput,
 ): Promise<ActionResult & { machineId?: string; machineIds?: string[] }> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   if (!input.compressor && !input.filter)
     return { ok: false, error: "沒有勾選要匯入的卡片。" };
@@ -989,7 +989,7 @@ export async function commitImportAction(
 export async function archiveMachineAction(
   machineId: string,
 ): Promise<ActionResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   const { error } = await supabase
     .from("mx_machines")
@@ -1009,7 +1009,7 @@ export async function archiveMachineAction(
 export async function restoreMachineAction(
   machineId: string,
 ): Promise<ActionResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   const { error } = await supabase
     .from("mx_machines")
@@ -1035,7 +1035,7 @@ export async function restoreMachineAction(
 export async function deleteMachinePermanentlyAction(
   machineId: string,
 ): Promise<ActionResult> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   const { error } = await supabase
     .from("mx_machines")
@@ -1054,7 +1054,7 @@ export async function updateCustomerAction(
   customerId: string,
   fd: FormData,
 ): Promise<ActionResult & { warning?: string }> {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const supabase = await getServerSupabase();
   try {
     const payload = customerPayloadFromForm(fd);

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { getMachine } from "@/lib/admin/maintenance";
 import {
   EditRecordForm,
@@ -14,7 +14,7 @@ export default async function EditRecordPage({
 }: {
   params: Promise<{ machineId: string; recordId: string }>;
 }) {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const { machineId, recordId } = await params;
   const data = await getMachine(machineId);
   if (!data) notFound();

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { getCustomer } from "@/lib/admin/maintenance";
 import { EditCustomerForm } from "@/components/admin/maintenance/EditCustomerForm";
 
@@ -10,7 +10,7 @@ export default async function EditCustomerPage({
 }: {
   params: Promise<{ customerId: string }>;
 }) {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const { customerId } = await params;
   const data = await getCustomer(customerId);
   if (!data) notFound();

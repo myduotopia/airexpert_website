@@ -1,4 +1,4 @@
-// 保養卡 DAL — SERVER ONLY。讀寫走登入者 session，靠 mx_* 的 office RLS 擋。
+// 保養卡 DAL — SERVER ONLY。讀寫走登入者 session，靠 mx_* 的 RLS（office 角色或 maintenance 模組，0032）擋。
 import "server-only";
 import { fetchAllRows } from "../fetch-all-rows";
 import { getServerSupabase } from "../supabase-server";

@@ -1,10 +1,10 @@
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { ImportReview } from "@/components/admin/maintenance/ImportReview";
 
 export const metadata = { title: "拍照辨識 · 後台" };
 
 export default async function ImportPage() {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   return (
     <div className="mx-auto max-w-[1000px]">
       <h1 className="text-ink mb-2 text-[24px] font-bold">拍照辨識</h1>

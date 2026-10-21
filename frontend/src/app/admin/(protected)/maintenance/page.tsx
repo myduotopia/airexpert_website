@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { listMachines } from "@/lib/admin/maintenance";
 import type { MxCardType } from "@/lib/admin/maintenance";
 import {
@@ -36,7 +36,7 @@ export default async function MaintenanceListPage({
 }: {
   searchParams: Promise<{ type?: string | string[] }>;
 }) {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const tab = parseTab((await searchParams).type);
   const machines = await listMachines(tab === "all" ? undefined : tab);
 

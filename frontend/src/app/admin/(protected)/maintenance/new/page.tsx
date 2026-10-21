@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { NewMachineForm } from "@/components/admin/maintenance/NewMachineForm";
 import { parseCardType } from "@/lib/admin/maintenance-normalize";
 
@@ -9,7 +9,7 @@ export default async function NewMachinePage({
 }: {
   searchParams: Promise<{ type?: string | string[] }>;
 }) {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const raw = (await searchParams).type;
   // ?type=filter → 乾燥機（過濾系統）卡；其餘一律空壓機卡（與 DB 預設值一致）。
   const cardType = parseCardType(Array.isArray(raw) ? raw[0] : raw);

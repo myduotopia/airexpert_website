@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
 # supabase/migrations/*.sql，再依序執行 supabase/tests/erp_posting_test.sql、
-# service_report_test.sql、service_plan_test.sql、employees_test.sql 與 employee_hr_test.sql。
+# service_report_test.sql、service_plan_test.sql、employees_test.sql、employee_hr_test.sql 與 staff_rbac_test.sql。
 # Vault（vault.decrypted_secrets）只在本機以資料表 + view 模擬，並放入「測試用」金鑰。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
@@ -17,7 +17,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> 啟動 $IMAGE（容器 $NAME）"
+echo "==> 啟動 ${IMAGE}（容器 ${NAME}）"
 docker run -d --name "$NAME" -e POSTGRES_PASSWORD=postgres "$IMAGE" >/dev/null
 
 for _ in $(seq 1 60); do
@@ -40,9 +40,13 @@ create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
 
 create schema auth;
+-- 0032 會讀 created_at／last_sign_in_at／banned_until（與 Supabase Auth 的 auth.users 同名同型別）
 create table auth.users (
-  id    uuid primary key,
-  email text
+  id              uuid primary key,
+  email           text,
+  created_at      timestamptz not null default now(),
+  last_sign_in_at timestamptz,
+  banned_until    timestamptz
 );
 create or replace function auth.uid() returns uuid
 language sql stable as $$
@@ -101,6 +105,16 @@ insert into admin_module_grants (user_id, module) values ('00000000-0000-0000-00
 insert into employees (id, name, roles) values
   ('00000000-0000-0000-0000-00000000f0b1', '重跑測試甲', '{office,manager}'),
   ('00000000-0000-0000-0000-00000000f0b2', '重跑測試乙', '{}');
+-- 0032：員工帳號（staff、必改密碼、連結員工並指派有權限的職位）
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000f0a2', 'rerun-staff@example.invalid');
+insert into admin_profiles (id, role, email, must_change_password)
+  values ('00000000-0000-0000-0000-00000000f0a2', 'staff', 'rerun-staff@example.invalid', true);
+insert into position_permissions (position_id, module) select id, 'maintenance' from positions where name = '服務';
+update employees set admin_profile_id = '00000000-0000-0000-0000-00000000f0a2',
+                     position_id = (select id from positions where name = '服務')
+ where id = '00000000-0000-0000-0000-00000000f0b2';
+-- hr 改名初始職位：重跑 0032 不可再建回「業務」
+update positions set name = '業務（重跑改名）' where name = '業務';
 SQL
 
 echo "==> 重跑 0020（驗證可重複執行）"
@@ -145,11 +159,30 @@ psql_run -1 < "$ROOT/migrations/0030_refund_cap_open_receivable.sql"
 echo "==> 重跑 0031（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0031_employee_hr.sql"
 
+# 0032 以 0020 的 has_module 為底 create or replace（加入職位權限與 must_change_password）；重跑 0020 會蓋回舊版，
+# 故必須最後重跑。並重建 mx_* 的 maintenance policy（0011／0015 不在重跑清單）。
+echo "==> 重跑 0032（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0032_staff_rbac.sql"
+
+echo "==> 確認 0032 重跑後的狀態"
+psql_run <<'SQL'
+do $$ begin
+  assert not exists (select 1 from positions where name = '業務'), '重跑不建回已改名的初始職位';
+  assert (select count(*) from positions) = 5, '重跑不重複建立職位';
+  assert (select position_id is not null from employees where id = '00000000-0000-0000-0000-00000000f0b2'), '職位指派保留';
+  assert (select must_change_password from admin_profiles where id = '00000000-0000-0000-0000-00000000f0a2'), 'must_change_password 保留';
+  assert pg_get_functiondef('public.has_module(text)'::regprocedure) like '%position_permissions%', 'has_module 為 0032 版';
+end $$;
+SQL
+
 echo "==> 移除重跑用資料"
 psql_run <<'SQL'
+update positions set name = '業務' where name = '業務（重跑改名）';
+delete from position_permissions;
 delete from employees where id in ('00000000-0000-0000-0000-00000000f0b1', '00000000-0000-0000-0000-00000000f0b2');
 delete from admin_module_grants where user_id = '00000000-0000-0000-0000-00000000f0a1';
-delete from auth.users where id = '00000000-0000-0000-0000-00000000f0a1';
+delete from admin_profiles where id = '00000000-0000-0000-0000-00000000f0a2';
+delete from auth.users where id in ('00000000-0000-0000-0000-00000000f0a1', '00000000-0000-0000-0000-00000000f0a2');
 SQL
 
 echo "==> 執行 erp_posting_test.sql"
@@ -167,12 +200,15 @@ psql_run < "$ROOT/tests/employees_test.sql"
 echo "==> 執行 employee_hr_test.sql"
 psql_run < "$ROOT/tests/employee_hr_test.sql"
 
+echo "==> 執行 staff_rbac_test.sql"
+psql_run < "$ROOT/tests/staff_rbac_test.sql"
+
 echo "==> 確認 rollback 未留資料"
 LEFT=$(docker exec "$NAME" psql -U postgres -tAc \
-  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr')")
+  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr') + (select count(*) from admin_profiles) + (select count(*) from position_permissions) + (select count(*) from positions where name not in ('業務','內勤','服務','負責人','會計'))")
 if [ "$LEFT" != "0" ]; then
   echo "FAIL：測試後仍殘留 $LEFT 列" >&2
   exit 1
 fi
 
-echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR TESTS PASSED"
+echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC TESTS PASSED"

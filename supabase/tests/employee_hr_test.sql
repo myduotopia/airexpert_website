@@ -171,10 +171,16 @@ do $$ begin
   update employees set note = '測試備註', admin_profile_id = admin_profile_id where id = '00000000-0000-0000-0000-0000000002b2';
   assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000002b2')
          = '00000000-0000-0000-0000-0000000001a4', 'hr 設定的連結保留';
-  -- 清除不會提權 → 允許
-  update employees set admin_profile_id = null where id = '00000000-0000-0000-0000-0000000002b2';
-  assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000002b2') is null, 'erp 可清除連結';
+  -- 清除：0032 起連結決定員工帳號的職位權限，已連結的員工只有 hr 能解除（admin_unlink_forbidden）
+  perform hr_test.expect_error($q$update employees set admin_profile_id = null where id = '00000000-0000-0000-0000-0000000002b2'$q$, 'admin_unlink_forbidden');
+  assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000002b2')
+         = '00000000-0000-0000-0000-0000000001a4', 'erp 不可清除連結（0032）';
   raise notice 'ok  admin_profile_id 只限 hr／維運身分設定';
+end $$;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a1","role":"authenticated"}';  -- hr
+update employees set admin_profile_id = null where id = '00000000-0000-0000-0000-0000000002b2';
+do $$ begin
+  assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000002b2') is null, 'hr 可清除連結';
 end $$;
 reset role;
 
