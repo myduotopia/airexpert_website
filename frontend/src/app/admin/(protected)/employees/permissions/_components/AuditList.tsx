@@ -2,12 +2,13 @@ import { DataTable } from "@/components/admin/DataTable";
 import { MODULE_LABELS } from "@/lib/admin/staff-accounts";
 import type { AccessAuditRow } from "@/lib/employees/permissions";
 
-const ACTION_LABELS: Record<string, string> = {
+// login_disable／login_enable：動作碼沿用 #261（DB check 約束與既有紀錄不變），#263 起顯示為停用／啟用帳號。
+export const AUDIT_ACTION_LABELS: Record<string, string> = {
   account_create: "建立帳號",
   password_reset: "重設為預設密碼",
   password_change: "本人變更密碼",
-  login_disable: "停用登入",
-  login_enable: "恢復登入",
+  login_disable: "停用帳號",
+  login_enable: "啟用帳號",
   position_create: "新增職位",
   position_update: "修改職位",
   position_delete: "刪除職位",
@@ -37,7 +38,13 @@ function moduleLabel(v: unknown): string {
 export function auditSummary(row: AccessAuditRow): string {
   const d = row.detail ?? {};
   switch (row.action) {
-    case "account_create":
+    case "account_create": {
+      // 0033 起 detail.login_disabled = 建立當下 Auth 是否已停用（DB 讀 auth.users.banned_until）。
+      const who = [str(d.employee_name), str(d.email)]
+        .filter(Boolean)
+        .join(" ");
+      return d.login_disabled === true ? `${who}（建立時已停用）` : who;
+    }
     case "password_reset":
     case "login_disable":
     case "login_enable":
@@ -95,7 +102,7 @@ export function AuditList({ rows }: { rows: AccessAuditRow[] }) {
         },
         {
           header: "動作",
-          cell: (r) => ACTION_LABELS[r.action] ?? r.action,
+          cell: (r) => AUDIT_ACTION_LABELS[r.action] ?? r.action,
         },
         { header: "內容", cell: (r) => auditSummary(r) },
       ]}

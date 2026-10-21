@@ -9,6 +9,12 @@ export const ACCOUNT_SETTINGS_PATH = "/admin/settings/account";
 /** 員工帳號的預設密碼（建立帳號與「重設為預設密碼」皆用此值；首登必改）。 */
 export const DEFAULT_STAFF_PASSWORD = "00000000";
 
+/**
+ * 停用帳號的期間（Supabase Auth ban_duration；約 100 年 = 直到人事按「啟用帳號」）。
+ * 建立後先停用（#263）、停用帳號、重設密碼時一併停用皆用此值；啟用 = ban_duration "none"。
+ */
+export const BAN_FOREVER = "876000h";
+
 export const STAFF_EMAIL_DOMAIN = "airexpert.com.tw";
 
 /** 新密碼最短長度。 */
@@ -94,23 +100,27 @@ export function validatePasswordChange(
   return null;
 }
 
-/** 員工帳號狀態（權限管理頁「人員」頁籤）。 */
+/**
+ * 員工帳號狀態（權限管理頁「人員」頁籤）。「需改密碼」是另一個獨立標示（StaffPersonRow.must_change_password），
+ * 已啟用與已停用的帳號都可能需改密碼（#263：帳號建立後預設停用，由人事啟用後員工才能以預設密碼登入改密碼）。
+ */
 export type StaffAccountStatus =
   | "none" // 未建立
-  | "must_change" // 已建立，需改密碼
-  | "active" // 已建立
-  | "disabled" // 已停用登入
+  | "enabled" // 已啟用（可登入）
+  | "disabled" // 已停用（Auth banned_until 在未來，無法登入）
   | "not_staff"; // 連結的不是員工帳號（共用／管理帳號，由管理員處理）
 
 export const STAFF_ACCOUNT_STATUS_LABELS: Record<StaffAccountStatus, string> = {
   none: "未建立",
-  must_change: "需改密碼",
-  active: "已建立",
-  disabled: "已停用登入",
+  enabled: "已啟用",
+  disabled: "已停用",
   not_staff: "連結非員工帳號",
 };
 
-/** Auth 的 banned_until 是否仍在未來（= 已停用登入）。 */
+/** 「需改密碼」標示文字。 */
+export const MUST_CHANGE_PASSWORD_LABEL = "需改密碼";
+
+/** Auth 的 banned_until 是否仍在未來（= 已停用）。 */
 export function isBanned(
   bannedUntil: string | null | undefined,
   now: Date = new Date(),
@@ -123,14 +133,43 @@ export function isBanned(
 export function staffAccountStatus(input: {
   linked: boolean;
   role: string | null;
-  mustChangePassword: boolean;
   bannedUntil: string | null;
   now?: Date;
 }): StaffAccountStatus {
   if (!input.linked) return "none";
   if (input.role !== "staff") return "not_staff";
-  if (isBanned(input.bannedUntil, input.now)) return "disabled";
-  return input.mustChangePassword ? "must_change" : "active";
+  return isBanned(input.bannedUntil, input.now) ? "disabled" : "enabled";
+}
+
+/** 批次建立帳號的結果（server action 回傳；摘要文字見 batchCreateSummary）。 */
+export type BatchCreateResult =
+  | {
+      ok: true;
+      /** 本次是否選了「建立後先停用」。 */
+      disabled: boolean;
+      created: { name: string; email: string; disabled: boolean }[];
+      failed: { name: string; error: string }[];
+    }
+  | { ok: false; error: string };
+
+/** 批次建立的結果摘要，例：「已建立 3 個帳號（已停用）。」、「已建立 1 個帳號（已啟用），1 位失敗。」 */
+export function batchCreateSummary(
+  result: Extract<BatchCreateResult, { ok: true }>,
+): string {
+  const n = result.created.length;
+  const state = n === 0 ? "" : result.disabled ? "（已停用）" : "（已啟用）";
+  const failed = result.failed.length ? `，${result.failed.length} 位失敗` : "";
+  return `已建立 ${n} 個帳號${state}${failed}。`;
+}
+
+/** 登入時 Auth 回「帳號已停用」（GoTrue user_banned）。 */
+export function isUserBannedError(
+  err: { code?: string; message?: string } | null | undefined,
+): boolean {
+  if (!err) return false;
+  return (
+    err.code === "user_banned" || /user is banned/i.test(err.message ?? "")
+  );
 }
 
 /** Supabase Auth「email 已被註冊」的錯誤（建立帳號時不覆蓋，明確報錯）。 */
