@@ -146,6 +146,18 @@ describe("employeeWriteError", () => {
       employeeWriteError({ code: "P0001", message: "admin_link_forbidden" }),
     ).toContain("人事（hr）");
   });
+
+  it("0032 觸發器：已連結帳號的員工只有人事能解除連結或刪除", () => {
+    expect(
+      employeeWriteError({ code: "P0001", message: "admin_unlink_forbidden" }),
+    ).toContain("人事主管");
+    expect(
+      employeeWriteError({
+        code: "P0001",
+        message: "employee_linked_delete_forbidden",
+      }),
+    ).toContain("改為停用");
+  });
 });
 
 describe("normalizeEmployeeRef（人員欄位寫入前）", () => {

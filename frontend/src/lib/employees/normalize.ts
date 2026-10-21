@@ -234,6 +234,12 @@ export function employeeWriteError(err: DbError | null | undefined): string {
   if (err?.message === "employee_reactivate_forbidden") {
     return "此員工已有後台帳號，改回在職會恢復帳號權限，請由人事主管操作。";
   }
+  if (err?.message === "admin_unlink_forbidden") {
+    return "此員工已有後台帳號，只有人事主管可以解除連結。";
+  }
+  if (err?.message === "employee_linked_delete_forbidden") {
+    return "此員工已有後台帳號，只有人事主管可以刪除；請改為停用。";
+  }
   const msg = err?.message?.trim();
   return msg ? `儲存失敗：${msg}` : "儲存失敗，請稍後再試。";
 }

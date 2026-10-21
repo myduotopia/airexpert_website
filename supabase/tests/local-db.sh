@@ -40,9 +40,13 @@ create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
 
 create schema auth;
+-- 0032 會讀 created_at／last_sign_in_at／banned_until（與 Supabase Auth 的 auth.users 同名同型別）
 create table auth.users (
-  id    uuid primary key,
-  email text
+  id              uuid primary key,
+  email           text,
+  created_at      timestamptz not null default now(),
+  last_sign_in_at timestamptz,
+  banned_until    timestamptz
 );
 create or replace function auth.uid() returns uuid
 language sql stable as $$

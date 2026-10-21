@@ -8,6 +8,8 @@
 --       已連結帳號的員工改回在職只限 hr、稽核紀錄（觸發器與 RPC、append-only）、保養卡 RLS（office 角色或 maintenance
 --       模組）、employees 模組、admin_profiles 不可由 API 角色寫入（含 must_change_password）、帳號 RPC 的檢查與權限、
 --       has_module 仍為 stable + security definer。
+--       review 修正：停用登入（banned_until）時 has_module 立即失效、hr_link_staff_account 不收編既有／已登入過的
+--       auth 使用者且只接受 ASCII 員工編號、已連結帳號的員工只有 hr 能解除連結或刪除。
 
 \set ON_ERROR_STOP 1
 \o /dev/null
@@ -436,7 +438,42 @@ end $$;
 select rbac_test.expect_error($q$select hr_get_employee_private('00000000-0000-0000-0000-0000000005d1')$q$, 'forbidden');
 select rbac_test.expect_error($q$select * from employee_private$q$, '42501');
 select rbac_test.expect_error($q$update employees set admin_profile_id = '00000000-0000-0000-0000-0000000003a6' where id = '00000000-0000-0000-0000-0000000005d6'$q$, 'admin_link_forbidden');
+-- review 修正：已連結帳號的員工，API 使用者只有 hr 能解除連結或刪除（否則可讓他人帳號失去權限且無法重新連結）
+select rbac_test.expect_error($q$update employees set admin_profile_id = null where id = '00000000-0000-0000-0000-0000000005d2'$q$, 'admin_unlink_forbidden');
+select rbac_test.expect_error($q$delete from employees where id = '00000000-0000-0000-0000-0000000005d2'$q$, 'employee_linked_delete_forbidden');
+select rbac_test.login('00000000-0000-0000-0000-0000000003a2');   -- erp（RLS 可寫整列）
+select rbac_test.expect_error($q$update employees set admin_profile_id = null where id = '00000000-0000-0000-0000-0000000005d2'$q$, 'admin_unlink_forbidden');
+select rbac_test.expect_error($q$delete from employees where id = '00000000-0000-0000-0000-0000000005d2'$q$, 'employee_linked_delete_forbidden');
+-- 未連結的員工照常可刪
+delete from employees where name = '權限測試新增';
 reset role;
+do $$ begin
+  assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000005d2')
+         = '00000000-0000-0000-0000-0000000003a5', '連結保留';
+  assert not exists (select 1 from employees where name = '權限測試新增'), '未連結的員工可刪';
+end $$;
+-- hr 可解除連結（之後恢復，供後續測試使用）
+set local role authenticated;
+select rbac_test.login('00000000-0000-0000-0000-0000000003a1');
+update employees set admin_profile_id = null where id = '00000000-0000-0000-0000-0000000005d3';
+reset role;
+do $$ begin
+  assert (select admin_profile_id from employees where id = '00000000-0000-0000-0000-0000000005d3') is null, 'hr 可解除連結';
+  assert (select count(*) from admin_access_audit where action = 'account_unlink'
+           and employee_id = '00000000-0000-0000-0000-0000000005d3'
+           and target_user_id = '00000000-0000-0000-0000-0000000003a6'
+           and actor_id = '00000000-0000-0000-0000-0000000003a1'
+           and detail ->> 'from_email' = 'z903@airexpert.com.tw') = 1, '解除連結有稽核（account_unlink）';
+  raise notice 'ok  已連結的員工只有 hr 能解除連結或刪除';
+end $$;
+update employees set admin_profile_id = '00000000-0000-0000-0000-0000000003a6' where id = '00000000-0000-0000-0000-0000000005d3';
+do $$ begin
+  assert (select count(*) from admin_access_audit where action = 'account_link'
+           and employee_id = '00000000-0000-0000-0000-0000000005d3'
+           and actor_role = 'postgres' and detail ->> 'to_email' = 'z903@airexpert.com.tw') = 2,
+    '直接寫 admin_profile_id 的連結也有稽核（account_link：§0 建立員工時一筆 + 重新連結一筆）';
+  raise notice 'ok  連結／解除連結的稽核';
+end $$;
 
 -- ============================================================
 -- 8) 帳號 RPC：hr_link_staff_account
@@ -467,6 +504,35 @@ set local role authenticated;
 select rbac_test.login('00000000-0000-0000-0000-0000000003a1');
 select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005d7', '00000000-0000-0000-0000-0000000003b3')$q$, 'account_exists');
 select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005d8', '00000000-0000-0000-0000-0000000003b4')$q$, 'employee_inactive');
+reset role;
+-- review 修正：只能連結剛建立、從未登入的 auth 使用者；員工編號只能是 ASCII 英數與 . _ -
+insert into auth.users (id, email, last_sign_in_at) values
+  ('00000000-0000-0000-0000-0000000003b5', 'z914@airexpert.com.tw', now());               -- 已登入過
+insert into auth.users (id, email, created_at) values
+  ('00000000-0000-0000-0000-0000000003b6', 'z915@airexpert.com.tw', now() - interval '1 day'), -- 既有帳號
+  ('00000000-0000-0000-0000-0000000003b7', 'k921@airexpert.com.tw', now());
+insert into employees (id, code, name, roles) values
+  ('00000000-0000-0000-0000-0000000005e1', 'Z914', '權限測試壬', '{sales}'),
+  ('00000000-0000-0000-0000-0000000005e2', 'Z915', '權限測試癸', '{sales}'),
+  -- KELVIN SIGN（U+212A）＋全形數字：前端 staffEmailFor 不接受，DB 端也必須擋
+  ('00000000-0000-0000-0000-0000000005e3', U&'\212A921', '權限測試子', '{sales}'),
+  ('00000000-0000-0000-0000-0000000005e4', U&'Z\FF19\FF12\FF11', '權限測試丑', '{sales}'),
+  ('00000000-0000-0000-0000-0000000005e5', 'z9 16', '權限測試寅', '{sales}');
+set local role authenticated;
+select rbac_test.login('00000000-0000-0000-0000-0000000003a1');
+select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005e1', '00000000-0000-0000-0000-0000000003b5')$q$, 'account_not_new');
+select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005e2', '00000000-0000-0000-0000-0000000003b6')$q$, 'account_not_new');
+select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005e3', '00000000-0000-0000-0000-0000000003b7')$q$, 'employee_code_invalid');
+select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005e4', '00000000-0000-0000-0000-0000000003b7')$q$, 'employee_code_invalid');
+select rbac_test.expect_error($q$select hr_link_staff_account('00000000-0000-0000-0000-0000000005e5', '00000000-0000-0000-0000-0000000003b7')$q$, 'employee_code_invalid');
+reset role;
+do $$ begin
+  assert not exists (select 1 from admin_profiles where id in ('00000000-0000-0000-0000-0000000003b5',
+    '00000000-0000-0000-0000-0000000003b6', '00000000-0000-0000-0000-0000000003b7')), '既有／不合規的帳號未被收編';
+  raise notice 'ok  hr_link_staff_account 不收編既有帳號、不接受非 ASCII 編號';
+end $$;
+set local role authenticated;
+select rbac_test.login('00000000-0000-0000-0000-0000000003a1');
 -- 成功
 select hr_link_staff_account('00000000-0000-0000-0000-0000000005d5', '00000000-0000-0000-0000-0000000003b1');
 reset role;
@@ -478,6 +544,8 @@ do $$ begin
   assert rbac_test.audit_count('account_create', '00000000-0000-0000-0000-0000000005d5') = 1, 'account_create 稽核';
   assert (select actor_id from admin_access_audit where action = 'account_create'
            and employee_id = '00000000-0000-0000-0000-0000000005d5') = '00000000-0000-0000-0000-0000000003a1', '稽核 actor = hr';
+  assert rbac_test.audit_count('account_link', '00000000-0000-0000-0000-0000000005d5') = 0,
+    '經 hr_link_staff_account 建立時不重複記 account_link';
   raise notice 'ok  hr_link_staff_account';
 end $$;
 -- 新帳號：必改密碼 → 即使職位有保養也沒有模組
@@ -526,6 +594,33 @@ do $$ begin
   assert not (select must_change_password from admin_profiles where id = '00000000-0000-0000-0000-0000000003a7'), '共用帳號不受影響';
   raise notice 'ok  重設密碼與停用登入';
 end $$;
+
+-- ============================================================
+-- 9b) 停用登入（Auth banned_until）→ has_module 立即失效（review 修正：不必等 access token 到期）
+-- ============================================================
+update auth.users set banned_until = now() + interval '876000 hours' where id = '00000000-0000-0000-0000-0000000003a5';
+set local role authenticated;
+do $$ begin
+  perform rbac_test.login('00000000-0000-0000-0000-0000000003a5');   -- staff 乙（maintenance）
+  assert not has_module('maintenance'), '停用登入 → 職位權限失效';
+  assert current_admin_modules() = '{}'::text[], '停用登入 → current_admin_modules 為空';
+  assert (select count(*) from mx_customers) = 0, '停用登入 → 讀不到保養卡';
+  perform rbac_test.login('00000000-0000-0000-0000-0000000003a1');   -- 其他帳號不受影響
+  assert has_module('hr'), 'hr 不受他人停用影響';
+  assert has_module(null) = false, 'has_module(null) 為 false（不是 null）';
+end $$;
+select rbac_test.login('00000000-0000-0000-0000-0000000003a5');
+select rbac_test.expect_error($q$insert into mx_customers (name) values ('測試停用後寫入')$q$, '42501');
+reset role;
+update auth.users set banned_until = now() - interval '1 minute' where id = '00000000-0000-0000-0000-0000000003a5';
+set local role authenticated;
+do $$ begin
+  perform rbac_test.login('00000000-0000-0000-0000-0000000003a5');
+  assert has_module('maintenance'), '停用期間已過（恢復登入）→ 權限恢復';
+  raise notice 'ok  停用登入立即讓 has_module 失效';
+end $$;
+reset role;
+update auth.users set banned_until = null where id = '00000000-0000-0000-0000-0000000003a5';
 
 -- ============================================================
 -- 10) hr 讀得到稽核

@@ -4,6 +4,7 @@
 //   Auth 使用者只能用 admin API）。只回傳狀態，不回傳任何密碼相關資料。
 import "server-only";
 
+import { hasModule } from "@/lib/admin/auth";
 import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase-server";
@@ -171,6 +172,8 @@ async function loadAccounts(ids: string[]): Promise<
 export async function listStaffPeople(
   opts: { includeFormer?: boolean } = {},
 ): Promise<StaffPersonRow[]> {
+  // 縱深防禦：下方以 service_role 讀帳號狀態（email、角色），不依賴呼叫端頁面的 requireModule('hr')。
+  if (!(await hasModule("hr"))) throw new Error("沒有人事（hr）權限。");
   const supabase = await getServerSupabase();
   const { data, error } = await fetchAllRows<EmployeeAccountFields>(
     (from, to) =>

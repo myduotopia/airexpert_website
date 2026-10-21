@@ -19,6 +19,11 @@ const ALLOWED = [
   "application/pdf",
 ];
 
+/** 保養卡稽核原圖（非 admin 唯一可上傳的內容）。 */
+const MAINTENANCE_FOLDER = "maintenance";
+const MAINTENANCE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAINTENANCE_EXTS = ["jpg", "jpeg", "png", "webp"];
+
 export type SignedUploadResult =
   | { ok: true; path: string; token: string; url: string }
   | { ok: false; error: string };
@@ -41,7 +46,8 @@ export async function createMediaUploadUrl(input: {
   // 保養卡使用者（office 角色或 maintenance 模組，#261）需上傳保養卡稽核原圖；admin 走 CMS 媒體。
   // seo_manager 與其他角色維持不可上傳。
   const role = await getCurrentUserRole();
-  if (role !== "admin" && !(await hasMaintenanceAccess())) {
+  const isAdmin = role === "admin";
+  if (!isAdmin && !(await hasMaintenanceAccess())) {
     return { ok: false, error: "沒有上傳權限" };
   }
 
@@ -59,6 +65,22 @@ export async function createMediaUploadUrl(input: {
   const ext = (input.filename.split(".").pop() ?? "bin")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+
+  // 非 admin（保養卡使用者；#261 起可經職位授予多個員工帳號）只能上傳保養卡稽核原圖：
+  // 限定 maintenance 資料夾與點陣圖片（必須宣告型別、副檔名須相符），不可往公開 media bucket 的
+  // CMS 資料夾放檔案或上傳 PDF／SVG 等其他型別。
+  if (!isAdmin) {
+    if (folder !== MAINTENANCE_FOLDER) {
+      return { ok: false, error: "沒有上傳到此資料夾的權限" };
+    }
+    if (
+      !input.contentType ||
+      !MAINTENANCE_TYPES.includes(input.contentType) ||
+      !MAINTENANCE_EXTS.includes(ext)
+    ) {
+      return { ok: false, error: "保養卡只能上傳 JPEG／PNG／WebP 圖片" };
+    }
+  }
   const rand = Math.round(Math.random() * 1e9);
   const path = `${folder}/${Date.now()}-${rand}.${ext || "bin"}`;
 

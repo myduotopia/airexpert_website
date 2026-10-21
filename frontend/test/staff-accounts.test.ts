@@ -189,6 +189,8 @@ describe("錯誤訊息", () => {
       /員工編號/,
     );
     expect(staffRpcError({ message: "not_staff_account" })).toMatch(/管理員/);
+    expect(staffRpcError({ message: "employee_code_invalid" })).toMatch(/英數/);
+    expect(staffRpcError({ message: "account_not_new" })).toMatch(/管理員/);
     expect(staffRpcError({ message: "forbidden" })).toMatch(/hr/);
     expect(staffRpcError({ code: "42501", message: "" })).toMatch(/權限/);
     expect(staffRpcError({ message: "boom" }, "建立帳號失敗。")).toBe(

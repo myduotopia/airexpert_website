@@ -150,13 +150,18 @@ const STAFF_RPC_ERRORS: Record<string, string> = {
   employee_not_found: "找不到此員工，請重新整理後再試。",
   employee_inactive: "只能替在職員工建立帳號。",
   employee_code_missing: "此員工沒有員工編號，無法建立帳號。",
+  employee_code_invalid:
+    "員工編號含不可用於 email 的字元（只能是英數與 . _ -），無法建立帳號。",
   employee_has_account: "此員工已有帳號。",
   account_email_mismatch: "登入帳號與員工編號不符。",
   account_exists: "此登入帳號已是後台帳號，未覆蓋。",
+  account_not_new: "只能連結剛建立的登入帳號；既有的登入帳號請洽管理員處理。",
   employee_no_account: "此員工尚未建立帳號。",
   not_staff_account:
     "此員工連結的不是員工帳號（共用或管理帳號），請由管理員在人員管理頁處理。",
   position_assign_forbidden: "只有人事（hr）權限可以指派員工職位。",
+  admin_unlink_forbidden:
+    "此員工已有後台帳號，只有人事（hr）權限可以解除連結。",
 };
 
 export function staffRpcError(

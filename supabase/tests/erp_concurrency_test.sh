@@ -41,7 +41,8 @@ create role anon nologin noinherit;
 create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
 create schema auth;
-create table auth.users (id uuid primary key, email text);
+create table auth.users (id uuid primary key, email text, created_at timestamptz not null default now(),
+  last_sign_in_at timestamptz, banned_until timestamptz);
 create or replace function auth.uid() returns uuid
 language sql stable as $$
   select nullif(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', '')::uuid;

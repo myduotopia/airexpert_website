@@ -5,13 +5,14 @@
 --     由人事主管設定；第一次建立時依 employees.title 完全相同者預先指派職位，因沒有權限所以不改變任何人的可見範圍）。
 --   * admin_profiles.must_change_password（預設 false；只有 role = 'staff' 能為 true）。
 --   * has_module(p) = 直接授權（admin_module_grants）∪ 所連結「在職」員工的「啟用」職位權限（只算 role = 'staff'
---     的帳號；hr 永遠只來自直接授權）；must_change_password = true 時一律 false（尚未改掉預設密碼前沒有任何模組）。
+--     的帳號；hr 永遠只來自直接授權）；must_change_password = true 時一律 false（尚未改掉預設密碼前沒有任何模組）；
+--     已停用登入（auth.users.banned_until > now()）時一律 false（停用立即生效，不必等 access token 到期）。
 --   * current_admin_modules()：登入者的有效模組（前端 getCurrentModules() 用，與 has_module 同一份邏輯）。
 --   * 保養卡（mx_*）RLS：is_office() → mx_has_access()（角色 office 或 has_module('maintenance')）。
 --   * employees：模組 employees 的 policy（非敏感欄位，與 erp／service_report 相同）；職位只限 hr 指派；
 --     已連結帳號的員工由離職改回在職只限 hr。
 --   * 稽核 admin_access_audit（append-only）：帳號建立、重設密碼、本人改密碼、停用／恢復登入、職位增改刪、
---     職位權限增刪、員工職位變更。後三者以觸發器寫入（任何寫入路徑都會留紀錄）。
+--     職位權限增刪、員工職位變更、員工與帳號的連結／解除連結。後四者以觸發器寫入（任何寫入路徑都會留紀錄）。
 --   * RPC（security definer、search_path = public, pg_temp）：
 --       hr_link_staff_account(employee_id, user_id)     hr：建立 admin_profiles（staff、必改密碼）+ 連結員工 + 稽核
 --       hr_flag_staff_password_reset(employee_id)       hr：設 must_change_password = true + 稽核，回傳帳號 id
@@ -49,12 +50,17 @@
 --   5. 職位指派（employees.position_id）只限 hr 或維運身分（觸發器 employees_staff_access_guard）：erp／service_report／
 --      employees 模組依 RLS 可寫整列，若不擋即可替自己連結的帳號換職位而提權。已連結帳號的員工由離職（含已到期的
 --      離職日）改回在職，會恢復該帳號的職位權限，同樣只限 hr；其他離職／停用、改資料照常。
+--      已連結帳號的員工，API 使用者也只有 hr 能解除連結（admin_profile_id → null）或刪除（觸發器
+--      employees_linked_delete_guard）：否則有 employees／erp 模組的人即可讓他人的帳號失去權限且無法重新連結。
 --   6. 稽核紀錄 append-only（觸發器擋 update／delete／truncate，含 postgres；維運清理方式同 0031 §4）。
 --      重設密碼／停用登入的紀錄是在呼叫 Auth API「之前」寫入（先把帳號鎖在改密碼頁，再改密碼，失敗時方向安全），
 --      故紀錄代表「人事送出的操作」；Auth API 失敗時頁面會顯示錯誤，重試會再留一筆。
 --   7. has_module 維持 security definer + stable；RLS 一律以 (select has_module(...)) 呼叫（每個查詢只評估一次）。
---      查詢走主鍵／唯一索引：admin_profiles(id)、admin_module_grants(user_id, module)、
+--      查詢走主鍵／唯一索引：admin_profiles(id)、auth.users(id)、admin_module_grants(user_id, module)、
 --      employees_admin_profile_key（0031 的部分唯一索引）、positions(id)、position_permissions(position_id, module)。
+--   8. hr_link_staff_account 只連結「15 分鐘內建立、從未登入」的 auth 使用者，且員工編號只能是 ASCII 英數與 . _ -：
+--      hr 能改員工編號，若可連結既有 auth 使用者，就能把密碼由他人掌握的既有帳號收編為員工帳號。
+--   9. 停用登入（Auth ban_duration）時 has_module 立即為 false（見 §3），不必等已核發的 access token 到期。
 
 -- ============================================================
 -- 1) admin_profiles.must_change_password
@@ -131,8 +137,12 @@ $$;
 
 -- 0020 版（逐行對照）：
 --   select exists (select 1 from admin_module_grants g where g.user_id = auth.uid() and g.module = p_module);
--- 本版：外層多一個 must_change_password 檢查；直接授權條件不變；再 OR 職位權限（hr 除外）。
--- search_path 由 public 改為 public, pg_temp（security definer 的建議設定；函式內只參照 public 的表）。
+-- 本版：外層多 must_change_password 與「已停用登入」檢查；直接授權條件不變；再 OR 職位權限（hr 除外）；
+-- 整體 coalesce 為 false（p_module 為 null 時與 0020 一樣回 false，不回 null）。
+-- 停用登入（review 修正）：人事以 Auth ban_duration 停用後，已核發的 access token 在到期前（預設 1 小時）
+--   仍可直接呼叫 PostgREST；故 banned_until > now() 時一律 false，停用立即對 RLS 與 RPC 生效
+--   （auth.users 以主鍵查詢；函式擁有者 postgres 可讀 auth schema，0020 的 seed 與本檔 hr_link_staff_account 亦同）。
+-- search_path 由 public 改為 public, pg_temp（security definer 的建議設定；函式內只參照 public 與 auth 的表，皆有限定）。
 create or replace function has_module(p_module text)
 returns boolean
 language sql
@@ -140,28 +150,35 @@ security definer
 stable
 set search_path = public, pg_temp
 as $$
-  select not exists (
-           select 1 from admin_profiles ap
-            where ap.id = auth.uid() and ap.must_change_password
-         )
-     and (
-           exists (
-             select 1 from admin_module_grants g
-              where g.user_id = auth.uid() and g.module = p_module
-           )
-           or (
-             p_module <> 'hr'
-             and exists (
-               select 1
-                 from employees e
-                 join admin_profiles ap on ap.id = e.admin_profile_id and ap.role = 'staff'
-                 join positions pos on pos.id = e.position_id and pos.active
-                 join position_permissions pp on pp.position_id = pos.id and pp.module = p_module
-                where e.admin_profile_id = auth.uid()
-                  and employee_is_current(e.active, e.left_on)
-             )
-           )
-         );
+  select coalesce(
+    not exists (
+      select 1 from admin_profiles ap
+       where ap.id = auth.uid() and ap.must_change_password
+    )
+    and not exists (
+      select 1 from auth.users u
+       where u.id = auth.uid() and u.banned_until is not null and u.banned_until > now()
+    )
+    and (
+      exists (
+        select 1 from admin_module_grants g
+         where g.user_id = auth.uid() and g.module = p_module
+      )
+      or (
+        p_module <> 'hr'
+        and exists (
+          select 1
+            from employees e
+            join admin_profiles ap on ap.id = e.admin_profile_id and ap.role = 'staff'
+            join positions pos on pos.id = e.position_id and pos.active
+            join position_permissions pp on pp.position_id = pos.id and pp.module = p_module
+           where e.admin_profile_id = auth.uid()
+             and employee_is_current(e.active, e.left_on)
+        )
+      )
+    ),
+    false
+  );
 $$;
 revoke execute on function has_module(text) from public, anon;
 grant execute on function has_module(text) to authenticated;
@@ -202,7 +219,8 @@ alter table admin_access_audit add constraint admin_access_audit_action_check
     'account_create', 'password_reset', 'password_change', 'login_disable', 'login_enable',
     'position_create', 'position_update', 'position_delete',
     'position_permission_grant', 'position_permission_revoke',
-    'employee_position_change'
+    'employee_position_change',
+    'account_link', 'account_unlink'
   ));
 create index if not exists admin_access_audit_at_idx on admin_access_audit (at desc);
 create index if not exists admin_access_audit_employee_idx on admin_access_audit (employee_id, at desc)
@@ -350,6 +368,46 @@ drop trigger if exists employees_position_audit on employees;
 create trigger employees_position_audit after insert or update of position_id on employees
   for each row execute function employees_position_audit();
 
+-- 員工與後台帳號的連結變更（review 修正）：連結決定員工帳號的職位權限，hr 或維運身分直接改
+-- employees.admin_profile_id（不經 hr_link_staff_account）也必須留紀錄；admin_profiles 刪除時的
+-- on delete set null 亦記為 account_unlink。hr_link_staff_account 已寫 account_create（同一交易、先寫），不重複記錄。
+create or replace function employees_account_link_audit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_old uuid := case when tg_op = 'UPDATE' then old.admin_profile_id end;
+begin
+  if new.admin_profile_id is not distinct from v_old then
+    return null;
+  end if;
+  if new.admin_profile_id is not null and exists (
+       select 1 from admin_access_audit a
+        where a.action = 'account_create' and a.employee_id = new.id
+          and a.target_user_id = new.admin_profile_id and a.at = now()
+     ) then
+    return null;
+  end if;
+  perform admin_audit_write(
+    case when new.admin_profile_id is null then 'account_unlink' else 'account_link' end,
+    new.id, coalesce(new.admin_profile_id, v_old), null,
+    jsonb_build_object(
+      'employee_name', new.name,
+      'from', v_old,
+      'from_email', (select p.email from admin_profiles p where p.id = v_old),
+      'to', new.admin_profile_id,
+      'to_email', (select p.email from admin_profiles p where p.id = new.admin_profile_id)));
+  return null;
+end;
+$$;
+revoke execute on function employees_account_link_audit() from public, anon, authenticated, service_role;
+
+drop trigger if exists employees_account_link_audit on employees;
+create trigger employees_account_link_audit after insert or update of admin_profile_id on employees
+  for each row execute function employees_account_link_audit();
+
 -- ============================================================
 -- 6) employees 寫入防護（決策 5）
 -- ============================================================
@@ -376,6 +434,16 @@ begin
     raise exception using errcode = 'P0001', message = 'employee_reactivate_forbidden',
       detail = '此員工已連結後台帳號，改回在職會恢復帳號權限，只有人事（hr）權限可以操作';
   end if;
+  -- 解除連結（review 修正）：0031 的 employees_admin_profile_guard 不限制清除（當時 admin_profile_id 只是保留欄位）；
+  -- 本檔起連結決定員工帳號的職位權限，而且解除後 hr_link_staff_account 會因帳號已存在（account_exists）無法重新連結，
+  -- 故 API 使用者（authenticated／anon）只有 hr 能清除。admin_profiles 刪除時的 on delete set null 由 service_role
+  -- （人員管理頁移除帳號）或 Auth（supabase_auth_admin，刪除 auth 使用者的 cascade）觸發，不受此限。
+  if tg_op = 'UPDATE' and old.admin_profile_id is not null
+     and new.admin_profile_id is distinct from old.admin_profile_id
+     and hr_caller_role() in ('authenticated', 'anon') then
+    raise exception using errcode = 'P0001', message = 'admin_unlink_forbidden',
+      detail = '此員工已連結後台帳號，只有人事（hr）權限可以解除連結';
+  end if;
   return new;
 end;
 $$;
@@ -384,6 +452,30 @@ revoke execute on function employees_guard_staff_access() from public, anon, aut
 drop trigger if exists employees_staff_access_guard on employees;
 create trigger employees_staff_access_guard before insert or update on employees
   for each row execute function employees_guard_staff_access();
+
+-- 刪除已連結帳號的員工（review 修正）：效果同解除連結（帳號失去職位權限且無法重新連結），
+-- 故 API 使用者只有 hr 能刪除；erp／service_report／employees 模組請改為停用（離職）。
+create or replace function employees_guard_linked_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if old.admin_profile_id is not null
+     and hr_caller_role() in ('authenticated', 'anon')
+     and not coalesce(has_module('hr'), false) then
+    raise exception using errcode = 'P0001', message = 'employee_linked_delete_forbidden',
+      detail = '此員工已連結後台帳號，只有人事（hr）權限可以刪除；請改為停用';
+  end if;
+  return old;
+end;
+$$;
+revoke execute on function employees_guard_linked_delete() from public, anon, authenticated, service_role;
+
+drop trigger if exists employees_linked_delete_guard on employees;
+create trigger employees_linked_delete_guard before delete on employees
+  for each row execute function employees_guard_linked_delete();
 
 -- ============================================================
 -- 7) RLS：positions／position_permissions（只有 hr 可讀寫；登入者的有效權限走 current_admin_modules()）
@@ -510,6 +602,12 @@ begin
   if staff_email_for_code(v_emp.code) is null then
     raise exception using errcode = 'P0001', message = 'employee_code_missing', detail = '員工沒有員工編號，無法建立帳號';
   end if;
+  -- 與前端 staffEmailFor 相同的字元限制（只允許 ASCII 英數與 . _ -）：DB 端也擋，避免直接呼叫 RPC 時
+  -- 以全形、Unicode 大小寫折疊（例：KELVIN SIGN 經 lower() 變成 k）或空白組出與既有帳號相同的 email。
+  if btrim(v_emp.code) !~ '^[A-Za-z0-9._-]+$' then
+    raise exception using errcode = 'P0001', message = 'employee_code_invalid',
+      detail = '員工編號含不可用於 email 的字元（只能是英數與 . _ -）';
+  end if;
   if v_emp.admin_profile_id is not null then
     raise exception using errcode = 'P0001', message = 'employee_has_account', detail = '此員工已有帳號';
   end if;
@@ -522,13 +620,26 @@ begin
   if exists (select 1 from admin_profiles p where p.id = p_user_id) then
     raise exception using errcode = 'P0001', message = 'account_exists', detail = '此登入帳號已是後台帳號';
   end if;
+  -- 只能連結 server action 剛以 service_role 建立、從未登入過的 auth 使用者（review 修正）：
+  -- hr 可修改員工編號，若不限制，直接呼叫本 RPC 即可把任何「既有、但沒有後台帳號」的 auth 使用者
+  -- （例：已移除後台權限但 auth 使用者殘留、或自行註冊的 <編號>@airexpert.com.tw）收編成員工帳號，
+  -- 而該帳號的密碼並非預設密碼、由他人掌握。
+  if not exists (
+    select 1 from auth.users u
+     where u.id = p_user_id
+       and u.last_sign_in_at is null
+       and u.created_at >= now() - interval '15 minutes'
+  ) then
+    raise exception using errcode = 'P0001', message = 'account_not_new',
+      detail = '只能連結剛建立的登入帳號；既有的登入帳號請洽管理員處理';
+  end if;
 
   insert into admin_profiles (id, email, role, must_change_password)
   values (p_user_id, v_email, 'staff', true);
-  update employees set admin_profile_id = p_user_id where id = p_employee_id;
-
+  -- 先寫 account_create，連結的稽核觸發器（employees_account_link_audit）見到同交易的這筆就不再重複記錄。
   perform admin_audit_write('account_create', p_employee_id, p_user_id, null,
     jsonb_build_object('email', v_email, 'employee_name', v_emp.name));
+  update employees set admin_profile_id = p_user_id where id = p_employee_id;
 end;
 $$;
 revoke execute on function hr_link_staff_account(uuid, uuid) from public, anon, service_role;
