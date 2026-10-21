@@ -48,3 +48,56 @@ describe("landingPathFor", () => {
     );
   });
 });
+
+describe("landingPathFor — 員工帳號（staff，#261）與新模組", () => {
+  it("staff 沒有任何模組 → 帳號設定頁（一定進得去，不會互導）", () => {
+    expect(landingPathFor("staff", [])).toBe("/admin/settings/account");
+    expect(dashboardSectionsFor("staff")).toHaveLength(0);
+  });
+
+  it("staff 依模組導向：erp > service_report > maintenance > employees", () => {
+    expect(
+      landingPathFor("staff", [
+        "employees",
+        "maintenance",
+        "service_report",
+        "erp",
+      ]),
+    ).toBe("/admin/erp");
+    expect(
+      landingPathFor("staff", ["employees", "maintenance", "service_report"]),
+    ).toBe("/admin/service-reports");
+    expect(landingPathFor("staff", ["employees", "maintenance"])).toBe(
+      "/admin/maintenance",
+    );
+    expect(landingPathFor("staff", ["employees"])).toBe("/admin/employees");
+  });
+
+  it("staff 另有直接授予的 hr → 員工頁", () => {
+    expect(landingPathFor("staff", ["hr"])).toBe("/admin/employees");
+  });
+
+  it("帳號設定不算總覽區段（admin 等角色的總覽卡片不變）", () => {
+    for (const role of [
+      "admin",
+      "seo_manager",
+      "office",
+      "erp",
+      "hr",
+      "staff",
+    ] as const) {
+      expect(dashboardSectionsFor(role).some((s) => s.key === "account")).toBe(
+        false,
+      );
+    }
+  });
+
+  it("既有角色行為不變：office → 保養卡；erp 角色只有 employees／maintenance 也能落地", () => {
+    expect(landingPathFor("office", ["maintenance"])).toBe(
+      "/admin/maintenance",
+    );
+    expect(landingPathFor("erp", ["maintenance"])).toBe("/admin/maintenance");
+    expect(landingPathFor("erp", ["employees"])).toBe("/admin/employees");
+    expect(landingPathFor("admin", ["maintenance"])).toBeNull();
+  });
+});

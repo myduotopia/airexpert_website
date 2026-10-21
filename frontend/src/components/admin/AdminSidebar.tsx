@@ -11,14 +11,17 @@ export function AdminSidebar({
   email,
   role,
   modules = [],
+  mustChangePassword = false,
 }: {
   email: string;
   role: AdminRole;
   /** 目前登入者的模組授權（getCurrentModules）；未傳 = 無任何模組。 */
   modules?: AdminModule[];
+  /** 員工帳號尚未改掉預設密碼（#261）：側欄只顯示「帳號設定」。 */
+  mustChangePassword?: boolean;
 }) {
   const pathname = usePathname();
-  const nav = navForUser(role, modules);
+  const nav = navForUser(role, modules, { mustChangePassword });
   const activeHref = activeNavHref(
     pathname,
     nav.filter((i) => i.enabled).map((i) => i.href),

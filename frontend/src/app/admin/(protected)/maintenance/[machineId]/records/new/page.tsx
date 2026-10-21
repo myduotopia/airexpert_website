@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { getMachineCardContext } from "@/lib/admin/maintenance";
 import { NewRecordForm } from "@/components/admin/maintenance/NewRecordForm";
 
@@ -10,7 +10,7 @@ export default async function NewRecordPage({
 }: {
   params: Promise<{ machineId: string }>;
 }) {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const { machineId } = await params;
   const ctx = await getMachineCardContext(machineId);
   if (!ctx) notFound();

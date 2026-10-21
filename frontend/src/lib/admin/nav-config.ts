@@ -9,6 +9,7 @@
 
 import type { AdminModule } from "./auth";
 import { CONTENT_ROLES, type AdminRole } from "./roles";
+import { ACCOUNT_SETTINGS_PATH } from "./staff-accounts";
 
 export interface AdminNavItem {
   key: string;
@@ -22,10 +23,12 @@ export interface AdminNavItem {
    *  office（行政）是獨立 persona，只看得到明確標 roles: ['office'] 的項目
    *  （保養記錄卡），不會因「未指定」而看到 CMS 內容區。
    *  erp（ERP 行政）同理：不在任何項目的 roles 內，故只會透過 modules 看到 ERP 區。
-   *  hr（人事，#259）亦同：只會透過 hr 模組看到「員工」。 */
+   *  hr（人事，#259）亦同：只會透過 hr 模組看到「員工」。
+   *  staff（員工，#261）只看得到標 roles: ['staff'] 的「帳號設定」，其餘全靠職位權限（modules）。
+   *  同時指定 roles 與 modules 時為「角色符合 **或** 擁有任一模組」（例：保養記錄卡 = office 或 maintenance）。 */
   roles?: AdminRole[];
-  /** 需要哪些模組授權（admin_module_grants）。有指定時「擁有其中任一模組即可見」，
-   *  且**忽略 roles**；navForRole() 一律不回傳這類項目（見 navForUser）。 */
+  /** 需要哪些模組授權（has_module：直接授權 ∪ 職位權限）。有指定時「擁有其中任一模組即可見」；
+   *  未同時指定 roles 時不會因角色而可見（navForRole() 不回傳只有 modules 的項目，見 navForUser）。 */
   modules?: AdminModule[];
   /** 側欄分組標題（例：「ERP」）。相鄰同 group 的項目歸在同一標題下。 */
   group?: string;
@@ -86,6 +89,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     href: "/admin/maintenance",
     enabled: true,
     roles: ["office"],
+    modules: ["maintenance"],
     group: "維護",
   },
   // 客戶主檔：保養卡的客戶層資料（完整聯絡資訊 + 名下所有機台）。
@@ -97,6 +101,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     href: "/admin/maintenance/customers",
     enabled: true,
     roles: ["office"],
+    modules: ["maintenance"],
     group: "維護",
   },
   // 機台維護報告單（service report spec §3.2）：以模組授權 gating（service_report），與角色無關。
@@ -110,14 +115,24 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "維護",
   },
   // 員工主檔（#223，業務／維修師傅）：ERP 與維護報告單共用，路由 /admin/employees。
-  // 側欄只給 service_report 與 hr（人事，#257）使用者一個入口（放在「維護」分組）；ERP 使用者從「基本資料」頁內的
-  // 「員工」tab 進入（見 NAV_ACTIVE_ALIASES），避免只有 ERP 的人看到「維護」分組標題。
+  // 側欄只給 service_report、hr（人事，#257）與 employees（員工清單，#261）使用者一個入口（放在「維護」分組）；
+  // ERP 使用者從「基本資料」頁內的「員工」tab 進入（見 NAV_ACTIVE_ALIASES），避免只有 ERP 的人看到「維護」分組標題。
   {
     key: "employees",
     label: "員工",
     href: "/admin/employees",
     enabled: true,
-    modules: ["service_report", "hr"],
+    modules: ["service_report", "hr", "employees"],
+    group: "維護",
+  },
+  // 權限管理（#261）：職位、職位權限、員工帳號。只限 hr 模組。路徑在 /admin/employees 底下，
+  // 側欄以最長匹配決定 active，停在此頁時只有本項會亮。
+  {
+    key: "employees-permissions",
+    label: "權限管理",
+    href: "/admin/employees/permissions",
+    enabled: true,
+    modules: ["hr"],
     group: "維護",
   },
   // ── ERP（spec §3.2 / §6）：以模組授權 gating，與角色無關。
@@ -186,35 +201,50 @@ export const ADMIN_NAV: AdminNavItem[] = [
     modules: ["erp"],
     group: "ERP",
   },
+  // 帳號設定（#261）：只給員工帳號（staff）改密碼；共用／管理帳號（admin、seo_manager、office、erp、hr）看不到。
+  {
+    key: "account",
+    label: "帳號設定",
+    href: ACCOUNT_SETTINGS_PATH,
+    enabled: true,
+    roles: ["staff"],
+  },
 ];
 
-// 未指定 roles 的項目預設可見角色 = 內容團隊（CONTENT_ROLES：admin + seo_manager）。
-// office / erp / hr 為獨立 persona，不含在預設內：office 只看到明確標 roles:['office'] 的項目，
-// erp / hr 不在任何 roles 內，只透過模組授權看到 ERP 區 / 員工（無授權 → 側欄為空）。
-// 與 CMS 頁面的 server 端守門 requireRole(CONTENT_ROLES) 同一份清單。
+// 未指定 roles（也未指定 modules）的項目預設可見角色 = 內容團隊（CONTENT_ROLES：admin + seo_manager）。
+// office / erp / hr / staff 為獨立 persona，不含在預設內：office 只看到明確標 roles:['office'] 的項目，
+// erp / hr 不在任何 roles 內，只透過模組授權看到 ERP 區 / 員工（無授權 → 側欄為空）；
+// staff 只看到「帳號設定」，其餘依職位權限。與 CMS 頁面的 server 端守門 requireRole(CONTENT_ROLES) 同一份清單。
 const DEFAULT_ROLES: readonly AdminRole[] = CONTENT_ROLES;
 
+/** 項目「因角色」可見的角色清單：明確 roles；只有 modules 的項目沒有；兩者皆未指定 → 內容團隊。 */
+function rolesOf(item: AdminNavItem): readonly AdminRole[] {
+  return item.roles ?? (item.modules ? [] : DEFAULT_ROLES);
+}
+
 /** 依角色過濾側欄項目（未指定 roles → 內容團隊 admin + seo_manager 可見，office 除外）。
- *  需模組授權的項目（modules）一律不在此結果中（向下相容；請改用 navForUser）。 */
+ *  只有模組授權的項目（modules、無 roles）一律不在此結果中（向下相容；請改用 navForUser）。 */
 export function navForRole(role: AdminRole): AdminNavItem[] {
-  return ADMIN_NAV.filter(
-    (item) => !item.modules && (item.roles ?? DEFAULT_ROLES).includes(role),
-  );
+  return ADMIN_NAV.filter((item) => rolesOf(item).includes(role));
 }
 
 /**
- * 依角色 + 模組授權過濾側欄項目。
- * 有 modules 的項目 → 使用者擁有其中任一模組即可見（忽略 roles）；
- * 其餘項目 → 沿用 navForRole 規則。保持 ADMIN_NAV 原順序。
+ * 依角色 + 模組授權過濾側欄項目：角色符合（見 rolesOf）或擁有該項任一模組即可見。保持 ADMIN_NAV 原順序。
+ * mustChangePassword（員工帳號以預設密碼登入、尚未改密碼）時只回傳「帳號設定」——此時
+ * getCurrentModules() 本來就是空的，這裡再明確收斂一次。
  */
 export function navForUser(
   role: AdminRole,
   modules: readonly AdminModule[],
+  options: { mustChangePassword?: boolean } = {},
 ): AdminNavItem[] {
-  return ADMIN_NAV.filter((item) =>
-    item.modules
-      ? item.modules.some((m) => modules.includes(m))
-      : (item.roles ?? DEFAULT_ROLES).includes(role),
+  if (options.mustChangePassword) {
+    return ADMIN_NAV.filter((item) => item.href === ACCOUNT_SETTINGS_PATH);
+  }
+  return ADMIN_NAV.filter(
+    (item) =>
+      rolesOf(item).includes(role) ||
+      (item.modules ?? []).some((m) => modules.includes(m)),
   );
 }
 

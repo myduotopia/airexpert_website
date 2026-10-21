@@ -18,6 +18,9 @@ vi.mock("next/navigation", () => ({ redirect: redirectSpy }));
 
 let sessionUser: { id: string; email: string } | null = null;
 let profileRole: string | null = null;
+let profileMustChange = false;
+/** current_admin_modules()（0032）的回傳值；null = RPC 失敗。 */
+let rpcModules: string[] | null = [];
 let signInError: { message: string } | null = null;
 const signOutSpy = vi.fn(async () => ({ error: null }));
 
@@ -28,16 +31,28 @@ const fakeSupabase = {
     signOut: signOutSpy,
   },
   // is_admin() 自 0005 起等同 role='admin'。
-  rpc: async (fn: string) => ({
-    data: fn === "is_admin" ? profileRole === "admin" : null,
-    error: null,
-  }),
+  rpc: async (fn: string) => {
+    if (fn === "is_admin")
+      return { data: profileRole === "admin", error: null };
+    if (fn === "current_admin_modules") {
+      return rpcModules === null
+        ? { data: null, error: { message: "boom" } }
+        : { data: rpcModules, error: null };
+    }
+    return { data: null, error: null };
+  },
   // 這些測試只會讀 admin_profiles 一張表，故不需依表名分流。
   from: () => ({
     select: () => ({
       eq: () => ({
         maybeSingle: async () => ({
-          data: profileRole === null ? null : { role: profileRole },
+          data:
+            profileRole === null
+              ? null
+              : {
+                  role: profileRole,
+                  must_change_password: profileMustChange,
+                },
           error: null,
         }),
       }),
@@ -53,8 +68,13 @@ import {
   ADMIN_ROLES,
   CONTENT_ROLES,
   isAdminRole,
+  getCurrentModules,
   getCurrentUserRole,
+  hasMaintenanceAccess,
+  mustChangePassword,
+  redirectIfMustChangePassword,
   requireAdmin,
+  requireMaintenanceAccess,
   requireRole,
 } from "@/lib/admin/auth";
 import { ROLE_LABELS } from "@/lib/admin/roles";
@@ -88,19 +108,22 @@ function login(role: string | null, hasSession = true): () => Promise<unknown> {
 beforeEach(() => {
   sessionUser = null;
   profileRole = null;
+  profileMustChange = false;
+  rpcModules = [];
   signInError = null;
   signOutSpy.mockClear();
   redirectSpy.mockClear();
 });
 
 describe("角色清單（ADMIN_ROLES / isAdminRole）", () => {
-  it("包含 erp 與 hr（人事，#259），且五個角色皆為合法值", () => {
+  it("包含 erp、hr（人事，#259）與 staff（員工，#261），且六個角色皆為合法值", () => {
     expect([...ADMIN_ROLES]).toEqual([
       "admin",
       "seo_manager",
       "office",
       "erp",
       "hr",
+      "staff",
     ]);
     for (const r of ADMIN_ROLES) expect(isAdminRole(r)).toBe(true);
   });
@@ -108,9 +131,10 @@ describe("角色清單（ADMIN_ROLES / isAdminRole）", () => {
   it("每個角色都有顯示名稱；hr 顯示為「人事」", () => {
     for (const r of ADMIN_ROLES) expect(ROLE_LABELS[r]).toBeTruthy();
     expect(ROLE_LABELS.hr).toBe("人事");
+    expect(ROLE_LABELS.staff).toBe("員工");
   });
 
-  it("內容團隊角色（CONTENT_ROLES）只有 admin 與 seo_manager，不含 hr", () => {
+  it("內容團隊角色（CONTENT_ROLES）只有 admin 與 seo_manager，不含 hr／staff", () => {
     expect([...CONTENT_ROLES]).toEqual(["admin", "seo_manager"]);
   });
 
@@ -249,5 +273,97 @@ describe("loginAction 的後台人員檢查（與 isAdminRole 同一份清單）
     const res = (await login(null)()) as { error?: string };
     expect(res.error).toBe("此帳號沒有後台權限");
     expect(signOutSpy).toHaveBeenCalled();
+  });
+});
+
+describe("員工帳號（staff，#261）：必改密碼、有效模組、保養卡守門", () => {
+  beforeEach(() => {
+    sessionUser = { id: "u-1", email: "z901@airexpert.com.tw" };
+  });
+
+  it("staff 可登入（之後由 (protected) layout 導到帳號設定頁）", async () => {
+    expect(await redirectedTo(login("staff"))).toBe("/admin");
+    expect(signOutSpy).not.toHaveBeenCalled();
+  });
+
+  it("staff 進 CMS／網站設定／人員管理 → /admin", async () => {
+    profileRole = "staff";
+    expect(await redirectedTo(() => requireRole([...CONTENT_ROLES]))).toBe(
+      "/admin",
+    );
+    expect(await redirectedTo(() => requireAdmin())).toBe("/admin");
+  });
+
+  it("必改密碼的 staff：redirectIfMustChangePassword 導到帳號設定頁", async () => {
+    profileRole = "staff";
+    profileMustChange = true;
+    expect(await mustChangePassword()).toBe(true);
+    expect(await redirectedTo(() => redirectIfMustChangePassword())).toBe(
+      "/admin/settings/account",
+    );
+  });
+
+  it("已改密碼的 staff 與其他角色：不導向", async () => {
+    profileRole = "staff";
+    profileMustChange = false;
+    expect(await redirectedTo(() => redirectIfMustChangePassword())).toBeNull();
+    for (const role of ["admin", "office", "erp", "hr", "seo_manager"]) {
+      profileRole = role;
+      expect(
+        await redirectedTo(() => redirectIfMustChangePassword()),
+      ).toBeNull();
+    }
+  });
+
+  it("非 staff 帳號即使 must_change_password 為 true 也不鎖（避免導到進不去的帳號設定頁而互導）", async () => {
+    profileRole = "office";
+    profileMustChange = true;
+    expect(await mustChangePassword()).toBe(false);
+    expect(await redirectedTo(() => redirectIfMustChangePassword())).toBeNull();
+  });
+
+  it("getCurrentModules 走 current_admin_modules()，只保留已知模組；RPC 失敗回空", async () => {
+    rpcModules = ["employees", "erp", "maintenance", "payroll"];
+    expect(await getCurrentModules()).toEqual([
+      "employees",
+      "erp",
+      "maintenance",
+    ]);
+    rpcModules = null;
+    expect(await getCurrentModules()).toEqual([]);
+    sessionUser = null;
+    rpcModules = ["erp"];
+    expect(await getCurrentModules()).toEqual([]);
+  });
+
+  it("保養卡：office 角色不需模組；其他角色需 maintenance 模組", async () => {
+    profileRole = "office";
+    rpcModules = [];
+    expect(await hasMaintenanceAccess()).toBe(true);
+    expect(await requireMaintenanceAccess()).toBe("office");
+
+    profileRole = "staff";
+    rpcModules = ["maintenance"];
+    expect(await hasMaintenanceAccess()).toBe(true);
+    expect(await requireMaintenanceAccess()).toBe("staff");
+
+    rpcModules = ["erp", "service_report", "employees"];
+    expect(await hasMaintenanceAccess()).toBe(false);
+    expect(await redirectedTo(() => requireMaintenanceAccess())).toBe("/admin");
+
+    for (const role of ["admin", "erp", "hr", "seo_manager"]) {
+      profileRole = role;
+      rpcModules = [];
+      expect(await redirectedTo(() => requireMaintenanceAccess()), role).toBe(
+        "/admin",
+      );
+    }
+  });
+
+  it("保養卡：未登入 → /admin/login", async () => {
+    sessionUser = null;
+    expect(await redirectedTo(() => requireMaintenanceAccess())).toBe(
+      "/admin/login",
+    );
   });
 });

@@ -1,9 +1,9 @@
 "use server";
 
 // 圖片 / 媒體上傳到 Supabase Storage 的 `media` bucket（公開讀）。
-// 以 service_role 上傳（繞過 RLS）；先驗證身分（admin：CMS 媒體；office：保養卡稽核原圖）。
+// 以 service_role 上傳（繞過 RLS）；先驗證身分（admin：CMS 媒體；保養卡使用者（office 或 maintenance 模組）：保養卡稽核原圖）。
 import { getAdminSupabase } from "../supabase-admin";
-import { requireAdmin, requireRole } from "./auth";
+import { getCurrentUserRole, hasMaintenanceAccess, requireAdmin } from "./auth";
 
 export type UploadResult =
   | { ok: true; url: string; path: string }
@@ -38,8 +38,12 @@ export async function createMediaUploadUrl(input: {
   contentType?: string;
   size?: number;
 }): Promise<SignedUploadResult> {
-  // office 需上傳保養卡稽核原圖；admin 走 CMS 媒體。seo_manager 維持不可上傳。
-  await requireRole(["admin", "office"]);
+  // 保養卡使用者（office 角色或 maintenance 模組，#261）需上傳保養卡稽核原圖；admin 走 CMS 媒體。
+  // seo_manager 與其他角色維持不可上傳。
+  const role = await getCurrentUserRole();
+  if (role !== "admin" && !(await hasMaintenanceAccess())) {
+    return { ok: false, error: "沒有上傳權限" };
+  }
 
   if (typeof input.size === "number" && input.size > MAX_BYTES) {
     return { ok: false, error: "檔案過大（上限 25MB）" };

@@ -61,6 +61,8 @@ function moduleLabel(module: string): string {
   if (module === "erp") return "ERP";
   if (module === "service_report") return "機台維護報告單";
   if (module === "hr") return "人事（敏感資料）";
+  if (module === "maintenance") return "保養記錄卡";
+  if (module === "employees") return "員工清單";
   return module;
 }
 
@@ -86,6 +88,10 @@ export default async function AdminStaffPage() {
           「人事權限」（hr
           模組）可查看與修改員工的身份證號、戶籍地址等敏感資料，只授予需要的人；
           只有人事權限的帳號只能進入員工頁，看不到 ERP 與機台維護報告單。
+        </p>
+        <p className="text-text-muted mt-2 text-[14px]">
+          「員工」帳號（員工編號@airexpert.com.tw）由人事在「員工 ›
+          權限管理」建立與重設密碼，能看到的功能由職位決定；這裡只能移除或授予人事權限。
         </p>
       </div>
 

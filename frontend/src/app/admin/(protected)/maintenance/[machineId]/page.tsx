@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { getMachine } from "@/lib/admin/maintenance";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { DeleteButton } from "@/components/admin/DeleteButton";
@@ -114,7 +114,7 @@ export default async function MachineDetailPage({
   // Next.js 16：params / searchParams 皆為非同步；同名參數重複帶時值會是陣列。
   searchParams: Promise<{ type?: string | string[] }>;
 }) {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const { machineId } = await params;
   const { type } = await searchParams;
   const data = await getMachine(machineId);

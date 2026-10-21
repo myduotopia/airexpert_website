@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireRole } from "@/lib/admin/auth";
+import { requireMaintenanceAccess } from "@/lib/admin/auth";
 import { listArchivedMachines } from "@/lib/admin/maintenance";
 import type { MxMachineListItem } from "@/lib/admin/maintenance";
 import { DataTable, type Column } from "@/components/admin/DataTable";
@@ -15,7 +15,7 @@ import {
 export const metadata = { title: "封存區 · 後台" };
 
 export default async function MaintenanceArchivePage() {
-  await requireRole(["office"]);
+  await requireMaintenanceAccess();
   const machines = await listArchivedMachines();
 
   const columns: Column<MxMachineListItem>[] = [

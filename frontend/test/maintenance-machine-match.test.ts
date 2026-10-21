@@ -124,7 +124,9 @@ const extractMaintenanceCard = vi.fn();
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
-vi.mock("@/lib/admin/auth", () => ({ requireRole: vi.fn(async () => {}) }));
+vi.mock("@/lib/admin/auth", () => ({
+  requireMaintenanceAccess: vi.fn(async () => "office"),
+}));
 vi.mock("@/lib/ai/gemini", () => ({
   extractMaintenanceCard: (...args: unknown[]) =>
     extractMaintenanceCard(...args),

@@ -9,8 +9,10 @@
  *   office      — 行政（保養記錄卡）
  *   erp         — ERP 行政（只用 ERP 模組；實際可見性另由 admin_module_grants 決定）
  *   hr          — 人事（#259；只用員工頁，含員工敏感資料；可見性同樣由 hr 模組授權決定）
+ *   staff       — 員工（#261；每位在職員工一個帳號，`<員工編號>@airexpert.com.tw`）。角色本身沒有任何頁面，
+ *                 能看到什麼完全由所連結員工的職位權限（has_module）決定；另有帳號設定頁（改密碼）。
  *
- * 注意：(protected)／(print) 的根 layout 以 requireRole([...ADMIN_ROLES]) 只判斷「是否為後台人員」，
+ * 注意：(protected)／(print)／(account) 的根 layout 以 requireRole([...ADMIN_ROLES]) 只判斷「是否為後台人員」，
  * 因此每個頁面都必須自己再守門（requireAdmin / requireRole(CONTENT_ROLES) / requireModule…），
  * 否則新增角色時會被意外開放（見 test/admin-page-guards.test.ts）。
  */
@@ -20,6 +22,7 @@ export const ADMIN_ROLES = [
   "office",
   "erp",
   "hr",
+  "staff",
 ] as const;
 
 /** 後台角色。null = 未登入或非後台人員。 */
@@ -40,11 +43,12 @@ export const ROLE_LABELS: Record<AdminRole, string> = {
   office: "行政",
   erp: "ERP 行政",
   hr: "人事",
+  staff: "員工",
 };
 
 /**
  * 內容團隊角色：可進 CMS 內容區（商品 / 最新消息 / 服務 / 節能實績…）、SEO 總覽的角色。
  * 側欄未指定 roles 的項目預設也只對這些角色可見（nav-config 的 DEFAULT_ROLES）。
- * office / erp / hr 為獨立 persona，不在其中。
+ * office / erp / hr / staff 為獨立 persona，不在其中。
  */
 export const CONTENT_ROLES: readonly AdminRole[] = ["admin", "seo_manager"];
