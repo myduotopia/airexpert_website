@@ -1,3 +1,4 @@
+import { CONTENT_ROLES, requireRole } from "@/lib/admin/auth";
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import {
@@ -25,6 +26,9 @@ async function getAllArticles(): Promise<Article[]> {
 }
 
 export default async function AdminNewsPage() {
+  // 內容團隊（admin / seo_manager）才可進；(protected) 根 layout 只判斷是否為後台人員，
+  // office / erp / hr 等其他後台角色在此被導回 /admin（#259）。
+  await requireRole(CONTENT_ROLES);
   const articles = await getAllArticles();
 
   // AdminTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode；

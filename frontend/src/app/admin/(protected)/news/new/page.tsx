@@ -1,3 +1,4 @@
+import { CONTENT_ROLES, requireRole } from "@/lib/admin/auth";
 import Link from "next/link";
 import {
   ArticleForm,
@@ -35,6 +36,9 @@ export default async function NewArticlePage({
 }: {
   searchParams: Promise<{ draft?: string }>;
 }) {
+  // 內容團隊（admin / seo_manager）才可進；(protected) 根 layout 只判斷是否為後台人員，
+  // office / erp / hr 等其他後台角色在此被導回 /admin（#259）。
+  await requireRole(CONTENT_ROLES);
   const { draft } = await searchParams;
   const prefill = draft ? await loadDraft(draft) : undefined;
 

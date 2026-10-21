@@ -1,3 +1,4 @@
+import { CONTENT_ROLES, requireRole } from "@/lib/admin/auth";
 import Link from "next/link";
 import {
   AdminTable,
@@ -17,6 +18,9 @@ export const metadata = { title: "商品介紹 · 後台" };
 
 // 列表頁需顯示草稿/封存，故走 service_role 的 listAllProductsForAdmin（非前台 published-only helper）。
 export default async function AdminProductsPage() {
+  // 內容團隊（admin / seo_manager）才可進；(protected) 根 layout 只判斷是否為後台人員，
+  // office / erp / hr 等其他後台角色在此被導回 /admin（#259）。
+  await requireRole(CONTENT_ROLES);
   const products = (await listAllProductsForAdmin()) as Product[];
 
   // AdminTable 是 client component，cells 須由 server 端預先渲染成可序列化的 ReactNode；

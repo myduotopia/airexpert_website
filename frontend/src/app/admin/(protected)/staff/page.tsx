@@ -1,4 +1,5 @@
 import { requireAdmin } from "@/lib/admin/auth";
+import { ROLE_LABELS, isAdminRole } from "@/lib/admin/roles";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { DataTable } from "@/components/admin/DataTable";
 import { ActionButton } from "@/components/admin/ActionButton";
@@ -15,7 +16,7 @@ interface AdminProfileRow {
   created_at: string;
 }
 
-// 列出所有後台帳號（admin + seo_manager + office + erp）。走 service_role
+// 列出所有後台帳號（admin + seo_manager + office + erp + hr）。走 service_role
 // （0002 RLS 僅允許讀自己的列），依 created_at 由舊到新排序，admin 通常最先建立。
 async function getProfiles(): Promise<AdminProfileRow[]> {
   const { data, error } = await getAdminSupabase()
@@ -51,12 +52,9 @@ function formatDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? "—" : DATE_FMT.format(d);
 }
 
+// 角色顯示名稱以 ROLE_LABELS 為單一來源（hr → 人事）；未知角色原樣顯示。
 function roleLabel(role: string): string {
-  if (role === "admin") return "管理員";
-  if (role === "seo_manager") return "SEO 代管";
-  if (role === "office") return "行政";
-  if (role === "erp") return "ERP 行政";
-  return role;
+  return isAdminRole(role) ? ROLE_LABELS[role] : role;
 }
 
 function moduleLabel(module: string): string {
@@ -81,8 +79,8 @@ export default async function AdminStaffPage() {
         <p className="text-text-muted mt-1 text-[15px]">
           管理後台帳號。SEO 代管帳號只能編輯各內容的 SEO
           meta，行政帳號僅能操作保養記錄卡相關功能，ERP 行政帳號只看得到 ERP
-          模組，皆看不到內文、帳號與網站設定。共 {managers.length} 個代管 / 行政
-          / ERP 帳號。
+          模組，人事帳號只看得到員工頁，皆看不到內文、帳號與網站設定。共{" "}
+          {managers.length} 個代管 / 行政 / ERP / 人事帳號。
         </p>
         <p className="text-text-muted mt-2 text-[14px]">
           「人事權限」（hr
@@ -182,14 +180,15 @@ export default async function AdminStaffPage() {
         />
       </div>
 
-      {/* 新增 SEO 代管 / 行政 / ERP 行政帳號 */}
+      {/* 新增 SEO 代管 / 行政 / ERP 行政 / 人事帳號 */}
       <div className="mt-10">
         <h2 className="text-ink text-[20px] font-bold">
-          新增 SEO 代管 / 行政 / ERP 帳號
+          新增 SEO 代管 / 行政 / ERP / 人事帳號
         </h2>
         <p className="text-text-muted mt-1 text-[15px]">
           建立後，該人員即可用此 Email 與密碼登入後台，依角色維護 SEO
-          或保養記錄卡；選 ERP 行政會一併授權 ERP 模組。
+          或保養記錄卡；選 ERP 行政會一併授權 ERP
+          模組，選人事會一併授予人事權限（hr 模組）。
         </p>
         <div className="border-border mt-4 rounded-xl border bg-white p-6">
           <CreateSeoManagerForm />

@@ -1,10 +1,14 @@
+import { CONTENT_ROLES, requireRole } from "@/lib/admin/auth";
 import Link from "next/link";
 import { ServiceForm } from "@/components/services/admin/ServiceForm";
 import { createService } from "../actions";
 
 export const metadata = { title: "新增服務 — 後台" };
 
-export default function NewServicePage() {
+export default async function NewServicePage() {
+  // 內容團隊（admin / seo_manager）才可進；(protected) 根 layout 只判斷是否為後台人員，
+  // office / erp / hr 等其他後台角色在此被導回 /admin（#259）。
+  await requireRole(CONTENT_ROLES);
   return (
     <div className="mx-auto max-w-[1000px]">
       <Link

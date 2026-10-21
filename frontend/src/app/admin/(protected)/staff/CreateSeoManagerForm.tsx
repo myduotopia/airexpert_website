@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { SubmitButton } from "@/components/admin/SubmitButton";
 import { createSeoManager, type StaffFormState } from "./actions";
 
-// 建立 SEO 代管 / 行政 / ERP 行政帳號表單。成功後清空欄位，方便連續建立。
+// 建立 SEO 代管 / 行政 / ERP 行政 / 人事帳號表單。成功後清空欄位，方便連續建立。
 export function CreateSeoManagerForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction] = useActionState<StaffFormState, FormData>(
@@ -34,6 +34,7 @@ export function CreateSeoManagerForm() {
         >
           <option value="office">行政（保養記錄卡）</option>
           <option value="erp">ERP 行政（僅 ERP 模組）</option>
+          <option value="hr">人事（僅員工頁，含敏感資料）</option>
           <option value="seo_manager">SEO 代管</option>
         </select>
       </div>
@@ -70,7 +71,7 @@ export function CreateSeoManagerForm() {
         <p className="text-text-muted text-[12px]">
           該人員可用此 Email + 密碼登入後台；SEO 代管只能編輯各內容的 SEO
           meta，行政僅能操作保養記錄卡相關功能，ERP 行政只看得到 ERP
-          模組（建立時自動授權）。
+          模組（建立時自動授權），人事只看得到員工頁、可查看與修改員工敏感資料（建立時自動授予人事權限）。
         </p>
       </div>
 

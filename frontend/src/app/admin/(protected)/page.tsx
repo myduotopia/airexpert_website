@@ -8,7 +8,7 @@ export const metadata = { title: "後台總覽" };
 export default async function AdminDashboardPage() {
   // 角色由 layout 的 requireRole 確保非 null；保險起見退回 seo_manager（最小權限）。
   const role = (await getCurrentUserRole()) ?? "seo_manager";
-  // office → 保養記錄卡；角色本身沒有可見區段但持有模組授權 → 導向該模組
+  // office → 保養記錄卡；hr（人事）→ 員工頁；角色本身沒有可見區段但持有模組授權 → 導向該模組
   // （僅在確實有授權時導向，避免與目標 layout 的 requireModule() 互導，見 landingPathFor）。
   const landing = landingPathFor(role, await getCurrentModules());
   if (landing) redirect(landing);

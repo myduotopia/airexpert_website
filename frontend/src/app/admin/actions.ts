@@ -25,7 +25,7 @@ export async function loginAction(
 
   // 驗證為後台人員（ADMIN_ROLES 之一）；否則立即登出，不給進後台。
   // 註：is_admin() 自 0005 起收斂為 role='admin'，故不能只查 is_admin，否則
-  // seo_manager / office / erp 會被擋在登入頁（與 (protected) layout 的 requireRole 一致）。
+  // seo_manager / office / erp / hr 會被擋在登入頁（與 (protected) layout 的 requireRole 一致）。
   // 角色清單以 isAdminRole() 為單一事實來源（見 lib/admin/auth.ts），新增角色只需改該處。
   // 讀自己的 admin_profiles 列（0002「admin reads own profile」policy 為 role 無關）。
   const {
