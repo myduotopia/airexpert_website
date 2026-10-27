@@ -13,6 +13,7 @@ import { rocDateTime } from "@/lib/admin/minguo";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { MoneyText } from "@/components/erp/MoneyText";
 import { PartyActivity } from "@/components/erp/PartyActivity";
+import { CustomerSourceBadge } from "@/components/erp/CustomerSourceBadge";
 import {
   ActiveBadge,
   Info,
@@ -139,6 +140,9 @@ export default async function ErpCustomerDetailPage({
         <Info label="收信人">{customer.mail_recipient ?? "—"}</Info>
         <Info label="業務">{customer.sales_rep ?? "—"}</Info>
         <Info label="付款條件">{customer.payment_terms ?? "—"}</Info>
+        <Info label="客戶來源">
+          <CustomerSourceBadge source={customer.source} fallback="—" />
+        </Info>
         <Info label="聯絡地址" wide>
           {customer.address ?? "—"}
         </Info>

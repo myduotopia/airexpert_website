@@ -7,6 +7,7 @@ import {
   type AdminRow,
 } from "@/components/admin/AdminTable";
 import { rocDate } from "@/lib/admin/minguo";
+import { CustomerSourceBadge } from "@/components/erp/CustomerSourceBadge";
 
 export const metadata = { title: "客戶 · 後台" };
 
@@ -34,13 +35,15 @@ export default async function CustomersListPage() {
       >
         {c.code ?? "—"}
       </Link>,
-      <Link
-        key="name"
-        href={`/admin/maintenance/customers/${c.id}`}
-        className="text-ink hover:text-primary-deep font-medium"
-      >
-        {c.name}
-      </Link>,
+      <span key="name" className="inline-flex flex-wrap items-center gap-2">
+        <Link
+          href={`/admin/maintenance/customers/${c.id}`}
+          className="text-ink hover:text-primary-deep font-medium"
+        >
+          {c.name}
+        </Link>
+        <CustomerSourceBadge source={c.source} />
+      </span>,
       c.contact_person ?? "—",
       c.phone ?? "—",
       <span key="count" className="tabular-nums">
@@ -57,7 +60,7 @@ export default async function CustomersListPage() {
       c.last_service_date,
     ],
     search:
-      `${c.code ?? ""} ${c.name} ${c.contact_person ?? ""} ${c.phone ?? ""}`.toLowerCase(),
+      `${c.code ?? ""} ${c.name} ${c.contact_person ?? ""} ${c.phone ?? ""} ${c.source ?? ""}`.toLowerCase(),
   }));
 
   return (
@@ -79,7 +82,7 @@ export default async function CustomersListPage() {
       <AdminTable
         rows={rows}
         columns={columns}
-        searchPlaceholder="搜尋客戶編號 / 名稱 / 聯絡人 / 電話…"
+        searchPlaceholder="搜尋客戶編號 / 名稱 / 聯絡人 / 電話 / 來源…"
         empty="尚無客戶。建立保養卡時會一併建立客戶。"
       />
     </div>

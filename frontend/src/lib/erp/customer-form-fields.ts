@@ -43,6 +43,8 @@ const CUSTOMER_TEXT_FIELDS: readonly CustomerTextField[] = [
   // 業務：員工選取器（CustomerForm 另行 render），不是一般文字框。
   { key: "sales_rep", label: "業務" },
   { key: "payment_terms", label: "付款條件", placeholder: "例：月結30天" },
+  // 客戶來源（#266）：自由文字；Facebook 來的客戶填 FB（大小寫不拘，存成 FB），列表可依來源篩選。
+  { key: "source", label: "客戶來源", placeholder: "例：FB" },
   { key: "address", label: "聯絡地址", wide: true },
   { key: "delivery_address", label: "送貨地址", wide: true },
 ];

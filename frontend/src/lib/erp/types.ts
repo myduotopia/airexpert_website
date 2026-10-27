@@ -126,6 +126,8 @@ export interface ErpCustomer {
   mail_recipient: string | null;
   /** Email，可多筆以「; 」分隔（0026）。 */
   email: string | null;
+  /** 客戶來源（0035，#266）；FB = Facebook 來的客戶。 */
+  source: string | null;
   erp_active: boolean;
 }
 

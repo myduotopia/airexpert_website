@@ -196,6 +196,7 @@ function customer(patch: Partial<CustomerInput> = {}): CustomerInput {
     fax: "",
     mail_recipient: "",
     email: "",
+    source: "",
     erp_active: true,
     ...patch,
   };

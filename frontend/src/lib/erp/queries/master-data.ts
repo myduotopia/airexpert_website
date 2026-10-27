@@ -6,6 +6,12 @@ import "server-only";
 import { getServerSupabase } from "@/lib/supabase-server";
 import type { MxMachine } from "@/lib/admin/maintenance";
 import { normalizeEmployeeRef } from "@/lib/employees/normalize";
+import { EMAIL_FORMAT_MESSAGE, normalizeEmailList } from "../email";
+import {
+  FB_SOURCE,
+  normalizeCustomerSource,
+  type CustomerSourceFilter,
+} from "../customer-source";
 import type {
   ErpCustomer,
   ErpItem,
@@ -64,25 +70,8 @@ export function cleanText(v: string | null | undefined): string | null {
   return s ? s : null;
 }
 
-export const EMAIL_FORMAT_MESSAGE = "Email 格式不正確（多筆請以 ; 分隔）。";
-
-const EMAIL_RE = /^[^\s@;,]+@[^\s@;,]+\.[^\s@;,]+$/;
-
-/**
- * Email 欄位（可多筆）：以 ; , ，、；分隔，逐筆做基本格式檢查（x@y.z），整理為「; 」分隔。
- * 空白回 value: null（不擋）；任一筆不符回 ok: false。不檢查網域是否存在。
- */
-export function normalizeEmailList(
-  v: string | null | undefined,
-): { ok: true; value: string | null } | { ok: false } {
-  const parts = (v ?? "")
-    .split(/[;,，；、]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return { ok: true, value: null };
-  if (!parts.every((p) => EMAIL_RE.test(p))) return { ok: false };
-  return { ok: true, value: parts.join("; ") };
-}
+// Email 正規化移至 lib/erp/email.ts（純函式，客戶匯入腳本 #266 也用）；此處 re-export 維持既有 import 路徑。
+export { EMAIL_FORMAT_MESSAGE, normalizeEmailList } from "../email";
 
 /** PostgREST or-filter 的值不可含結構字元；移除以避免語法錯誤。 */
 export function sanitizeSearch(q: string | null | undefined): string {
@@ -208,6 +197,8 @@ export interface CustomerInput {
   mail_recipient: string;
   /** Email，可多筆以 ; 分隔（0026）。 */
   email: string;
+  /** 客戶來源（0035，#266；自由文字，fb 存成 FB）。 */
+  source: string;
   erp_active: boolean;
 }
 
@@ -244,6 +235,7 @@ export function normalizeCustomerInput(
       fax: cleanText(input.fax),
       mail_recipient: cleanText(input.mail_recipient),
       email: email.value,
+      source: normalizeCustomerSource(input.source),
       erp_active: input.erp_active !== false,
     },
   };
@@ -426,12 +418,17 @@ export async function getVendor(id: string): Promise<ErpVendor | null> {
 
 // ── 客戶（mx_customers 共用） ────────────────────────────────
 
-/** ErpCustomer 對應的欄位（fax / mail_recipient / email 需 0026；sales_rep_id 需 0027）。 */
+/** ErpCustomer 對應的欄位（fax / mail_recipient / email 需 0026；sales_rep_id 需 0027；source 需 0035）。 */
 export const ERP_CUSTOMER_COLUMNS =
-  "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, sales_rep_id, fax, mail_recipient, email, erp_active";
+  "id, code, name, contact_person, phone, address, note, tax_id, invoice_title, delivery_address, payment_terms, sales_rep, sales_rep_id, fax, mail_recipient, email, source, erp_active";
+
+export interface ListCustomerParams extends ListPartyParams {
+  /** 來源篩選（#266）：fb = FB；other = 有值但不是 FB；none = 未填；all／未給 = 不篩。 */
+  source?: CustomerSourceFilter | null;
+}
 
 export async function listErpCustomers(
-  params: ListPartyParams = {},
+  params: ListCustomerParams = {},
 ): Promise<Paged<ErpCustomer>> {
   const [page, start, end] = pageRange(params.page);
   const supabase = await getServerSupabase();
@@ -439,6 +436,11 @@ export async function listErpCustomers(
     .from("mx_customers")
     .select(ERP_CUSTOMER_COLUMNS, { count: "exact" });
   if (!params.includeInactive) query = query.eq("erp_active", true);
+  // 來源：表單與匯入都把 fb 存成 FB；仍以 ilike（無萬用字元＝不分大小寫的相等）比對，容許手動改過的資料。
+  if (params.source === "fb") query = query.ilike("source", FB_SOURCE);
+  else if (params.source === "other") {
+    query = query.not("source", "is", null).not("source", "ilike", FB_SOURCE);
+  } else if (params.source === "none") query = query.is("source", null);
   const q = sanitizeSearch(params.q);
   if (q) {
     query = query.or(

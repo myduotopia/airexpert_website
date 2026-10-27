@@ -3,7 +3,12 @@ import { requireModule } from "@/lib/admin/auth";
 import { listErpCustomers } from "@/lib/erp/queries/master-data";
 import type { ErpCustomer } from "@/lib/erp/types";
 import { DataTable, type Column } from "@/components/admin/DataTable";
-import { ERP_INPUT } from "@/components/erp/styles";
+import { ERP_INPUT, ERP_SELECT } from "@/components/erp/styles";
+import { CustomerSourceBadge } from "@/components/erp/CustomerSourceBadge";
+import {
+  CUSTOMER_SOURCE_FILTERS,
+  parseCustomerSourceFilter,
+} from "@/lib/erp/customer-source";
 import {
   ActiveBadge,
   LINK_PRIMARY,
@@ -35,6 +40,10 @@ const COLUMNS: Column<ErpCustomer>[] = [
       </Link>
     ),
   },
+  {
+    header: "來源",
+    cell: (c) => <CustomerSourceBadge source={c.source} fallback="—" />,
+  },
   { header: "統編", cell: (c) => c.tax_id ?? "—" },
   { header: "聯絡人", cell: (c) => c.contact_person ?? "—" },
   { header: "電話", cell: (c) => c.phone ?? "—" },
@@ -51,15 +60,24 @@ export default async function ErpCustomersPage({
   const sp = await searchParams;
   const q = firstParam(sp.q);
   const inactive = firstParam(sp.inactive) === "1";
+  const source = parseCustomerSourceFilter(firstParam(sp.source));
   const page = pageParam(sp.page);
-  const result = await listErpCustomers({ q, includeInactive: inactive, page });
+  const result = await listErpCustomers({
+    q,
+    includeInactive: inactive,
+    source,
+    page,
+  });
+  const sourceLabel = CUSTOMER_SOURCE_FILTERS.find(
+    (f) => f.value === source,
+  )?.label;
 
   return (
     <div className="mx-auto max-w-[1100px]">
       <MasterTabs active="customers" />
       <MasterHeader
         title="客戶"
-        description={`與保養記錄卡共用客戶主檔。共 ${result.total} 筆${inactive ? "（含停用）" : ""}。`}
+        description={`與保養記錄卡共用客戶主檔。共 ${result.total} 筆${source !== "all" ? `（來源：${sourceLabel}）` : ""}${inactive ? "（含停用）" : ""}。`}
         actions={
           <Link href="/admin/erp/customers/new" className={LINK_PRIMARY}>
             新增客戶
@@ -75,6 +93,16 @@ export default async function ErpCustomersPage({
             搜尋編號／名稱／統編／聯絡人／電話
           </span>
           <input name="q" defaultValue={q} className={ERP_INPUT} />
+        </label>
+        <label className="flex flex-col gap-1 text-[13px]">
+          <span className="text-text-muted">客戶來源</span>
+          <select name="source" defaultValue={source} className={ERP_SELECT}>
+            {CUSTOMER_SOURCE_FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex h-10 items-center gap-2 text-[14px]">
           <input
@@ -97,7 +125,11 @@ export default async function ErpCustomersPage({
       />
       <Pager
         basePath="/admin/erp/customers"
-        params={{ q: q || undefined, inactive: inactive ? "1" : undefined }}
+        params={{
+          q: q || undefined,
+          source: source !== "all" ? source : undefined,
+          inactive: inactive ? "1" : undefined,
+        }}
         page={result.page}
         total={result.total}
         pageSize={result.pageSize}
