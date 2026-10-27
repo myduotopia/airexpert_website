@@ -7,8 +7,6 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import type { MxMachine } from "@/lib/admin/maintenance";
 import { normalizeEmployeeRef } from "@/lib/employees/normalize";
 import type {
-  DocStatus,
-  DocType,
   ErpCustomer,
   ErpItem,
   ErpPartyBalance,
@@ -489,7 +487,7 @@ export async function listCustomerMachines(
   ];
 }
 
-// ── 餘額 / 近期單據 ──────────────────────────────────────────
+// ── 餘額 ──────────────────────────────────────────
 
 /** 客戶應收（廠商應付）餘額與未沖銷預收（預付）。查無資料回 0。 */
 export async function getPartyBalance(
@@ -509,36 +507,4 @@ export async function getPartyBalance(
     balance: Number(row?.balance ?? 0),
     unallocated: Number(row?.unallocated ?? 0),
   };
-}
-
-export interface RecentDocumentRow {
-  id: string;
-  doc_type: DocType;
-  doc_no: string | null;
-  doc_date: string;
-  status: DocStatus;
-  currency: string;
-  total_amount: number;
-  total_twd: number;
-}
-
-/** 客戶或廠商的近期單據（含草稿與作廢，新→舊）。 */
-export async function listRecentDocuments(
-  party: { customerId: string } | { vendorId: string },
-  limit = 10,
-): Promise<RecentDocumentRow[]> {
-  const supabase = await getServerSupabase();
-  const column = "customerId" in party ? "customer_id" : "vendor_id";
-  const id = "customerId" in party ? party.customerId : party.vendorId;
-  const { data, error } = await supabase
-    .from("erp_documents")
-    .select(
-      "id, doc_type, doc_no, doc_date, status, currency, total_amount, total_twd",
-    )
-    .eq(column, id)
-    .order("doc_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(`讀取單據失敗：${error.message}`);
-  return (data ?? []) as RecentDocumentRow[];
 }

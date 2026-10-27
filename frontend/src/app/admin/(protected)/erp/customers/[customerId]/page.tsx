@@ -5,7 +5,6 @@ import {
   getErpCustomer,
   getPartyBalance,
   listCustomerMachines,
-  listRecentDocuments,
 } from "@/lib/erp/queries/master-data";
 import type { MxMachine } from "@/lib/admin/maintenance";
 import { cardTypeLabel } from "@/lib/admin/maintenance-normalize";
@@ -13,7 +12,7 @@ import { machineTagLabel } from "@/lib/admin/machine-identity";
 import { rocDateTime } from "@/lib/admin/minguo";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { MoneyText } from "@/components/erp/MoneyText";
-import { RecentDocuments } from "../../items/_components/RecentDocuments";
+import { PartyActivity } from "@/components/erp/PartyActivity";
 import {
   ActiveBadge,
   Info,
@@ -76,16 +75,18 @@ const MACHINE_COLUMNS: Column<MxMachine>[] = [
 
 export default async function ErpCustomerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ customerId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requireModule("erp");
   const { customerId } = await params;
+  const sp = await searchParams;
   const customer = await getErpCustomer(customerId);
   if (!customer) notFound();
-  const [balance, docs, machines] = await Promise.all([
+  const [balance, machines] = await Promise.all([
     getPartyBalance("customer", customerId),
-    listRecentDocuments({ customerId }),
     listCustomerMachines(customerId),
   ]);
 
@@ -149,8 +150,12 @@ export default async function ErpCustomerDetailPage({
         </Info>
       </InfoGrid>
 
-      <h2 className="text-ink mt-8 mb-4 text-[18px] font-bold">近期單據</h2>
-      <RecentDocuments rows={docs} />
+      <PartyActivity
+        partyType="customer"
+        partyId={customer.id}
+        basePath={`/admin/erp/customers/${customer.id}`}
+        searchParams={sp}
+      />
 
       <h2 className="text-ink mt-8 mb-4 text-[18px] font-bold">
         名下保養卡機台（{machines.length}）
