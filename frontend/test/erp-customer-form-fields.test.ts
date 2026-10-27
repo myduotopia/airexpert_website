@@ -27,6 +27,7 @@ describe("customerFormFields", () => {
       "mail_recipient",
       "sales_rep",
       "payment_terms",
+      "source",
       "address",
       "delivery_address",
     ]);

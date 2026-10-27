@@ -181,6 +181,7 @@ export function emptyCustomerInput(
     fax: "",
     mail_recipient: "",
     email: "",
+    source: "",
     erp_active: true,
     ...patch,
   };

@@ -43,6 +43,7 @@ export default async function EditErpCustomerPage({
           fax: c.fax ?? "",
           mail_recipient: c.mail_recipient ?? "",
           email: c.email ?? "",
+          source: c.source ?? "",
           erp_active: c.erp_active,
         }}
       />

@@ -21,6 +21,8 @@ export interface MxCustomer {
   phone: string | null;
   address: string | null;
   note: string | null;
+  /** 客戶來源（0035，#266；ERP 客戶表單維護，保養卡只顯示）。 */
+  source: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -34,6 +36,7 @@ const EMPTY_CUSTOMER: MxCustomer = {
   phone: null,
   address: null,
   note: null,
+  source: null,
   created_at: "",
   updated_at: null,
 };
