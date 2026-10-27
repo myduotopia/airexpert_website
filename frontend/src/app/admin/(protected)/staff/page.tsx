@@ -90,8 +90,9 @@ export default async function AdminStaffPage() {
           只有人事權限的帳號只能進入員工頁，看不到 ERP 與機台維護報告單。
         </p>
         <p className="text-text-muted mt-2 text-[14px]">
-          「員工」帳號（員工編號@airexpert.com.tw）由人事在「員工 ›
-          權限管理」建立與重設密碼，能看到的功能由職位決定；這裡只能移除或授予人事權限。
+          「員工」帳號（建立時為員工編號@airexpert.com.tw，之後可改為員工個人
+          email）由人事在「員工 › 權限管理」建立、修改登入 email
+          與重設密碼，能看到的功能由職位決定；這裡只能移除或授予人事權限。
         </p>
       </div>
 

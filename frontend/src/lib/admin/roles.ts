@@ -9,7 +9,8 @@
  *   office      — 行政（保養記錄卡）
  *   erp         — ERP 行政（只用 ERP 模組；實際可見性另由 admin_module_grants 決定）
  *   hr          — 人事（#259；只用員工頁，含員工敏感資料；可見性同樣由 hr 模組授權決定）
- *   staff       — 員工（#261；每位在職員工一個帳號，`<員工編號>@airexpert.com.tw`）。角色本身沒有任何頁面，
+ *   staff       — 員工（#261；每位在職員工一個帳號，建立時為 `<員工編號>@airexpert.com.tw`，
+ *                 #265 起可由人事改為個人 email）。角色本身沒有任何頁面，
  *                 能看到什麼完全由所連結員工的職位權限（has_module）決定；另有帳號設定頁（改密碼）。
  *
  * 注意：(protected)／(print)／(account) 的根 layout 以 requireRole([...ADMIN_ROLES]) 只判斷「是否為後台人員」，

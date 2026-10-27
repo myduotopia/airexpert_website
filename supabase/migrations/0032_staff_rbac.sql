@@ -220,7 +220,9 @@ alter table admin_access_audit add constraint admin_access_audit_action_check
     'position_create', 'position_update', 'position_delete',
     'position_permission_grant', 'position_permission_revoke',
     'employee_position_change',
-    'account_link', 'account_unlink'
+    'account_link', 'account_unlink',
+    -- 0034（#265）：員工帳號登入 email 變更。同步列在這裡，0034 之後重跑本檔不會因既有紀錄違反約束而失敗。
+    'account_email_change'
   ));
 create index if not exists admin_access_audit_at_idx on admin_access_audit (at desc);
 create index if not exists admin_access_audit_employee_idx on admin_access_audit (employee_id, at desc)

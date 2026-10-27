@@ -36,9 +36,12 @@ export interface StaffPersonRow {
   position_id: string | null;
   /** 實際在職（active 且未到離職日）。 */
   current: boolean;
-  /** 預計的帳號 email（沒有編號或編號含不可用字元 → null，不能建立帳號）。 */
+  /** 建立帳號時會用的 email（編號小寫@airexpert.com.tw；沒有編號或編號含不可用字元 → null，不能建立帳號）。 */
   expected_email: string | null;
-  /** 已連結帳號的 email（未連結 → null）。 */
+  /**
+   * 已連結帳號目前的登入 email（未連結 → null）。以 Auth 為準（讀不到時用 admin_profiles.email）；
+   * #265 起可能是員工個人 email，不一定等於 expected_email。
+   */
   account_email: string | null;
   /** 已啟用／已停用（未建立、非員工帳號另計）。 */
   status: StaffAccountStatus;
@@ -117,7 +120,10 @@ interface EmployeeAccountFields {
   admin_profile_id: string | null;
 }
 
-/** 連結帳號的狀態（service_role）：admin_profiles 的 role／must_change_password + Auth 的 banned_until。 */
+/**
+ * 連結帳號的狀態（service_role）：admin_profiles 的 role／must_change_password + Auth 的 banned_until 與 email。
+ * 帳號由 employees.admin_profile_id 對應（不看 email）。
+ */
 async function loadAccounts(ids: string[]): Promise<
   Map<
     string,
@@ -159,13 +165,16 @@ async function loadAccounts(ids: string[]): Promise<
     });
   }
   // 啟用／停用狀態只存在 Auth：逐一讀取（員工帳號數量少；失敗時視為已啟用並照常顯示）。
+  // 登入 email 也以 Auth 為準（#265：修改 email 時 Auth 先改、admin_profiles 後同步，兩者不一致時顯示實際可登入的值）。
   await Promise.all(
     ids.map(async (id) => {
       const { data: u } = await admin.auth.admin.getUserById(id);
       const row = out.get(id);
-      const banned = (u?.user as { banned_until?: string | null } | undefined)
-        ?.banned_until;
-      if (row && banned) row.banned_until = banned;
+      const user = u?.user as
+        | { banned_until?: string | null; email?: string | null }
+        | undefined;
+      if (row && user?.banned_until) row.banned_until = user.banned_until;
+      if (row && user?.email) row.email = user.email;
     }),
   );
   return out;

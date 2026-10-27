@@ -26,13 +26,68 @@ export const PASSWORD_MAX_BYTES = 72;
 const CODE_EMAIL_SAFE = /^[A-Za-z0-9._-]+$/;
 
 /**
- * 員工帳號 email：`<員工編號小寫>@airexpert.com.tw`（與 DB staff_email_for_code 一致：去頭尾空白、小寫）。
+ * 建立員工帳號時的 email：`<員工編號小寫>@airexpert.com.tw`（與 DB staff_email_for_code 一致：去頭尾空白、小寫）。
  * 沒有編號或編號含不可用於 email 的字元時回 null（不能建立帳號）。
+ * ⚠️ 只用於「建立」：建立後人事可把登入 email 改成員工個人 email（#265），目前的登入 email 以
+ *    admin_profiles.email 為準；帳號與員工的對應一律用 employees.admin_profile_id，不可由 email 推回。
  */
 export function staffEmailFor(code: string | null | undefined): string | null {
   const c = (code ?? "").trim();
   if (!c || !CODE_EMAIL_SAFE.test(c)) return null;
   return `${c.toLowerCase()}@${STAFF_EMAIL_DOMAIN}`;
+}
+
+/** 登入 email 全長上限（RFC 5321）。 */
+const EMAIL_MAX_LENGTH = 254;
+/** 本地部分（@ 之前）上限。 */
+const EMAIL_LOCAL_MAX_LENGTH = 64;
+/**
+ * 已正規化（小寫、無空白）的單一 ASCII email，與 DB staff_login_email_valid（0034）相同：
+ * 本地部分 [a-z0-9_%+-] 以 . 分段（不可開頭／結尾／連續 .）；網域為以 . 分隔的標籤（英數與 -，不可以 - 開頭或結尾，
+ * 每段 ≤ 63），最後一段為 2–63 個英文字母。
+ */
+const LOGIN_EMAIL_RE =
+  /^[a-z0-9_%+-]+(\.[a-z0-9_%+-]+)*@([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+/** 多個 email 的分隔符號（逗號、分號、空白，含全形）。 */
+const EMAIL_LIST_SEPARATOR = /[\s,;，；、]/;
+
+export type NormalizedEmail =
+  | { ok: true; email: string }
+  | { ok: false; error: string };
+
+/**
+ * 員工帳號登入 email 的輸入檢查（#265，人員頁籤與一次性套用腳本共用）：去頭尾空白、轉小寫，
+ * 只接受單一 ASCII email。不限網域（個人信箱是預期的）。DB 端 staff_login_email_valid 另有相同檢查。
+ */
+export function normalizeLoginEmail(raw: unknown): NormalizedEmail {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  if (!v) return { ok: false, error: "請輸入 email。" };
+  if (EMAIL_LIST_SEPARATOR.test(v)) {
+    return { ok: false, error: "只能輸入一個 email。" };
+  }
+  const email = v.toLowerCase();
+  // 先擋非 ASCII（含全形與控制字元）：toLowerCase 會把部分非 ASCII 字元（如 KELVIN SIGN）轉成 ASCII 字母。
+  if (
+    /[^\x21-\x7e]/.test(v) ||
+    email.length > EMAIL_MAX_LENGTH ||
+    email.indexOf("@") > EMAIL_LOCAL_MAX_LENGTH ||
+    !LOGIN_EMAIL_RE.test(email)
+  ) {
+    return { ok: false, error: "email 格式不正確。" };
+  }
+  return { ok: true, email };
+}
+
+/**
+ * email 遮罩：本地部分（最後一個 @ 之前）的首字 + *** + @網域，例 `t***@example.com`（與 DB admin_mask_email 一致）。
+ * 稽核紀錄與一次性腳本的輸出用。空值回空字串；沒有本地部分或沒有 @ → `***`。
+ */
+export function maskEmail(raw: string | null | undefined): string {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (!v) return "";
+  const at = v.lastIndexOf("@");
+  if (at < 1) return "***";
+  return `${v[0]}***${v.slice(at)}`;
 }
 
 /** 可經職位授予的模組（顯示順序）。不含 hr：hr 只能由 admin 在人員管理頁直接授予。 */
@@ -201,6 +256,11 @@ const STAFF_RPC_ERRORS: Record<string, string> = {
   position_assign_forbidden: "只有人事（hr）權限可以指派員工職位。",
   admin_unlink_forbidden:
     "此員工已有後台帳號，只有人事（hr）權限可以解除連結。",
+  // 0034（#265）：修改員工帳號登入 email
+  email_invalid: "email 格式不正確。",
+  email_taken: "此 email 已是其他帳號的登入 email。",
+  email_unchanged: "新 email 與目前的登入 email 相同，未變更。",
+  auth_email_mismatch: "登入帳號的 email 尚未更新，請重新整理後再試。",
 };
 
 export function staffRpcError(

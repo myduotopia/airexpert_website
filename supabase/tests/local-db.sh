@@ -2,7 +2,7 @@
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
 # supabase/migrations/*.sql，再依序執行 supabase/tests/erp_posting_test.sql、
 # service_report_test.sql、service_plan_test.sql、employees_test.sql、employee_hr_test.sql、staff_rbac_test.sql、
-# party_activity_test.sql 與 customer_source_test.sql。
+# staff_email_test.sql、party_activity_test.sql 與 customer_source_test.sql。
 # Vault（vault.decrypted_secrets）只在本機以資料表 + view 模擬，並放入「測試用」金鑰。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
@@ -169,6 +169,10 @@ psql_run -1 < "$ROOT/migrations/0032_staff_rbac.sql"
 echo "==> 重跑 0033（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0033_staff_account_disabled.sql"
 
+# 0034 重建 admin_access_audit_action_check（加入 account_email_change）並新增登入 email 修改 RPC；
+# 0032 的約束清單已同步含 account_email_change，重跑 0032 不會蓋掉，仍在其後重跑確認可重複執行。
+echo "==> 重跑 0034（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0034_staff_login_email.sql"
 # 0035 只新增 mx_customers.source 欄位與索引，不動 policy：重跑前後 mx_customers 的 policy 必須完全相同。
 POLICY_SQL="select md5(string_agg(policyname || ':' || cmd || ':' || coalesce(qual, '') || ':' || coalesce(with_check, ''), '|' order by policyname)) from pg_policies where tablename = 'mx_customers'"
 POLICIES_BEFORE=$(docker exec "$NAME" psql -U postgres -tAc "$POLICY_SQL")
@@ -192,6 +196,8 @@ do $$ begin
   assert (select must_change_password from admin_profiles where id = '00000000-0000-0000-0000-00000000f0a2'), 'must_change_password 保留';
   assert pg_get_functiondef('public.has_module(text)'::regprocedure) like '%position_permissions%', 'has_module 為 0032 版';
   assert pg_get_functiondef('public.hr_link_staff_account(uuid,uuid)'::regprocedure) like '%login_disabled%', 'hr_link_staff_account 為 0033 版';
+  assert pg_get_constraintdef((select oid from pg_constraint where conname = 'admin_access_audit_action_check')) like '%account_email_change%', '稽核動作含 account_email_change（0034）';
+  assert to_regprocedure('public.hr_apply_staff_email_change(uuid,text)') is not null, '0034 的 RPC 存在';
 end $$;
 SQL
 
@@ -223,6 +229,8 @@ psql_run < "$ROOT/tests/employee_hr_test.sql"
 echo "==> 執行 staff_rbac_test.sql"
 psql_run < "$ROOT/tests/staff_rbac_test.sql"
 
+echo "==> 執行 staff_email_test.sql"
+psql_run < "$ROOT/tests/staff_email_test.sql"
 echo "==> 執行 customer_source_test.sql"
 psql_run < "$ROOT/tests/customer_source_test.sql"
 echo "==> 執行 party_activity_test.sql"
@@ -236,4 +244,4 @@ if [ "$LEFT" != "0" ]; then
   exit 1
 fi
 
-echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + PARTY ACTIVITY + CUSTOMER SOURCE TESTS PASSED"
+echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + STAFF EMAIL + PARTY ACTIVITY + CUSTOMER SOURCE TESTS PASSED"
