@@ -17,6 +17,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   employee_position_change: "變更員工職位",
   account_link: "連結帳號",
   account_unlink: "解除帳號連結",
+  account_email_change: "修改登入 email",
 };
 
 const DATE_FMT = new Intl.DateTimeFormat("zh-TW", {
@@ -67,6 +68,9 @@ export function auditSummary(row: AccessAuditRow): string {
       return `${str(d.position_name) || "（已刪除的職位）"}：${moduleLabel(d.module)}`;
     case "employee_position_change":
       return `${str(d.employee_name)}：${str(d.from_name) || "未指派"} → ${str(d.to_name) || "未指派"}`;
+    case "account_email_change":
+      // 0034：舊／新 email 只存遮罩形式（例 t***@example.com）。
+      return `${str(d.employee_name)}：${str(d.from_email) || "—"} → ${str(d.to_email) || "—"}`;
     case "account_link":
     case "account_unlink":
       return `${str(d.employee_name)}：${str(d.from_email) || (d.from ? "（已刪除的帳號）" : "未連結")} → ${str(d.to_email) || "未連結"}`;

@@ -16,12 +16,14 @@ import {
   MUST_CHANGE_PASSWORD_LABEL,
   STAFF_ACCOUNT_STATUS_LABELS,
   batchCreateSummary,
+  normalizeLoginEmail,
   type BatchCreateResult,
   type StaffAccountStatus,
 } from "@/lib/admin/staff-accounts";
 import type { StaffPersonRow } from "@/lib/employees/permissions";
 import {
   assignEmployeePositionAction,
+  changeStaffEmailAction,
   createStaffAccountAction,
   createStaffAccountsBatchAction,
   resetStaffPasswordAction,
@@ -44,10 +46,11 @@ const STATUS_CLASS: Record<StaffAccountStatus, string> = {
 const BADGE = "inline-flex w-fit rounded px-2 py-0.5 text-[12px] font-medium";
 
 /** 預設密碼被他人搶先使用的提醒（啟用、重設、建立時不停用的確認框共用）。 */
-const DEFAULT_PASSWORD_RISK = `任何知道員工編號的人都能用預設密碼 ${DEFAULT_STAFF_PASSWORD} 登入並改掉密碼，請在員工本人在場時操作，並請本人立即改密碼。`;
+const DEFAULT_PASSWORD_RISK = `任何知道登入 email（員工編號或員工個人 email）的人都能用預設密碼 ${DEFAULT_STAFF_PASSWORD} 登入並改掉密碼，請在員工本人在場時操作，並請本人立即改密碼。`;
 
 // 人員頁籤：員工的職位指派、帳號狀態（已啟用／已停用＋需改密碼）與帳號操作。
 // #263：帳號建立後預設停用，由人事主管在員工本人在場時按「啟用帳號」，避免預設密碼在員工改密碼前被他人使用。
+// #265：員工帳號的登入 email 可由人事改成員工個人 email（只限員工帳號）；「帳號」欄顯示目前的登入 email。
 // 所有確認一律用頁內確認框（useConfirm），不用瀏覽器原生確認框。
 export function PeoplePanel({
   people,
@@ -69,9 +72,10 @@ export function PeoplePanel({
         <div className="min-w-0 flex-1 text-[14px]">
           <p className="text-ink font-semibold">員工帳號</p>
           <p className="text-text-muted mt-1">
-            帳號為「員工編號小寫@airexpert.com.tw」，預設密碼{" "}
+            建立時的登入 email 為「員工編號小寫@airexpert.com.tw」，預設密碼{" "}
             {DEFAULT_STAFF_PASSWORD}
-            ，首次登入必須先改密碼。沒有員工編號的員工無法建立帳號。
+            ，首次登入必須先改密碼。沒有員工編號的員工無法建立帳號。建立後可按「修改登入
+            email」改成員工的個人 email（不寄確認信，密碼不變）。
           </p>
           <label className="text-ink mt-3 flex items-start gap-2">
             <input
@@ -153,8 +157,10 @@ export function PeoplePanel({
                     </span>
                   ) : null}
                 </span>
-                <span className="text-text-muted font-mono text-[12px]">
-                  {p.account_email ?? p.expected_email ?? "（沒有員工編號）"}
+                <span className="text-text-muted font-mono text-[12px] break-all">
+                  {p.status === "none"
+                    ? (p.expected_email ?? "（沒有員工編號）")
+                    : (p.account_email ?? "—")}
                 </span>
               </span>
             ),
@@ -272,6 +278,7 @@ function AccountActions({
   const disabled = person.status === "disabled";
   return (
     <span className="inline-flex flex-wrap justify-end gap-2">
+      <ChangeEmailButton person={person} />
       <ResetPasswordButton person={person} />
       {disabled ? (
         <ConfirmActionButton
@@ -309,8 +316,116 @@ function AccountActions({
 }
 
 /**
+ * 修改登入 email（#265，只限員工帳號）：按鈕展開輸入框 → 先在前端檢查格式 → 頁內確認框列出舊／新 email →
+ * server action（格式、重複、只限 staff 由 DB 再檢查一次）。成功後收合並重新整理。
+ */
+function ChangeEmailButton({ person }: { person: StaffPersonRow }) {
+  const router = useRouter();
+  const [askConfirm, confirmDialog] = useConfirm();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const current = person.account_email ?? "（未知）";
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setValue("");
+          setError(null);
+          setOpen(true);
+        }}
+        className={`inline-flex items-center transition-colors ${ACTION_BUTTON_VARIANT_CLASS.secondary}`}
+      >
+        修改登入 email
+      </button>
+    );
+  }
+
+  return (
+    <form
+      noValidate
+      className="inline-flex flex-wrap items-center justify-end gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setError(null);
+        const norm = normalizeLoginEmail(value);
+        if (!norm.ok) {
+          setError(norm.error);
+          return;
+        }
+        // 與目前相同由 DB 判斷（Auth 與後台資料都已是此 email 才算相同；先前同步失敗時要能再送一次補齊）。
+        const ok = await askConfirm({
+          title: `確定修改 ${person.name} 的登入 email？`,
+          message: `登入 email 由 ${current} 改為 ${norm.email}。不會寄確認信，密碼與啟用狀態不變；之後請員工改用新 email 登入。`,
+          confirmLabel: "修改登入 email",
+        });
+        if (!ok) return;
+        startTransition(async () => {
+          try {
+            const res = await changeStaffEmailAction(
+              person.employee_id,
+              norm.email,
+            );
+            if (res.ok) {
+              setOpen(false);
+              router.refresh();
+            } else {
+              setError(res.error);
+            }
+          } catch (err) {
+            unstable_rethrow(err);
+            setError(
+              (err as Error)?.message || "操作失敗，請確認網路後再試一次。",
+            );
+          }
+        });
+      }}
+    >
+      <input
+        type="email"
+        autoComplete="off"
+        autoFocus
+        aria-label={`${person.name} 的新登入 email`}
+        placeholder="新的登入 email"
+        value={value}
+        disabled={pending}
+        onChange={(e) => setValue(e.target.value)}
+        className="border-border focus:border-primary disabled:bg-surface-muted h-9 w-[220px] max-w-full rounded-lg border bg-white px-3 text-[14px] outline-none"
+      />
+      <button
+        type="submit"
+        disabled={pending}
+        className={`inline-flex items-center transition-colors disabled:opacity-60 ${ACTION_BUTTON_VARIANT_CLASS.secondary}`}
+      >
+        {pending ? "修改中…" : "儲存"}
+      </button>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => setOpen(false)}
+        className="text-text-muted hover:text-ink text-[13px] underline disabled:opacity-60"
+      >
+        取消
+      </button>
+      {error ? (
+        <span
+          role="alert"
+          className="max-w-[22rem] basis-full text-right text-[12px] whitespace-normal text-red-600"
+        >
+          {error}
+        </span>
+      ) : null}
+      {confirmDialog}
+    </form>
+  );
+}
+
+/**
  * 重設為預設密碼。帳號已啟用時，確認框內可勾選「重設後先停用帳號」（預設勾選）：預設密碼在員工本人改掉之前，
- * 任何知道員工編號的人都能登入，故預設一併停用，員工本人在場時再啟用。帳號已停用 → 維持停用。
+ * 任何知道登入 email 的人都能登入，故預設一併停用，員工本人在場時再啟用。帳號已停用 → 維持停用。
  */
 function ResetPasswordButton({ person }: { person: StaffPersonRow }) {
   const enabled = person.status === "enabled";

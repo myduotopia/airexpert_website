@@ -19,6 +19,7 @@ vi.mock("@/lib/supabase-server", () => ({
 }));
 vi.mock("@/app/admin/(protected)/employees/permissions/actions", () => ({
   assignEmployeePositionAction: vi.fn(),
+  changeStaffEmailAction: vi.fn(),
   createStaffAccountAction: vi.fn(),
   createStaffAccountsBatchAction: vi.fn(),
   resetStaffPasswordAction: vi.fn(),

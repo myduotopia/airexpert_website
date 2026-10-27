@@ -8,6 +8,7 @@
 // 建立員工帳號（單筆／批次）：
 //   1. 以 hr session 讀員工：在職、有員工編號（且可作為 email）、尚未連結帳號。
 //   2. service_role auth.admin.createUser({ email: <編號小寫>@airexpert.com.tw, password: 00000000, email_confirm: true })。
+//      （建立後可再由人事改為個人 email，見下方「修改登入 email」；之後的操作一律以 employees.admin_profile_id 對應帳號。）
 //      email 已存在 → 明確報錯，不覆蓋既有帳號（不改密碼、不連結）。
 //   3. 以 hr session 呼叫 hr_link_staff_account（security definer）：同一交易內建立 admin_profiles
 //      { role: 'staff', must_change_password: true }、連結 employees.admin_profile_id、寫稽核。
@@ -29,6 +30,15 @@
 // 啟用／停用帳號：hr_log_staff_login（稽核 login_enable／login_disable、只限 staff 帳號）→ service_role 設定
 //   ban_duration。稽核動作碼沿用 #261 的 login_enable／login_disable（同一件事：Auth 停用登入），只改顯示標籤，
 //   避免改 DB check 約束與既有紀錄的意義。
+// 修改登入 email（#265，0034；只限 staff 帳號）：
+//   1. 正規化（去空白、轉小寫、單一 email）。
+//   2. hr session：hr_check_staff_email_change（只檢查：hr、staff、格式、不與其他 auth 使用者／admin_profiles 重複、
+//      與目前不同），回傳帳號 id 與 Auth 目前的 email。任何檢查失敗都不碰 Auth。
+//   3. service_role：updateUserById(id, { email, email_confirm: true })（不寄確認信）。
+//   4. hr session：hr_apply_staff_email_change（確認 Auth 已是新 email → 同步 admin_profiles.email、寫稽核
+//      account_email_change，稽核只存遮罩 email）。admin_profiles 只有 security definer RPC 能寫，service_role 只動 Auth。
+//   5. 步驟 4 失敗 → 以 service_role 把 Auth email 改回步驟 2 的值；改回也失敗時明確告知（Auth 已是新 email，
+//      再操作一次同一個新 email 即可補齊 admin_profiles，見 0034 決策 2）。
 import { revalidatePath } from "next/cache";
 import { getAdminSupabase } from "@/lib/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase-server";
@@ -39,6 +49,8 @@ import {
   isBanned,
   isEmailTakenError,
   isPositionModule,
+  maskEmail,
+  normalizeLoginEmail,
   staffEmailFor,
   staffRpcError,
   type BatchCreateResult,
@@ -459,7 +471,7 @@ export async function createStaffAccountsBatchAction(
 /**
  * 重設為預設密碼（00000000），並要求下次登入改密碼。只限員工帳號（staff）。
  * alsoDisable（預設 true）：同時停用帳號（同一次 Auth 更新），員工本人在場時再由人事啟用；
- * false → 維持目前的啟用狀態（若帳號已啟用，任何知道員工編號的人都可用預設密碼登入）。
+ * false → 維持目前的啟用狀態（若帳號已啟用，任何知道登入 email 的人都可用預設密碼登入）。
  */
 export async function resetStaffPasswordAction(
   employeeId: string,
@@ -530,4 +542,85 @@ export async function setStaffLoginDisabledAction(
   revalidate();
   if (updErr) return { ok: false, error: `操作失敗：${updErr.message}` };
   return { ok: true };
+}
+
+/**
+ * 修改員工帳號的登入 email（只限 staff 帳號；流程見檔頭）。email 會去空白並轉小寫。
+ * 帳號由 employees.admin_profile_id 對應（不由 email 推回），改 email 不影響職位權限、啟用狀態與密碼。
+ */
+export async function changeStaffEmailAction(
+  employeeId: string,
+  email: string,
+): Promise<ActionResult> {
+  const denied = await ensureHrAccess();
+  if (denied) return denied;
+  if (!isEmployeeId(employeeId)) return { ok: false, error: NOT_FOUND };
+  const norm = normalizeLoginEmail(email);
+  if (!norm.ok) return norm;
+  const next = norm.email;
+  const args = { p_employee_id: employeeId, p_new_email: next };
+
+  const supabase = await getServerSupabase();
+  const { data: checked, error: checkErr } = await supabase.rpc(
+    "hr_check_staff_email_change",
+    args,
+  );
+  // returns table → PostgREST 回陣列（單列）；保守起見也接受單一物件。
+  const target = (Array.isArray(checked) ? checked[0] : checked) as
+    | { user_id?: unknown; auth_email?: unknown }
+    | null
+    | undefined;
+  if (checkErr || typeof target?.user_id !== "string") {
+    return {
+      ok: false,
+      error: staffRpcError(checkErr, "修改登入 email 失敗。"),
+    };
+  }
+  const userId = target.user_id;
+  const previous =
+    typeof target.auth_email === "string" ? target.auth_email : null;
+
+  const admin = getAdminSupabase();
+  const { error: authErr } = await admin.auth.admin.updateUserById(userId, {
+    email: next,
+    email_confirm: true,
+  });
+  if (authErr) {
+    revalidate();
+    return {
+      ok: false,
+      error: isEmailTakenError(authErr)
+        ? staffRpcError({ message: "email_taken" })
+        : `修改登入 email 失敗：${authErr.message}`,
+    };
+  }
+
+  const { data: applied, error: applyErr } = await supabase.rpc(
+    "hr_apply_staff_email_change",
+    args,
+  );
+  if (!applyErr && applied === userId) {
+    revalidate();
+    return { ok: true };
+  }
+
+  // 回滾：Auth 改回原本的 email（步驟 2 讀到的值；讀不到就無法改回）。
+  const reason = staffRpcError(applyErr, "修改登入 email 失敗。").replace(
+    /。$/,
+    "",
+  );
+  const { error: revertErr } = previous
+    ? await admin.auth.admin.updateUserById(userId, {
+        email: previous,
+        email_confirm: true,
+      })
+    : { error: { message: "沒有原本的 email" } };
+  revalidate();
+  if (revertErr) {
+    return {
+      ok: false,
+      error: `${reason}。登入帳號已是新 email（${maskEmail(next)}），但後台資料未更新，改回失敗；請再操作一次同一個新 email 以補齊，或洽管理員。`,
+    };
+  }
+  return { ok: false, error: `${reason}。登入 email 已改回原本的值。` };
 }
