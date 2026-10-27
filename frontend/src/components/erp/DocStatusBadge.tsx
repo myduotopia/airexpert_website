@@ -18,17 +18,20 @@ export const DOC_STATUS_LABEL: Record<DocStatus, string> = {
 export function DocStatusBadge({
   status,
   docType,
+  label,
 }: {
   status: DocStatus;
   /** 單別：報價單 Q 的 posted 顯示「已確認」（#241 A-5）。 */
   docType?: DocType | null;
+  /** 覆寫顯示文字（樣式仍依 status），例：相關單據區塊由 activityRowView 決定文字。 */
+  label?: string;
 }) {
   const known = Object.hasOwn(STYLES, status);
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium whitespace-nowrap ${STYLES[known ? status : "draft"]}`}
     >
-      {docStatusLabel(known ? status : "draft", docType)}
+      {label ?? docStatusLabel(known ? status : "draft", docType)}
     </span>
   );
 }

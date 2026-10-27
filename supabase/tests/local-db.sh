@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
 # supabase/migrations/*.sql，再依序執行 supabase/tests/erp_posting_test.sql、
-# service_report_test.sql、service_plan_test.sql、employees_test.sql、employee_hr_test.sql 與 staff_rbac_test.sql。
+# service_report_test.sql、service_plan_test.sql、employees_test.sql、employee_hr_test.sql、staff_rbac_test.sql 與 party_activity_test.sql。
 # Vault（vault.decrypted_secrets）只在本機以資料表 + view 模擬，並放入「測試用」金鑰。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
@@ -168,6 +168,10 @@ psql_run -1 < "$ROOT/migrations/0032_staff_rbac.sql"
 echo "==> 重跑 0033（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0033_staff_account_disabled.sql"
 
+# 0036 只新增唯讀 RPC erp_party_activity（不改既有物件），重跑僅驗證可重複執行。
+echo "==> 重跑 0036（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0036_party_activity.sql"
+
 echo "==> 確認 0032／0033 重跑後的狀態"
 psql_run <<'SQL'
 do $$ begin
@@ -208,6 +212,9 @@ psql_run < "$ROOT/tests/employee_hr_test.sql"
 echo "==> 執行 staff_rbac_test.sql"
 psql_run < "$ROOT/tests/staff_rbac_test.sql"
 
+echo "==> 執行 party_activity_test.sql"
+psql_run < "$ROOT/tests/party_activity_test.sql"
+
 echo "==> 確認 rollback 未留資料"
 LEFT=$(docker exec "$NAME" psql -U postgres -tAc \
   "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr') + (select count(*) from admin_profiles) + (select count(*) from position_permissions) + (select count(*) from positions where name not in ('業務','內勤','服務','負責人','會計'))")
@@ -216,4 +223,4 @@ if [ "$LEFT" != "0" ]; then
   exit 1
 fi
 
-echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC TESTS PASSED"
+echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + PARTY ACTIVITY TESTS PASSED"

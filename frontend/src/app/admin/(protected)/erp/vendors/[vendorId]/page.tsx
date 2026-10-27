@@ -1,15 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/admin/auth";
-import {
-  getPartyBalance,
-  getVendor,
-  listRecentDocuments,
-} from "@/lib/erp/queries/master-data";
+import { getPartyBalance, getVendor } from "@/lib/erp/queries/master-data";
 import { rocDateTime } from "@/lib/admin/minguo";
 import { MoneyText } from "@/components/erp/MoneyText";
+import { PartyActivity } from "@/components/erp/PartyActivity";
 import { ConfirmDeleteButton } from "../../items/_components/ConfirmDeleteButton";
-import { RecentDocuments } from "../../items/_components/RecentDocuments";
 import {
   ActiveBadge,
   Info,
@@ -26,17 +22,17 @@ export const metadata = { title: "廠商 · ERP 基本資料" };
 
 export default async function VendorDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ vendorId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requireModule("erp");
   const { vendorId } = await params;
+  const sp = await searchParams;
   const vendor = await getVendor(vendorId);
   if (!vendor) notFound();
-  const [balance, docs] = await Promise.all([
-    getPartyBalance("vendor", vendorId),
-    listRecentDocuments({ vendorId }),
-  ]);
+  const balance = await getPartyBalance("vendor", vendorId);
 
   return (
     <div className="mx-auto max-w-[1100px]">
@@ -92,8 +88,12 @@ export default async function VendorDetailPage({
         </Info>
       </InfoGrid>
 
-      <h2 className="text-ink mt-8 mb-4 text-[18px] font-bold">近期單據</h2>
-      <RecentDocuments rows={docs} />
+      <PartyActivity
+        partyType="vendor"
+        partyId={vendor.id}
+        basePath={`/admin/erp/vendors/${vendor.id}`}
+        searchParams={sp}
+      />
 
       <section className="border-border mt-10 rounded-xl border bg-white p-5">
         <h2 className="text-ink text-[16px] font-bold">刪除廠商</h2>
