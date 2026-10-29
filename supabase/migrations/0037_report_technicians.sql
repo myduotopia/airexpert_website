@@ -5,7 +5,8 @@
 --       sr_report_technicians_guard（BEFORE INSERT／UPDATE／DELETE）：所屬報告單已作廢 → 任何身分皆不可新增／修改／刪除
 --         （與 sr_guard_report「作廢單唯讀」一致）；已結案（completed）沿用既有規則＝仍可修改。
 --       sr_reports_sync_primary_technician（AFTER INSERT／UPDATE OF technician_id ON sr_reports）：
---         主技師（sr_reports.technician_id）變動時自動同步 is_primary 那一列（舊程式或 SQL 直接改 technician_id 也不會脫鉤）。
+--         主技師（sr_reports.technician_id）變動時自動同步 is_primary 那一列（舊程式或 SQL 直接改 technician_id 也不會脫鉤）；
+--         technician_id 清為 null 時整張單的技師列（含協同）全部移除。
 --   * RPC：
 --       sr_set_report_technicians(p_report_id, p_primary_share, p_collaborators)：security invoker，
 --         一次（同一交易）重設某張報告單的全部技師列（主技師取自 sr_reports.technician_id）。
@@ -139,15 +140,20 @@ begin
     from sr_report_technicians
    where report_id = new.id and is_primary;
 
+  if new.technician_id is null then
+    -- 清除主技師 → 全部技師列一併移除（與 sr_set_report_technicians「沒有主技師時不可有協同技師」一致，
+    -- 避免報表出現只有協同技師、沒有主技師的單）。
+    delete from sr_report_technicians where report_id = new.id;
+    return null;
+  end if;
+
   -- 移除舊主技師列；新主技師若原本是協同技師，該列一併移除（避免同一人兩列）。
   delete from sr_report_technicians
    where report_id = new.id
      and (is_primary or employee_id = new.technician_id);
 
-  if new.technician_id is not null then
-    insert into sr_report_technicians (report_id, employee_id, share, sort_order, is_primary)
-    values (new.id, new.technician_id, coalesce(v_share, 1), 0, true);
-  end if;
+  insert into sr_report_technicians (report_id, employee_id, share, sort_order, is_primary)
+  values (new.id, new.technician_id, coalesce(v_share, 1), 0, true);
   return null;
 end;
 $$;

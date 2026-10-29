@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   MAX_CO_TECHNICIANS,
   addCoTechnician,
+  coTechnicianKey,
   evenShares,
   normalizeTechnicianInput,
   parseShare,
@@ -67,7 +68,9 @@ describe("新增／移除協同技師（預設：只有主技師 1；加入後�
   it("新增第一位 → 主 0.5、協同 0.5（協同尚未選人）", () => {
     const next = addCoTechnician(draft());
     expect(next.technician_share).toBe("0.5");
-    expect(next.co_technicians).toEqual([{ id: null, name: "", share: "0.5" }]);
+    expect(next.co_technicians).toMatchObject([
+      { id: null, name: "", share: "0.5" },
+    ]);
   });
 
   it("再新增 → 三人平均（使用者改過的比例也重新平均）", () => {
@@ -85,13 +88,27 @@ describe("新增／移除協同技師（預設：只有主技師 1；加入後�
     let d = addCoTechnician(addCoTechnician(draft()));
     d = updateCoTechnician(d, 1, { id: C, name: "測試師傅丙" });
     d = removeCoTechnician(d, 0);
-    expect(d.co_technicians).toEqual([
+    expect(d.co_technicians).toMatchObject([
       { id: C, name: "測試師傅丙", share: "0.5" },
     ]);
     expect(d.technician_share).toBe("0.5");
     d = removeCoTechnician(d, 0);
     expect(d.co_technicians).toEqual([]);
     expect(d.technician_share).toBe("1");
+  });
+
+  it("列表 key 穩定：移除中間列後，其餘列的 key 不變（不可用 index 當 key）", () => {
+    let d = addCoTechnician(addCoTechnician(addCoTechnician(draft())));
+    const keys = d.co_technicians.map((c, i) => coTechnicianKey(c, i));
+    expect(new Set(keys).size).toBe(3);
+    d = removeCoTechnician(d, 1);
+    expect(d.co_technicians.map((c, i) => coTechnicianKey(c, i))).toEqual([
+      keys[0],
+      keys[2],
+    ]);
+    // 選人、改比例不改 key
+    d = updateCoTechnician(d, 1, { id: C, name: "測試師傅丙", share: "0.2" });
+    expect(coTechnicianKey(d.co_technicians[1], 1)).toBe(keys[2]);
   });
 
   it(`最多 ${MAX_CO_TECHNICIANS} 位協同技師`, () => {
@@ -237,8 +254,8 @@ describe("DB 列 ↔ 表單", () => {
     expect(technicianDraftFromRows(rows, A)).toEqual({
       technician_share: "0.25",
       co_technicians: [
-        { id: C, name: "測試師傅丙", share: "0.25" },
-        { id: B, name: "測試師傅乙", share: "0.5" },
+        { id: C, name: "測試師傅丙", share: "0.25", uid: `emp-${C}` },
+        { id: B, name: "測試師傅乙", share: "0.5", uid: `emp-${B}` },
       ],
     });
   });
@@ -337,7 +354,7 @@ describe("form-state 整合", () => {
   it("編輯頁帶入技師列", () => {
     const s = formStateFromReport(makeReport(), TECH_ROWS);
     expect(s.technician_share).toBe("0.5");
-    expect(s.co_technicians).toEqual([
+    expect(s.co_technicians).toMatchObject([
       { id: B, name: "測試師傅乙", share: "0.5" },
     ]);
   });

@@ -51,6 +51,7 @@ export default async function MeetingMaintenancePage({
         basePath={meetingTabHref("maintenance")}
         range={range}
         q={view.q}
+        query={view.query}
         keywordPlaceholder="客戶、損壞狀況、處理進度"
         printHref={
           view.error ? null : meetingPrintHref("maintenance", view.query)

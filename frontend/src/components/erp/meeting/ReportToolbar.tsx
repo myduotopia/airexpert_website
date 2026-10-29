@@ -11,7 +11,9 @@
 //         <label>技師 <select name="tech" defaultValue={tech} className={ERP_SELECT}>…</select></label>
 //       </ReportToolbar>
 //     值為空字串的參數不會出現在網址上。
-// 換頁後以 key 重新掛載內部表單，children 的 defaultValue 會跟著網址更新。
+// 換頁後以 key 重新掛載內部表單，children 的 defaultValue 會跟著網址更新：
+//   key 用 query（目前完整條件，含 children 的額外篩選）；未傳時只依區間與關鍵字
+//   （此時只改額外篩選的上一頁／下一頁，select 會停在舊值——原生 select 不會跟著 defaultValue 更新）。
 import { useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { RocDateInput } from "@/components/erp/RocDateInput";
@@ -35,6 +37,11 @@ export interface ReportToolbarProps {
   range: MeetingRange;
   /** 目前關鍵字（server 端 keywordParam 解析）。 */
   q: string;
+  /**
+   * 目前完整條件的查詢字串（含額外篩選，例：view.query）；變更時重新掛載表單，
+   * 讓 children 的 defaultValue 跟上網址（瀏覽器上一頁／下一頁）。
+   */
+  query?: string;
   /** 關鍵字欄的提示文字。 */
   keywordPlaceholder?: string;
   /** 額外篩選（原生表單元件，需有 name）。 */
@@ -48,8 +55,8 @@ export interface ReportToolbarProps {
 }
 
 export function ReportToolbar(props: ReportToolbarProps) {
-  const { range, q } = props;
-  const key = `${range.preset}|${range.from}|${range.to}|${q}`;
+  const { range, q, query } = props;
+  const key = query ?? `${range.preset}|${range.from}|${range.to}|${q}`;
   return <ToolbarForm key={key} {...props} />;
 }
 

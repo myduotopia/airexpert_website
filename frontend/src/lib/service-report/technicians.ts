@@ -13,6 +13,24 @@ export interface CoTechnicianDraft {
   id: string | null;
   name: string;
   share: string;
+  /**
+   * 列表的穩定 key（只在表單中使用，不送出）：新增列時產生、DB 列以員工 id 產生。
+   * 不可用 index 當 key——移除中間列時，後面的列會沿用前一列的元件狀態（例：就地新增的員工選項）。
+   */
+  uid?: string;
+}
+
+let coTechnicianSeq = 0;
+
+/** 新協同技師列的 key（同一頁面內唯一即可）。 */
+function newCoTechnicianUid(): string {
+  coTechnicianSeq += 1;
+  return `new-${coTechnicianSeq}`;
+}
+
+/** 列表 key：有 uid 用 uid，否則退回 index（舊資料）。 */
+export function coTechnicianKey(c: CoTechnicianDraft, index: number): string {
+  return c.uid ?? `idx-${index}`;
 }
 
 /** 表單中與技師相關的欄位（ReportFormState 的子集合）。 */
@@ -86,7 +104,10 @@ function rebalance<T extends TechnicianDraft>(
 /** 新增一位（尚未選人的）協同技師，全部重新平均；已達上限則不變。 */
 export function addCoTechnician<T extends TechnicianDraft>(d: T): T {
   if (d.co_technicians.length >= MAX_CO_TECHNICIANS) return d;
-  return rebalance(d, [...d.co_technicians, { id: null, name: "", share: "" }]);
+  return rebalance(d, [
+    ...d.co_technicians,
+    { id: null, name: "", share: "", uid: newCoTechnicianUid() },
+  ]);
 }
 
 /** 移除第 index 位協同技師，剩下的人重新平均（全部移除 → 主技師 1）。 */
@@ -219,6 +240,7 @@ export function technicianDraftFromRows(
       id: r.employee_id,
       name: r.name,
       share: shareText(Number(r.share)),
+      uid: `emp-${r.employee_id}`,
     }));
   return {
     technician_share: primary ? shareText(Number(primary.share)) : "1",

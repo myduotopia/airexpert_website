@@ -2,7 +2,8 @@
 // 資料來源：DB RPC erp_meeting_maintenance（0037，只回已結案、未作廢的報告單與報表需要的欄位）。
 //   · 處理進度摘要：由服務項目、回填檢查結果、運轉時數／溫度、更換料件、過濾耗材、建議事項、型號組成，
 //     例：「例檢OK 時2209 溫84 AM3-37A-E30」「查修 異常：變頻器風扇 時5120 換機油濾清器 SP50」。
-//   · 技師欄位：依區間內（篩選後）實際出現的技師動態產生，顯示工時比例，表尾為各技師合計。
+//   · 技師欄位（issue：每位在職的師傅角色員工各一欄）：在職師傅（呼叫端傳入 baseColumns）一律有欄，
+//     再加上區間內（篩選後）出現、但已不在職或不是師傅角色的技師；顯示工時比例，表尾為各技師合計（沒做的人為空白）。
 //     沒有技師列、只有「維護人員」文字的舊報告單，以該姓名為一欄、比例 1（標示為未建檔）。
 import { cleanEmployeeName, employeeNameKey } from "@/lib/employees/normalize";
 import type {
@@ -237,9 +238,13 @@ export function compareTechColumns(
   return a.name.localeCompare(b.name, "zh-Hant");
 }
 
-/** 區間內出現過的技師（技師篩選的選項）。 */
+/**
+ * 技師欄位／篩選選項：baseColumns（在職師傅，無論區間內有沒有做）＋區間內出現過的技師，依 compareTechColumns 排序。
+ * 同一位員工以報告單上的資料為準（姓名、代號取自 RPC）。
+ */
 export function maintenanceTechnicianOptions(
   rows: readonly MaintenanceSourceRow[],
+  baseColumns: readonly MaintenanceTechColumn[] = [],
 ): MaintenanceTechColumn[] {
   const map = new Map<string, MaintenanceTechColumn>();
   for (const row of rows) {
@@ -254,7 +259,28 @@ export function maintenanceTechnicianOptions(
       }
     }
   }
+  for (const c of baseColumns) {
+    if (!map.has(c.key)) map.set(c.key, { ...c });
+  }
   return [...map.values()].sort(compareTechColumns);
+}
+
+/**
+ * 員工選項 → 技師欄位：在職（active 已含離職日判斷）且有師傅角色的員工。
+ * 型別只取需要的欄位，避免 maintenance.ts 依賴 server-only 的員工查詢。
+ */
+export function technicianBaseColumns(
+  employees: readonly {
+    id: string;
+    code: string | null;
+    name: string;
+    roles: readonly string[];
+    active: boolean;
+  }[],
+): MaintenanceTechColumn[] {
+  return employees
+    .filter((e) => e.active && e.roles.includes("technician"))
+    .map((e) => ({ key: e.id, name: e.name, code: e.code, legacy: false }));
 }
 
 // ── 篩選與表格 ─────────────────────────────────────────────
@@ -287,11 +313,12 @@ export function filterMaintenanceRows(
   });
 }
 
-/** 表格：欄位依（已篩選的）列中出現的技師動態產生，表尾各技師合計。 */
+/** 表格：欄位＝在職師傅（baseColumns）＋（已篩選的）列中出現的技師，表尾各技師合計。 */
 export function buildMaintenanceTable(
   rows: readonly MaintenanceSourceRow[],
+  baseColumns: readonly MaintenanceTechColumn[] = [],
 ): MaintenanceTable {
-  const columns = maintenanceTechnicianOptions(rows);
+  const columns = maintenanceTechnicianOptions(rows, baseColumns);
   const totalsH: Record<string, number> = {};
   for (const c of columns) totalsH[c.key] = 0;
 

@@ -114,10 +114,15 @@ do $$ begin
   update sr_reports set summary = '排水器更換' where id = '00000000-0000-0000-0000-0000000027b1';
   assert rt_test.techs('00000000-0000-0000-0000-0000000027b1')
          = array['TEST-師傅丙:0.34:P', 'TEST-師傅乙:0.33:C'], '未改 technician_id 不影響';
+  -- SET technician_id 為相同值（觸發器會被呼叫）：技師列與比例不變
+  update sr_reports set technician_id = '00000000-0000-0000-0000-0000000027e3'
+   where id = '00000000-0000-0000-0000-0000000027b1';
+  assert rt_test.techs('00000000-0000-0000-0000-0000000027b1')
+         = array['TEST-師傅丙:0.34:P', 'TEST-師傅乙:0.33:C'], 'technician_id 寫入相同值不影響';
 
-  -- 清除主技師 → 主技師列移除（協同列仍在，下一次儲存會被 RPC 擋下或清空）
+  -- 清除主技師 → 主技師與協同列全部移除（不留下「只有協同、沒有主技師」的單）
   update sr_reports set technician = null, technician_id = null where id = '00000000-0000-0000-0000-0000000027b1';
-  assert rt_test.techs('00000000-0000-0000-0000-0000000027b1') = array['TEST-師傅乙:0.33:C'], '清除主技師';
+  assert rt_test.techs('00000000-0000-0000-0000-0000000027b1') = '{}', '清除主技師 → 技師列全部移除';
   perform sr_set_report_technicians('00000000-0000-0000-0000-0000000027b1', null, '[]');
   assert rt_test.techs('00000000-0000-0000-0000-0000000027b1') = '{}', '無主技師＋無協同 → 全部清空';
 

@@ -63,6 +63,7 @@ import { TEXT_LIMITS } from "@/lib/service-report/validate";
 import {
   MAX_CO_TECHNICIANS,
   addCoTechnician,
+  coTechnicianKey,
   removeCoTechnician,
   updateCoTechnician,
   validateTechnicianDraft,
@@ -987,7 +988,7 @@ export function ReportForm({
                   <div className="flex flex-col gap-2">
                     {state.co_technicians.map((c, i) => (
                       <div
-                        key={i}
+                        key={coTechnicianKey(c, i)}
                         className="flex flex-wrap items-center gap-2 sm:flex-nowrap"
                       >
                         <div className="min-w-0 flex-1">

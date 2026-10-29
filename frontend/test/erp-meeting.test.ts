@@ -25,6 +25,7 @@ import {
   maintenanceTechnicianOptions,
   rocShortDate,
   rowTechnicians,
+  technicianBaseColumns,
   type MaintenanceSourceRow,
 } from "@/lib/erp/meeting/maintenance";
 import {
@@ -427,6 +428,63 @@ describe("技師欄位與合計", () => {
     expect(formatShare(1.8300000000000003)).toBe("1.83");
     expect(formatShare(0)).toBe("");
     expect(formatShare(undefined)).toBe("");
+  });
+
+  it("在職師傅各一欄：沒做的人也有欄（空白），不在職／非師傅只在有出現時才有欄", () => {
+    const TECH_D = "00000000-0000-0000-0000-0000000000d1";
+    const base = technicianBaseColumns([
+      {
+        id: TECH_A,
+        code: "T01",
+        name: "測試師傅甲",
+        roles: ["technician"],
+        active: true,
+      },
+      {
+        id: TECH_D,
+        code: "T04",
+        name: "測試師傅丁",
+        roles: ["technician"],
+        active: true,
+      },
+      // 離職的師傅、業務：不列入固定欄
+      {
+        id: "00000000-0000-0000-0000-0000000000e1",
+        code: "T05",
+        name: "已離職",
+        roles: ["technician"],
+        active: false,
+      },
+      {
+        id: "00000000-0000-0000-0000-0000000000f1",
+        code: "S01",
+        name: "測試業務",
+        roles: ["sales"],
+        active: true,
+      },
+    ]);
+    expect(base.map((c) => c.key)).toEqual([TECH_A, TECH_D]);
+    const table = buildMaintenanceTable(rows, base);
+    expect(table.columns.map((c) => c.name)).toEqual([
+      "測試師傅甲",
+      "測試師傅乙",
+      "測試師傅丁",
+      "測試師傅丙", // 無代號排在有代號之後
+      "老 張",
+    ]);
+    expect(table.totals[TECH_D]).toBe(0);
+    expect(formatShare(table.totals[TECH_D])).toBe("");
+    expect(table.totals[TECH_A]).toBe(1.83);
+    // 沒有任何資料：仍列出在職師傅欄
+    expect(buildMaintenanceTable([], base).columns.map((c) => c.key)).toEqual([
+      TECH_A,
+      TECH_D,
+    ]);
+    // 篩選選項同樣含在職師傅
+    expect(maintenanceTechnicianOptions([], base).map((c) => c.key)).toEqual([
+      TECH_A,
+      TECH_D,
+    ]);
   });
 
   it("技師篩選選項＝區間內全部技師（篩選前）", () => {
