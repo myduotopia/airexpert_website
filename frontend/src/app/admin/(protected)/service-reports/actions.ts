@@ -26,6 +26,7 @@ import {
   validateReportInput,
   validateVoidReason,
 } from "@/lib/service-report/validate";
+import { normalizeTechnicianInput } from "@/lib/service-report/technicians";
 import { getServerSupabase } from "@/lib/supabase-server";
 
 const BASE_PATH = "/admin/service-reports";
@@ -65,6 +66,26 @@ async function rpcNextReportNo(
   return { ok: true, data };
 }
 
+/**
+ * 同步技師與工時比例（0037 sr_set_report_technicians，同一交易內重設整張單的技師列）。
+ * 主技師列由 DB 觸發器跟著 technician_id 同步，這裡寫主技師比例與協同技師。
+ * 未帶 co_technicians（舊呼叫端）→ 不呼叫。
+ */
+async function syncTechnicians(
+  supabase: Supabase,
+  reportId: string,
+  input: ServiceReportInput,
+): Promise<string | null> {
+  const tech = normalizeTechnicianInput(input);
+  if (!tech) return null;
+  const { error } = await supabase.rpc("sr_set_report_technicians", {
+    p_report_id: reportId,
+    p_primary_share: tech.primary_share,
+    p_collaborators: tech.collaborators,
+  });
+  return error ? srErrorMessage(error) : null;
+}
+
 /** 取下一個派工單號（會佔用流水號）。 */
 export async function nextReportNoAction(
   isoDate: string,
@@ -85,10 +106,13 @@ export async function nextReportNoAction(
  * - 保養方案階段（plan_stage_id / plan_stage_hours / plan_stage_label，0022）：
  *   輸入未帶該欄位＝不更動；plan_stage_id 傳 null＝清除（快照一併清空）。
  *   正規化規則見 lib/service-report/validate.ts normalizeReportInput。
+ * - 協同技師與工時比例（0037，#271）：報告單存好後以 sr_set_report_technicians 同步。
+ *   編輯時同步失敗 → 回錯誤（報告單本身已存，使用者可直接再按儲存）；
+ *   新增時同步失敗 → 仍回成功（避免使用者重按儲存而重複開單），以 warning 提示到編輯頁補存。
  */
 export async function saveReportAction(
   input: ServiceReportInput,
-): Promise<SrResult<{ id: string; report_no: string }>> {
+): Promise<SrResult<{ id: string; report_no: string; warning?: string }>> {
   const denied = await ensureServiceReport();
   if (denied) return denied;
   const invalid = validateReportInput(input);
@@ -130,7 +154,14 @@ export async function saveReportAction(
     if (error) return { ok: false, error: srErrorMessage(error) };
     const row = (data as { id: string; report_no: string }[] | null)?.[0];
     if (!row) return { ok: false, error: SR_STALE_MESSAGE };
+    const techError = await syncTechnicians(supabase, row.id, input);
     revalidateReport(row.id);
+    if (techError) {
+      return {
+        ok: false,
+        error: `報告單已儲存，但協同技師／工時比例未儲存：${techError}`,
+      };
+    }
     return { ok: true, data: { id: row.id, report_no: row.report_no } };
   }
 
@@ -150,8 +181,16 @@ export async function saveReportAction(
       .single();
     if (!error) {
       const row = data as { id: string; report_no: string };
+      const techError = await syncTechnicians(supabase, row.id, input);
       revalidateReport(row.id);
-      return { ok: true, data: { id: row.id, report_no: row.report_no } };
+      const saved: { id: string; report_no: string; warning?: string } = {
+        id: row.id,
+        report_no: row.report_no,
+      };
+      if (techError) {
+        saved.warning = `報告單 ${row.report_no} 已建立，但協同技師／工時比例未儲存：${techError}。請到編輯頁重新設定。`;
+      }
+      return { ok: true, data: saved };
     }
     lastError = error;
     // 只有自動取號撞到手動輸入的號碼才重取；其他錯誤直接回報。

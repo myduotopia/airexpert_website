@@ -2,7 +2,7 @@
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
 # supabase/migrations/*.sql，再依序執行 supabase/tests/erp_posting_test.sql、
 # service_report_test.sql、service_plan_test.sql、employees_test.sql、employee_hr_test.sql、staff_rbac_test.sql、
-# staff_email_test.sql、party_activity_test.sql 與 customer_source_test.sql。
+# staff_email_test.sql、party_activity_test.sql、customer_source_test.sql 與 report_technicians_test.sql。
 # Vault（vault.decrypted_secrets）只在本機以資料表 + view 模擬，並放入「測試用」金鑰。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
@@ -187,6 +187,53 @@ fi
 echo "==> 重跑 0036（驗證可重複執行）"
 psql_run -1 < "$ROOT/migrations/0036_party_activity.sql"
 
+# 0037 新增 sr_report_technicians、守門／同步觸發器與 RPC，並回填既有主技師（share 1）。
+# 重跑前放入「尚未回填」的報告單（以 postgres 身分刪掉觸發器自動建立的主技師列，模擬 0037 之前的資料），
+# 驗證：回填只補未作廢且尚無技師列的報告單、已有技師列（含協同）不被覆蓋、再重跑一次結果不變。資料全為虛構，驗證完即刪除。
+echo "==> 放入 0037 回填用資料"
+psql_run <<'SQL'
+insert into employees (id, name, roles) values
+  ('00000000-0000-0000-0000-00000000f371', '回填測試甲', '{technician}'),
+  ('00000000-0000-0000-0000-00000000f372', '回填測試乙', '{technician}');
+insert into sr_reports (id, report_no, report_date, status, print_count, technician, technician_id, void_reason) values
+  ('00000000-0000-0000-0000-00000000f3a1', 'BACKFILL-1', '2026-10-01', 'completed', 1, '回填測試甲', '00000000-0000-0000-0000-00000000f371', null),
+  ('00000000-0000-0000-0000-00000000f3a2', 'BACKFILL-2', '2026-10-02', 'draft',     0, '回填測試乙', '00000000-0000-0000-0000-00000000f372', null),
+  ('00000000-0000-0000-0000-00000000f3a3', 'BACKFILL-3', '2026-10-03', 'voided',    1, '回填測試甲', '00000000-0000-0000-0000-00000000f371', '回填測試作廢'),
+  ('00000000-0000-0000-0000-00000000f3a4', 'BACKFILL-4', '2026-10-04', 'draft',     0, '只有文字',   null, null),
+  ('00000000-0000-0000-0000-00000000f3a5', 'BACKFILL-5', '2026-10-05', 'printed',   1, '回填測試甲', '00000000-0000-0000-0000-00000000f371', null);
+-- 模擬 0037 之前：BACKFILL-1／2 沒有技師列（觸發器建立的列刪掉；未作廢可刪）
+delete from sr_report_technicians where report_id in ('00000000-0000-0000-0000-00000000f3a1', '00000000-0000-0000-0000-00000000f3a2');
+-- BACKFILL-5 已有自訂比例（主 0.5 + 協同 0.5）：回填不可覆蓋
+update sr_report_technicians set share = 0.5 where report_id = '00000000-0000-0000-0000-00000000f3a5';
+insert into sr_report_technicians (report_id, employee_id, share, sort_order)
+  values ('00000000-0000-0000-0000-00000000f3a5', '00000000-0000-0000-0000-00000000f372', 0.5, 1);
+SQL
+for i in 1 2; do
+  echo "==> 重跑 0037（第 ${i} 次，驗證可重複執行與回填）"
+  psql_run -1 < "$ROOT/migrations/0037_report_technicians.sql"
+  psql_run <<'SQL'
+do $$ begin
+  assert (select array_agg(employee_id::text || ':' || share || ':' || is_primary) from sr_report_technicians
+           where report_id = '00000000-0000-0000-0000-00000000f3a1')
+         = array['00000000-0000-0000-0000-00000000f371:1.00:true'], '回填：已結案 → 主技師 share 1';
+  assert (select count(*) from sr_report_technicians where report_id = '00000000-0000-0000-0000-00000000f3a2') = 1,
+    '回填：草稿亦回填';
+  assert (select count(*) from sr_report_technicians where report_id = '00000000-0000-0000-0000-00000000f3a3') = 0,
+    '回填：略過作廢單';
+  assert (select count(*) from sr_report_technicians where report_id = '00000000-0000-0000-0000-00000000f3a4') = 0,
+    '回填：無 technician_id 不回填';
+  assert (select array_agg(share::text order by sort_order) from sr_report_technicians
+           where report_id = '00000000-0000-0000-0000-00000000f3a5') = array['0.50', '0.50'],
+    '回填：已有技師列（含協同）不覆蓋';
+  assert (select count(*) from sr_report_technicians) = 4, '回填：總列數不因重跑增加';
+end $$;
+SQL
+done
+psql_run <<'SQL'
+delete from sr_reports where report_no like 'BACKFILL-%';
+delete from employees where id in ('00000000-0000-0000-0000-00000000f371', '00000000-0000-0000-0000-00000000f372');
+SQL
+
 echo "==> 確認 0032／0033 重跑後的狀態"
 psql_run <<'SQL'
 do $$ begin
@@ -235,13 +282,15 @@ echo "==> 執行 customer_source_test.sql"
 psql_run < "$ROOT/tests/customer_source_test.sql"
 echo "==> 執行 party_activity_test.sql"
 psql_run < "$ROOT/tests/party_activity_test.sql"
+echo "==> 執行 report_technicians_test.sql"
+psql_run < "$ROOT/tests/report_technicians_test.sql"
 
 echo "==> 確認 rollback 未留資料"
 LEFT=$(docker exec "$NAME" psql -U postgres -tAc \
-  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr') + (select count(*) from admin_profiles) + (select count(*) from position_permissions) + (select count(*) from positions where name not in ('業務','內勤','服務','負責人','會計')) + (select count(*) from mx_customers)")
+  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_report_technicians) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr') + (select count(*) from admin_profiles) + (select count(*) from position_permissions) + (select count(*) from positions where name not in ('業務','內勤','服務','負責人','會計')) + (select count(*) from mx_customers)")
 if [ "$LEFT" != "0" ]; then
   echo "FAIL：測試後仍殘留 $LEFT 列" >&2
   exit 1
 fi
 
-echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + STAFF EMAIL + PARTY ACTIVITY + CUSTOMER SOURCE TESTS PASSED"
+echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + STAFF EMAIL + PARTY ACTIVITY + CUSTOMER SOURCE + REPORT TECHNICIANS TESTS PASSED"

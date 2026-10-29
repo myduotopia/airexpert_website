@@ -30,6 +30,13 @@ import {
 import type { MilestoneTarget } from "@/lib/service-report/plan/stage";
 import type { PlanPart } from "@/lib/service-report/plan/types";
 import { PART_ROW_COUNT } from "@/lib/service-report/validate";
+import {
+  parseShare,
+  technicianDraftFromRows,
+  technicianNames,
+  type CoTechnicianDraft,
+  type ReportTechnicianRow,
+} from "@/lib/service-report/technicians";
 
 /** 表單狀態（文字欄位皆為 string；列舉欄位可為 null＝未選）。 */
 export interface ReportFormState {
@@ -57,6 +64,10 @@ export interface ReportFormState {
   technician: string;
   /** 維護人員（employees，#223）；null＝未關聯（舊資料只有文字或未填）。 */
   technician_id: string | null;
+  /** 主技師工時比例（輸入字串，0037，#271）；預設 "1"。 */
+  technician_share: string;
+  /** 協同技師（各自比例）；新增／移除時重新平均，見 lib/service-report/technicians.ts。 */
+  co_technicians: CoTechnicianDraft[];
   customer_signer: string;
   note: string;
   /** 本單對應的保養方案階段（null＝無）；顯示用快照，見 PlanStageSnapshot。 */
@@ -203,6 +214,8 @@ export function emptyFormState(todayIso: string): ReportFormState {
     suggestions: [],
     technician: "",
     technician_id: null,
+    technician_share: "1",
+    co_technicians: [],
     customer_signer: "",
     note: "",
     plan_stage: null,
@@ -210,8 +223,14 @@ export function emptyFormState(todayIso: string): ReportFormState {
   };
 }
 
-/** DB 資料列 → 表單狀態（編輯頁）。 */
-export function formStateFromReport(report: ServiceReport): ReportFormState {
+/**
+ * DB 資料列 → 表單狀態（編輯頁）。technicians＝sr_report_technicians（0037）；
+ * 未傳（或空）＝只有主技師、比例 1。
+ */
+export function formStateFromReport(
+  report: ServiceReport,
+  technicians: readonly ReportTechnicianRow[] = [],
+): ReportFormState {
   const state = emptyFormState(report.report_date);
   for (const key of TEXT_FIELDS) state[key] = str(report[key]);
   return {
@@ -222,6 +241,7 @@ export function formStateFromReport(report: ServiceReport): ReportFormState {
     customer_id: report.customer_id ?? null,
     machine_id: report.machine_id ?? null,
     technician_id: report.technician_id ?? null,
+    ...technicianDraftFromRows(technicians, report.technician_id ?? null),
     machine_state: report.machine_state ?? null,
     service_items: [...(report.service_items ?? [])],
     suggestions: [...(report.suggestions ?? [])],
@@ -278,16 +298,21 @@ export function formStateToSheetData(
     results: state.results,
     parts: state.parts,
     suggestions: state.suggestions,
-    technician: orNull(state.technician),
+    // 列印「維護人員」顯示所有技師（主技師在前，#271）。
+    technician: technicianNames(
+      state.technician,
+      state.co_technicians.map((c) => c.name),
+    ),
     customer_signer: orNull(state.customer_signer),
   };
 }
 
-/** DB 資料列 → ReportSheet 資料（列印頁、唯讀預覽）。 */
+/** DB 資料列 → ReportSheet 資料（列印頁、唯讀預覽）；technicians 見 formStateFromReport。 */
 export function sheetDataFromReport(
   report: ServiceReport,
+  technicians: readonly ReportTechnicianRow[] = [],
 ): ServiceReportSheetData {
-  return formStateToSheetData(formStateFromReport(report));
+  return formStateToSheetData(formStateFromReport(report, technicians));
 }
 
 /**
@@ -299,11 +324,24 @@ export function formStateToInput(
   state: ReportFormState,
   id?: string | null,
 ): ServiceReportInput {
+  const technicianId = state.technician.trim() ? state.technician_id : null;
   const input: ServiceReportInput = {
     ...formStateToSheetData(state),
+    // sr_reports.technician 只存主技師姓名快照（預覽資料是所有技師）。
+    technician: orNull(state.technician),
     customer_id: state.customer_id,
     machine_id: state.machine_id,
-    technician_id: state.technician.trim() ? state.technician_id : null,
+    technician_id: technicianId,
+    // 協同技師（0037）：只送已選人的列；比例不合法時送 NaN 由驗證擋下（表單送出前已先檢查）。
+    technician_share: technicianId
+      ? (parseShare(state.technician_share) ?? Number.NaN)
+      : null,
+    co_technicians: state.co_technicians
+      .filter((c) => c.id)
+      .map((c) => ({
+        employee_id: c.id as string,
+        share: parseShare(c.share) ?? Number.NaN,
+      })),
     note: orNull(state.note),
   };
   if (id) input.id = id;

@@ -193,6 +193,15 @@ export const ADMIN_NAV: AdminNavItem[] = [
     modules: ["erp"],
     group: "ERP",
   },
+  // 週報（#271）：週會／月會用的交機進度、進廠維修、新機問題、維護完成紀錄（/admin/erp/meeting 子頁籤）。
+  {
+    key: "erp-meeting",
+    label: "週報",
+    href: "/admin/erp/meeting",
+    enabled: true,
+    modules: ["erp"],
+    group: "ERP",
+  },
   {
     key: "erp-items",
     label: "基本資料",

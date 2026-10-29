@@ -103,7 +103,7 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
     (i) => i.key,
   );
 
-  it("ERP 項目一次列齊：8 項、group ERP、總覽為 enabled", () => {
+  it("ERP 項目一次列齊：9 項（含週報 #271）、group ERP、總覽為 enabled", () => {
     expect(erpKeys).toEqual([
       "erp",
       "erp-sales",
@@ -112,6 +112,7 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
       "erp-collections",
       "erp-statements",
       "erp-reports",
+      "erp-meeting",
       "erp-items",
     ]);
     for (const i of ADMIN_NAV.filter((x) => x.modules?.includes("erp"))) {
@@ -174,6 +175,28 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
     const keys = navForUser("admin", ["erp"]).map((i) => i.key);
     for (const k of erpKeys) expect(keys).toContain(k);
     expect(keys).toContain("settings");
+  });
+});
+
+describe("週報（#271）", () => {
+  it("側欄週報只看 erp 模組；週報子頁籤與列印頁亮「週報」", () => {
+    const item = ADMIN_NAV.find((i) => i.key === "erp-meeting");
+    expect(item).toMatchObject({
+      href: "/admin/erp/meeting",
+      enabled: true,
+      modules: ["erp"],
+      group: "ERP",
+    });
+    expect(item?.roles).toBeUndefined();
+    const hrefs = ADMIN_NAV.filter((i) => i.modules?.includes("erp")).map(
+      (i) => i.href,
+    );
+    expect(activeNavHref("/admin/erp/meeting/maintenance", hrefs)).toBe(
+      "/admin/erp/meeting",
+    );
+    expect(
+      navForUser("staff", ["service_report"]).map((i) => i.key),
+    ).not.toContain("erp-meeting");
   });
 });
 

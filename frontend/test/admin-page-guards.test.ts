@@ -527,3 +527,42 @@ describe("保養記錄卡：office 角色或 maintenance 模組", () => {
     }
   });
 });
+
+describe("ERP 週報（#271）：所有子頁籤與列印頁都需要 erp 模組", () => {
+  const MEETING = [
+    "/admin/erp/meeting",
+    "/admin/erp/meeting/delivery",
+    "/admin/erp/meeting/repairs",
+    "/admin/erp/meeting/machine-issues",
+    "/admin/erp/meeting/maintenance",
+    "/admin/erp/print/meeting/maintenance",
+  ];
+
+  it("掃得到週報各頁（含佔位子頁籤與列印頁）", () => {
+    const routes = PAGES.map((p) => p.route);
+    for (const r of MEETING) expect(routes, r).toContain(r);
+  });
+
+  it("週報各頁（含 layout）都有明確的 erp 守門", () => {
+    for (const p of PAGES.filter((x) => MEETING.includes(x.route))) {
+      expect(
+        p.guards.some((g) => g.kind === "module" && g.modules.includes("erp")),
+        p.route,
+      ).toBe(true);
+    }
+  });
+
+  it("erp 使用者可進；只有 service_report／hr／無模組的人進不去", () => {
+    const erp = accessibleRoutes({ role: "staff", modules: ["erp"] });
+    for (const r of MEETING) expect(erp, r).toContain(r);
+    for (const user of [
+      { role: "staff", modules: ["service_report"] },
+      { role: "office", modules: ["service_report", "maintenance"] },
+      HR_USER,
+      { role: "admin", modules: [] },
+    ] as User[]) {
+      const ok = accessibleRoutes(user);
+      for (const r of MEETING) expect(ok, `${user.role} ${r}`).not.toContain(r);
+    }
+  });
+});

@@ -54,4 +54,24 @@ describe("srErrorMessage", () => {
       }),
     ).toBe("所選客戶或機台已不存在，請重新選擇");
   });
+
+  it("協同技師（sr_report_technicians，#271）：員工已刪除、重複技師", () => {
+    expect(
+      srErrorMessage({
+        code: "23503",
+        message:
+          'insert or update on table "sr_report_technicians" violates foreign key constraint "sr_report_technicians_employee_id_fkey"',
+      }),
+    ).toBe("所選協同技師已不存在（可能已被刪除），請重新選擇");
+    expect(
+      srErrorMessage({
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "sr_report_technicians_report_employee_key"',
+      }),
+    ).toBe("同一位技師不可重複列出");
+    expect(
+      srErrorMessage({ code: "23505", message: "sr_reports_report_no_key" }),
+    ).toBe("派工單號已存在");
+  });
 });

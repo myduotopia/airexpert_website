@@ -4,12 +4,14 @@ import { notFound } from "next/navigation";
 import {
   planStageFromReport,
   planStageText,
+  sheetDataFromReport,
 } from "@/components/service-report/form-state";
 import { ReportSheet } from "@/components/service-report/ReportSheet";
 import { requireModule } from "@/lib/admin/auth";
 import { rocDate, rocDateTime } from "@/lib/admin/minguo";
 import { getBranding } from "@/lib/data/site";
-import { getReport } from "@/lib/service-report/queries";
+import { getReport, listReportTechnicians } from "@/lib/service-report/queries";
+import { shareText } from "@/lib/service-report/technicians";
 import { TIME_SLOT_LABELS } from "@/lib/service-report/types";
 import { ReportActions } from "../_components/ReportActions";
 import { ReportStatusBadge } from "../_components/ReportStatusBadge";
@@ -43,7 +45,11 @@ export default async function ServiceReportDetailPage({
   const report = res.data;
   if (!report) notFound();
 
-  const branding = await getBranding();
+  const [branding, technicians] = await Promise.all([
+    getBranding(),
+    listReportTechnicians(report.id),
+  ]);
+  const techRows = technicians.ok ? technicians.data : [];
   const stageText = planStageText(planStageFromReport(report));
   const meta: [string, string][] = [
     ["維護日期", rocDate(report.report_date)],
@@ -89,7 +95,7 @@ export default async function ServiceReportDetailPage({
           </h2>
           <div className="border-border overflow-hidden rounded-xl border bg-white p-2">
             <ReportSheet
-              data={report}
+              data={sheetDataFromReport(report, techRows)}
               mode="preview"
               logoUrl={branding.logo_url || null}
             />
@@ -126,6 +132,42 @@ export default async function ServiceReportDetailPage({
                 </div>
               )}
             </dl>
+          </section>
+
+          <section className="border-border rounded-xl border bg-white p-4">
+            <h2 className="text-ink mb-3 text-[15px] font-semibold">
+              技師與工時比例
+            </h2>
+            {!technicians.ok ? (
+              <p role="alert" className="text-[14px] text-red-700">
+                讀取技師失敗：{technicians.error}
+              </p>
+            ) : techRows.length === 0 ? (
+              <p className="text-ink text-[14px]">
+                {report.technician
+                  ? `${report.technician}（未關聯員工主檔，未記錄比例）`
+                  : "—"}
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1.5 text-[14px]">
+                {techRows.map((t) => (
+                  <li
+                    key={t.employee_id}
+                    className="flex items-baseline justify-between gap-3"
+                  >
+                    <span className="text-ink min-w-0 break-words">
+                      {t.name}
+                      <span className="text-text-muted ml-1.5 text-[12px]">
+                        {t.is_primary ? "主技師" : "協同"}
+                      </span>
+                    </span>
+                    <span className="text-ink shrink-0 tabular-nums">
+                      {shareText(t.share)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
 
           {stageText && (
