@@ -1,6 +1,10 @@
 // 廠商詳情頁的「提醒規則」區塊（#274）：列出該廠商的規則（備註自動產生＋手動），可新增手動規則、編輯、停用。
+// 備註與 auto 規則不一致（存檔時同步失敗、或匯入後尚未同步）時顯示提示與「重新同步」鈕。
 import Link from "next/link";
-import { listVendorReminderRules } from "@/lib/erp/queries/reminders";
+import {
+  getVendorReminderSyncPending,
+  listVendorReminderRules,
+} from "@/lib/erp/queries/reminders";
 import { taipeiToday } from "@/lib/erp/statement";
 import { RulesTable } from "./RulesTable";
 import { REMINDERS_PATH } from "./ui";
@@ -12,7 +16,10 @@ export async function VendorReminderSection({
   vendorId: string;
   vendorName: string;
 }) {
-  const res = await listVendorReminderRules(vendorId);
+  const [res, pending] = await Promise.all([
+    listVendorReminderRules(vendorId),
+    getVendorReminderSyncPending(vendorId),
+  ]);
   return (
     <section className="mt-8">
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
@@ -38,6 +45,7 @@ export async function VendorReminderSection({
           today={taipeiToday()}
           fixedVendor={{ id: vendorId, name: vendorName }}
           showVendor={false}
+          syncPending={pending.ok && pending.data}
         />
       )}
     </section>

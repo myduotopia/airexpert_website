@@ -13,6 +13,7 @@ import type { VendorOption } from "@/lib/erp/types";
 import {
   deleteReminderRuleAction,
   resyncAllVendorRemindersAction,
+  resyncVendorRemindersAction,
   setReminderRuleActiveAction,
 } from "../actions";
 import { RuleFormDialog, type RuleFormTarget } from "./RuleFormDialog";
@@ -25,6 +26,7 @@ export function RulesTable({
   fixedVendor,
   showResync = false,
   showVendor = true,
+  syncPending = false,
 }: {
   rules: ReminderRuleFull[];
   today: string;
@@ -34,6 +36,8 @@ export function RulesTable({
   fixedVendor?: { id: string; name: string };
   showResync?: boolean;
   showVendor?: boolean;
+  /** 廠商詳情頁：備註與 auto 規則不一致（存檔時同步失敗或尚未同步）→ 顯示提示與重新同步鈕。 */
+  syncPending?: boolean;
 }) {
   const router = useRouter();
   const [askConfirm, confirmDialog] = useConfirm();
@@ -83,6 +87,22 @@ export function RulesTable({
     router.refresh();
   }
 
+  async function resyncVendor(vendorId: string) {
+    setBusyId("resync-vendor");
+    setMessage(null);
+    const res = await resyncVendorRemindersAction(vendorId);
+    setBusyId(null);
+    if (!res.ok) {
+      setMessage({ tone: "error", text: res.error });
+      return;
+    }
+    setMessage({
+      tone: "ok",
+      text: `已重新同步：新增 ${res.summary.inserted} 條、更新 ${res.summary.updated} 條規則。`,
+    });
+    router.refresh();
+  }
+
   function openNew() {
     setEdit({
       ruleId: null,
@@ -110,6 +130,24 @@ export function RulesTable({
           新增規則
         </button>
       </div>
+      {syncPending && fixedVendor && (
+        <div
+          role="status"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-[14px] text-amber-900"
+        >
+          <span>
+            備註或付款條件的內容尚未同步到提醒規則（可能是存檔時同步失敗，或資料由匯入寫入）。
+          </span>
+          <button
+            type="button"
+            onClick={() => resyncVendor(fixedVendor.id)}
+            disabled={busyId === "resync-vendor"}
+            className={BTN_SECONDARY}
+          >
+            {busyId === "resync-vendor" ? "同步中…" : "重新同步"}
+          </button>
+        </div>
+      )}
       {message && (
         <p
           role={message.tone === "error" ? "alert" : "status"}

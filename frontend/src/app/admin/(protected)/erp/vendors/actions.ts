@@ -29,7 +29,8 @@ function revalidateVendors(id?: string) {
 
 /**
  * 提醒事項（#274）：廠商存檔後重新解析備註／付款條件，同步該廠商的 auto 提醒規則（不動手動規則）。
- * 廠商已存檔成功，同步失敗不回滾也不擋存檔（只記 log）；可到「提醒事項 › 全部規則」按「從廠商備註重新解析」補做。
+ * 廠商已存檔成功，同步失敗不回滾也不擋存檔（只記 log）；存檔後導向的廠商詳情頁會偵測到備註與規則不一致，
+ * 顯示提示與「重新同步」鈕（也可到「提醒事項 › 全部規則」按「從廠商備註重新解析」）。
  */
 async function syncReminders(
   supabase: Awaited<ReturnType<typeof getServerSupabase>>,

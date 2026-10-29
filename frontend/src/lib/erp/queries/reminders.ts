@@ -2,6 +2,7 @@
 // 讀寫走登入者 session（RLS：has_module('erp')）。到期計算在 lib/erp/reminders/schedule.ts（純函式）。
 import "server-only";
 
+import { cache } from "react";
 import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { erpErrorMessage } from "../errors";
@@ -22,6 +23,7 @@ import {
   isEmptySyncPlan,
   planVendorReminderSync,
   type ExistingReminderRule,
+  type SyncPlan,
   type VendorNoteInput,
 } from "../reminders/sync";
 import { taipeiToday } from "../statement";
@@ -165,17 +167,22 @@ async function loadReminderItems(supabase: Supabase): Promise<{
   return { today, items, rules: live };
 }
 
+// 同一次 render 內（(protected) layout 的徽章＋提醒事項頁）只查一次。
+const loadReminderItemsCached = cache(async () =>
+  loadReminderItems(await getServerSupabase()),
+);
+
 export async function getReminderList(): Promise<
   ErpResult<{ today: string; items: ReminderItem[]; rules: ReminderRuleFull[] }>
 > {
-  return wrap(async () => loadReminderItems(await getServerSupabase()));
+  return wrap(loadReminderItemsCached);
 }
 
 /** 側欄徽章：已逾期 + 3 天內到期數。無 erp 權限或讀取失敗回 null（不影響頁面）。 */
 export async function getReminderBadgeCount(): Promise<number | null> {
-  if (await ensureErp()) return null;
   try {
-    const { items } = await loadReminderItems(await getServerSupabase());
+    if (await ensureErp()) return null;
+    const { items } = await loadReminderItemsCached();
     return badgeCount(items);
   } catch {
     return null;
@@ -300,13 +307,10 @@ export interface ReminderSyncSummary {
  * 重新解析指定廠商（或全部廠商）的備註並同步 auto 規則：讀廠商與既有規則 → 純函式算計畫 →
  * RPC erp_apply_reminder_sync 在單一交易內套用（只動 auto、不動 manual）。呼叫端須先 ensureErp()。
  */
-export async function syncVendorReminders(
+async function planSync(
   supabase: Supabase,
   vendorIds: string[] | "all",
-): Promise<ReminderSyncSummary> {
-  if (vendorIds !== "all" && vendorIds.length === 0) {
-    return { vendors: 0, inserted: 0, updated: 0 };
-  }
+): Promise<{ vendors: number; plan: SyncPlan }> {
   const [vendors, existing] = await Promise.all([
     fetchAll<VendorNoteInput>((a, b) => {
       let q = supabase.from("erp_vendors").select("id, note, payment_terms");
@@ -322,9 +326,22 @@ export async function syncVendorReminders(
       return q.order("id").range(a, b);
     }),
   ]);
-  const plan = planVendorReminderSync(vendors, existing, taipeiToday());
+  return {
+    vendors: vendors.length,
+    plan: planVendorReminderSync(vendors, existing, taipeiToday()),
+  };
+}
+
+export async function syncVendorReminders(
+  supabase: Supabase,
+  vendorIds: string[] | "all",
+): Promise<ReminderSyncSummary> {
+  if (vendorIds !== "all" && vendorIds.length === 0) {
+    return { vendors: 0, inserted: 0, updated: 0 };
+  }
+  const { vendors, plan } = await planSync(supabase, vendorIds);
   if (isEmptySyncPlan(plan)) {
-    return { vendors: vendors.length, inserted: 0, updated: 0 };
+    return { vendors, inserted: 0, updated: 0 };
   }
   const { data, error } = await supabase.rpc("erp_apply_reminder_sync", {
     p_plan: { insert: plan.insert, update: plan.update },
@@ -332,8 +349,21 @@ export async function syncVendorReminders(
   if (error) throw new QueryError(erpErrorMessage(error));
   const res = (data ?? {}) as { inserted?: number; updated?: number };
   return {
-    vendors: vendors.length,
+    vendors,
     inserted: Number(res.inserted) || 0,
     updated: Number(res.updated) || 0,
   };
+}
+
+/**
+ * 廠商的 auto 規則是否與目前備註不一致（同步有待套用）。廠商存檔時的同步失敗不擋存檔，
+ * 廠商詳情頁以此顯示提示與「重新同步」鈕；#273 匯入（直接寫 DB）後尚未批次同步的廠商也會顯示。
+ */
+export async function getVendorReminderSyncPending(
+  vendorId: string,
+): Promise<ErpResult<boolean>> {
+  return wrap(async () => {
+    const { plan } = await planSync(await getServerSupabase(), [vendorId]);
+    return !isEmptySyncPlan(plan);
+  });
 }

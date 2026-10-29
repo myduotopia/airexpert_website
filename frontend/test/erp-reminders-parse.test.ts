@@ -273,3 +273,62 @@ describe("規則識別鍵", () => {
     ).toBe("y:3-15:繳款");
   });
 });
+
+describe("review 修正：誤判與 #273 匯入格式", () => {
+  it("不緊接「每月」的日期，其後須緊接事項（型號、倉別、分機不算）", () => {
+    expect(rulesOf("每月10號送貨 共2箱 每箱5號電池")).toEqual([
+      monthly(10, "送貨"),
+    ]);
+    expect(rulesOf("每月訂貨2次 3號鋼瓶")).toEqual([]);
+    expect(rulesOf("每月10號匯款2萬元，3號倉")).toEqual([monthly(10, "匯款")]);
+    expect(rulesOf("每月10號匯款（第2批20號再匯）")).toEqual([
+      monthly(10, "匯款"),
+    ]);
+    // 原本支援的寫法不受影響
+    expect(rulesOf("每月5號對帳，20號請款")).toEqual([
+      monthly(5, "對帳"),
+      monthly(20, "請款"),
+    ]);
+    expect(rulesOf("每月5號對帳，20號前付款")).toEqual([
+      monthly(5, "對帳"),
+      monthly(20, "付款"),
+    ]);
+  });
+
+  it("特定月份的月底（10 月底、十二月底、本月底）不是每月月底，列入待確認", () => {
+    for (const s of [
+      "10月底前交貨",
+      "10 月底前交貨",
+      "十二月底結清",
+      "本月底匯款",
+    ]) {
+      const r = parseReminderText(s);
+      expect(r.rules, s).toEqual([]);
+      expect(r.unparsed, s).toEqual([s]);
+    }
+    expect(rulesOf("當月底匯款")).toEqual([monthly(-1, "匯款")]);
+    expect(rulesOf("每個月底匯款")).toEqual([monthly(-1, "匯款")]);
+  });
+
+  it("「 / 」（匯入時儲存格內的換行）視同換行：每月的前後文不跨到另一行", () => {
+    const r = parseReminderText("【備註】每月25號匯款 / 聯絡人分機12號");
+    expect(r.rules.map(brief)).toEqual([monthly(25, "匯款")]);
+    expect(r.rules[0].sourceText).toBe("每月25號匯款");
+    expect(rulesOf("【備註一】每月10號匯款 / 每月20號對帳")).toEqual([
+      monthly(10, "匯款"),
+      monthly(20, "對帳"),
+    ]);
+  });
+
+  it("匯款帳號、送貨地址整行略過；其後無欄名的續行不建規則但列入待確認", () => {
+    const note = [
+      "【備註】每月10號匯款",
+      "【匯款帳號】台銀 012-34567890 每月 10號",
+      "【送貨地址】台中市中區民生路10號 每月5號",
+      "每月20號對帳",
+    ].join("\n");
+    const r = parseReminderText(note);
+    expect(r.rules.map(brief)).toEqual([monthly(10, "匯款")]);
+    expect(r.unparsed).toEqual(["每月20號對帳"]);
+  });
+});

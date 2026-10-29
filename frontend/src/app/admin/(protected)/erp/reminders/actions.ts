@@ -3,6 +3,7 @@
 // ERP 提醒事項 server actions（#274）。開頭一律 ensureErp()，錯誤回 { ok:false, error }。
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { getSessionUser } from "@/lib/admin/auth";
 import { ensureErp } from "@/lib/erp/guard";
 import { erpErrorMessage } from "@/lib/erp/errors";
 import {
@@ -189,9 +190,12 @@ export async function handleReminderAction(input: {
     if (dueDatesBetween(r, norm.row.due_date, norm.row.due_date).length !== 1) {
       return { ok: false, error: "到期日與規則不符，請重新整理頁面。" };
     }
+    // 重複標記時 upsert 走 update：handled_by 的 default（auth.uid()）不會套用 → 明確帶入目前處理人
+    const user = await getSessionUser();
     const { error } = await supabase.from("erp_reminder_occurrences").upsert(
       {
         ...norm.row,
+        ...(user?.id ? { handled_by: user.id } : {}),
         handled_at: new Date().toISOString(),
       },
       { onConflict: "rule_id,due_date" },
@@ -221,6 +225,24 @@ export async function undoReminderAction(
     return { ok: true };
   } catch (e) {
     return fail(e, "復原失敗。");
+  }
+}
+
+/** 重新同步單一廠商的 auto 規則（廠商詳情頁：存檔時同步失敗或尚未同步時的重試）。 */
+export async function resyncVendorRemindersAction(
+  vendorId: string,
+): Promise<{ ok: true; summary: ReminderSyncSummary } | Fail> {
+  const denied = await ensureErp();
+  if (denied) return denied;
+  if (!vendorId) return { ok: false, error: "缺少廠商。" };
+  try {
+    const summary = await syncVendorReminders(await getServerSupabase(), [
+      vendorId,
+    ]);
+    revalidateReminders(vendorId);
+    return { ok: true, summary };
+  } catch (e) {
+    return fail(e, "重新同步失敗。");
   }
 }
 

@@ -87,6 +87,7 @@ const syncMock = vi.fn<
 
 vi.mock("@/lib/admin/auth", () => ({
   hasModule: vi.fn(async () => moduleGranted),
+  getSessionUser: vi.fn(async () => ({ id: "user-2" })),
 }));
 vi.mock("@/lib/supabase-server", () => ({
   getServerSupabase: vi.fn(async () => fakeSupabase),
@@ -100,6 +101,7 @@ import {
   deleteReminderRuleAction,
   handleReminderAction,
   resyncAllVendorRemindersAction,
+  resyncVendorRemindersAction,
   saveReminderRuleAction,
   setReminderRuleActiveAction,
 } from "@/app/admin/(protected)/erp/reminders/actions";
@@ -318,6 +320,8 @@ describe("標記完成／略過", () => {
       due_date: "2026-11-30",
       status: "done",
       note: "已匯",
+      // 重複標記（upsert → update）時處理人以最後一次為準
+      handled_by: "user-2",
     });
   });
 
@@ -329,5 +333,28 @@ describe("標記完成／略過", () => {
     });
     expect(r.ok).toBe(false);
     expect(recorded.some((x) => x.kind === "upsert")).toBe(false);
+  });
+});
+
+describe("單一廠商重新同步（廠商詳情頁重試）", () => {
+  it("需 erp 權限", async () => {
+    moduleGranted = false;
+    const r = await resyncVendorRemindersAction("v1");
+    expect(r.ok).toBe(false);
+    expect(syncMock).not.toHaveBeenCalled();
+  });
+
+  it("只同步該廠商並回傳統計；失敗回錯誤訊息", async () => {
+    const r = await resyncVendorRemindersAction("v1");
+    expect(r).toEqual({
+      ok: true,
+      summary: { vendors: 1, inserted: 1, updated: 0 },
+    });
+    expect(syncMock).toHaveBeenCalledWith(fakeSupabase, ["v1"]);
+    syncMock.mockRejectedValueOnce(new Error("連線逾時"));
+    expect(await resyncVendorRemindersAction("v1")).toEqual({
+      ok: false,
+      error: "連線逾時",
+    });
   });
 });

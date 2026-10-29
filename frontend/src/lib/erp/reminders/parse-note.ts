@@ -12,7 +12,8 @@
 //   沒有「每月」的單一日期「10號匯款」、「月初」「每季」等。
 // 地址與帳號：備註中「【匯款帳號】」「【送貨地址】」等欄整行略過；一般文字中「路／段／巷… 10號」不視為日期。
 //
-// 備註格式（#273 匯入）：每行「【欄名】內容」，內容跨行時後續行沿用同一欄。
+// 備註格式（#273 匯入）：每行「【欄名】內容」，儲存格內的多行以「 / 」合成一行（解析時視同換行）。
+// 沒有【欄名】的行沿用上一欄；上一欄是略過欄時，該行不產生規則，疑似日期者列入待確認。
 // 每行再以句號、分號分段；同一段內的日期共用前後文來抽事項標題（「匯款」「付款」「請款」「對帳」…，
 // 抽不出就用「到期事項」）。規則依「週期＋標題」去重（ruleKey），與原文寫法無關，
 // 備註改寫但意思相同時仍是同一條（同步時據此比對既有的 auto 規則）。
@@ -211,11 +212,17 @@ const WEEK_SEQ = new RegExp(
 
 const MONTH_END_ANCHORED =
   /每\s*個?\s*月\s*(?:的)?\s*(?:月底|底|最後一天|最後1天)/g;
-const MONTH_END_ALONE = /(?<![次隔下上前個])月底/g;
+// 單獨的「月底」：前面緊接著相對／特定月份（次月底、本月底、10 月底、十二月底）→ 不是每月，列入待確認。
+const MONTH_END_ALONE = /(?<![次隔下上前個本這\d一二三四五六七八九十]\s*)月底/g;
 const MONTH_ANCHOR = /每\s*個?\s*月\s*(?:份)?\s*(?:的)?/g;
 const DAY_ITEM = new RegExp(
   `(?<![\\d路街巷弄段樓之號\\-./])(\\d{1,2}|${CN_NUM})(?!\\d)\\s*([號日])?`,
   "g",
+);
+// 不緊接在「每月」之後的日期（「每月5號對帳，20號請款」的 20 號）：其後須緊接事項關鍵字（中間最多 3 個字，
+// 例「20號前付款」「20號要請款」），否則可能是型號、倉別、分機（「5號電池」「3號倉」「分機12號」）。
+const LATER_DAY_TITLE = new RegExp(
+  `^\\s*[^\\d,，、。；;/\\s]{0,3}?(?:${TITLE_ANY.source})`,
 );
 // 「次月10號」「3月10日」之類：日期前面緊接著「月」→ 不是每月固定日。
 const RELATIVE_MONTH_BEFORE = new RegExp(
@@ -325,7 +332,13 @@ function parseSegmentTokens(w: string): {
       const directlyAfterAnchor = /^\s*$/.test(
         work.slice(anchor.end, first.start),
       );
-      if (!directlyAfterAnchor && RELATIVE_MONTH_BEFORE.test(before)) continue;
+      if (
+        !directlyAfterAnchor &&
+        (RELATIVE_MONTH_BEFORE.test(before) ||
+          !LATER_DAY_TITLE.test(work.slice(last.end)))
+      ) {
+        continue;
+      }
       if (overlaps(tokens, first.start, last.end)) continue;
       anchor.used = true;
       tokens.push({
@@ -449,7 +462,13 @@ const LABEL_LINE = /^\s*【([^】]*)】\s*/;
 interface Segment {
   text: string;
   prefix: string;
+  /** 只判斷是否疑似日期（列入待確認），不產生規則：略過欄（帳號、地址…）之後沒有【欄名】的續行。 */
+  suspiciousOnly: boolean;
 }
+
+// #273 匯入把儲存格內的多行以「 / 」（VENDOR_NOTE_LINE_JOINER）合成一行：視同換行，各自為一段，
+// 避免「每月」的前後文跨到原本另一行（例「每月25號匯款 / 分機12號」的 12 號）。
+const LINE_JOINER = / \/ /;
 
 function segmentsOf(text: string, prefix: string): Segment[] {
   const out: Segment[] = [];
@@ -461,10 +480,15 @@ function segmentsOf(text: string, prefix: string): Segment[] {
       label = m[1].trim();
       line = line.slice(m[0].length);
     }
-    if (label !== null && SKIP_LABEL.test(label)) continue;
-    for (const part of line.split(/[。；;!！?？]/)) {
-      const t = part.replace(/\s+/g, " ").trim();
-      if (t) out.push({ text: t, prefix });
+    const skipped = label !== null && SKIP_LABEL.test(label);
+    // 略過欄本身（【匯款帳號】…）整行不看；其後沒有【欄名】的續行可能是手寫補充（例如在備註最後補一行
+    // 「每月20號對帳」），不產生規則，但疑似日期時列入待確認，讓人工確認而不是默默忽略。
+    if (skipped && m) continue;
+    for (const piece of line.split(LINE_JOINER)) {
+      for (const part of piece.split(/[。；;!！?？]/)) {
+        const t = part.replace(/\s+/g, " ").trim();
+        if (t) out.push({ text: t, prefix, suspiciousOnly: skipped });
+      }
     }
   }
   return out;
@@ -488,6 +512,15 @@ export function parseReminderText(
   for (const seg of segments) {
     const r = parseSegment(seg.text);
     const sourceText = `${seg.prefix}${seg.text}`.slice(0, SOURCE_TEXT_MAX);
+    if (seg.suspiciousOnly) {
+      if (
+        (r.rules.length > 0 || r.suspicious) &&
+        !unparsed.includes(sourceText)
+      ) {
+        unparsed.push(sourceText);
+      }
+      continue;
+    }
     for (const rule of r.rules) {
       const key = ruleKey(rule);
       if (seen.has(key)) continue;
