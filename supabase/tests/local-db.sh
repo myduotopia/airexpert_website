@@ -2,7 +2,7 @@
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
 # supabase/migrations/*.sql，再依序執行 supabase/tests/erp_posting_test.sql、
 # service_report_test.sql、service_plan_test.sql、employees_test.sql、employee_hr_test.sql、staff_rbac_test.sql、
-# staff_email_test.sql、party_activity_test.sql、customer_source_test.sql、report_technicians_test.sql 與 reminders_test.sql。
+# staff_email_test.sql、party_activity_test.sql、customer_source_test.sql、report_technicians_test.sql、reminders_test.sql 與 meeting_tracking_test.sql。
 # Vault（vault.decrypted_secrets）只在本機以資料表 + view 模擬，並放入「測試用」金鑰。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
@@ -244,6 +244,38 @@ delete from sr_reports where report_no like 'BACKFILL-%';
 delete from employees where id in ('00000000-0000-0000-0000-00000000f371', '00000000-0000-0000-0000-00000000f372');
 SQL
 
+# 0038 新增週報追蹤表（交機進度／進廠維修／新機問題／處理進度）與清單 view；放最後重跑。
+# 重跑前放入一筆追蹤資料，確認重跑不改動既有資料與 view 欄位（create or replace view 欄位清單固定）。
+echo "==> 放入 0038 重跑用資料"
+psql_run <<'SQL'
+insert into mx_customers (id, name) values ('00000000-0000-0000-0000-00000000f0c1', '重跑測試客戶');
+insert into delivery_jobs (id, customer_id, delivery_start, delivery_end, note)
+  values ('00000000-0000-0000-0000-00000000f0d1', '00000000-0000-0000-0000-00000000f0c1', '2026-11-03', '2026-11-04', '重跑保留');
+insert into repair_jobs (id, customer_id, description)
+  values ('00000000-0000-0000-0000-00000000f0d2', '00000000-0000-0000-0000-00000000f0c1', '重跑測試');
+insert into tracking_progress (repair_job_id, content) values ('00000000-0000-0000-0000-00000000f0d2', '重跑進度');
+SQL
+VIEW_COLS_SQL="select md5(string_agg(table_name || '.' || column_name || ':' || data_type, '|' order by table_name, ordinal_position)) from information_schema.columns where table_name in ('delivery_jobs_view','delivery_document_options','repair_jobs_view','machine_issues_view')"
+VIEW_COLS_BEFORE=$(docker exec "$NAME" psql -U postgres -tAc "$VIEW_COLS_SQL")
+echo "==> 重跑 0038（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0038_meeting_tracking.sql"
+VIEW_COLS_AFTER=$(docker exec "$NAME" psql -U postgres -tAc "$VIEW_COLS_SQL")
+if [ "$VIEW_COLS_BEFORE" != "$VIEW_COLS_AFTER" ]; then
+  echo "FAIL：重跑 0038 改變了清單 view 的欄位" >&2
+  exit 1
+fi
+psql_run <<'SQL'
+do $$ begin
+  assert (select note from delivery_jobs where id = '00000000-0000-0000-0000-00000000f0d1') = '重跑保留', '重跑 0038 保留交機資料';
+  assert (select latest_progress from repair_jobs_view where id = '00000000-0000-0000-0000-00000000f0d2') = '重跑進度', '重跑 0038 保留進度';
+  assert (select count(*) from pg_policies where tablename in ('delivery_jobs','repair_jobs','machine_issues','tracking_progress')) = 16,
+    '重跑 0038 不重複建立 policy';
+end $$;
+delete from delivery_jobs where id = '00000000-0000-0000-0000-00000000f0d1';
+delete from repair_jobs where id = '00000000-0000-0000-0000-00000000f0d2';
+delete from mx_customers where id = '00000000-0000-0000-0000-00000000f0c1';
+SQL
+
 echo "==> 確認 0032／0033 重跑後的狀態"
 psql_run <<'SQL'
 do $$ begin
@@ -298,12 +330,15 @@ psql_run < "$ROOT/tests/report_technicians_test.sql"
 echo "==> 執行 reminders_test.sql"
 psql_run < "$ROOT/tests/reminders_test.sql"
 
+echo "==> 執行 meeting_tracking_test.sql"
+psql_run < "$ROOT/tests/meeting_tracking_test.sql"
+
 echo "==> 確認 rollback 未留資料"
 LEFT=$(docker exec "$NAME" psql -U postgres -tAc \
-  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_report_technicians) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr') + (select count(*) from admin_profiles) + (select count(*) from position_permissions) + (select count(*) from positions where name not in ('業務','內勤','服務','負責人','會計')) + (select count(*) from mx_customers) + (select count(*) from erp_reminder_rules) + (select count(*) from erp_reminder_occurrences)")
+  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_report_technicians) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr') + (select count(*) from admin_profiles) + (select count(*) from position_permissions) + (select count(*) from positions where name not in ('業務','內勤','服務','負責人','會計')) + (select count(*) from mx_customers) + (select count(*) from erp_reminder_rules) + (select count(*) from erp_reminder_occurrences) + (select count(*) from delivery_jobs) + (select count(*) from repair_jobs) + (select count(*) from machine_issues) + (select count(*) from tracking_progress)")
 if [ "$LEFT" != "0" ]; then
   echo "FAIL：測試後仍殘留 $LEFT 列" >&2
   exit 1
 fi
 
-echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + STAFF EMAIL + PARTY ACTIVITY + CUSTOMER SOURCE + REPORT TECHNICIANS + REMINDERS TESTS PASSED"
+echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + STAFF EMAIL + PARTY ACTIVITY + CUSTOMER SOURCE + REPORT TECHNICIANS + REMINDERS + MEETING TRACKING TESTS PASSED"

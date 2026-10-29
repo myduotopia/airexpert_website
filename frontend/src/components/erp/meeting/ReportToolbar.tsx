@@ -5,6 +5,7 @@
 //
 // 查詢一律反映在網址（server page 讀 searchParams 後查資料），不在 client 端保留篩選狀態：
 //   · range=this_week|last_week|this_month|last_month|custom（custom 另帶 from / to，見 lib/erp/meeting/date-range.ts）
+//     presets 傳 MEETING_RANGE_PRESETS_WITH_ALL 時另有 range=all（不限日期，週報追蹤清單 #272）
 //   · q=關鍵字
 //   · 額外篩選：children 內的原生表單元件（select / input）只要有 name 就會一起送出，例：
 //       <ReportToolbar …>
@@ -52,6 +53,8 @@ export interface ReportToolbarProps {
   csv?: MeetingCsvFile | null;
   /** 工具列下方的摘要（例：「共 12 筆」）。 */
   summary?: ReactNode;
+  /** 期間選項（預設 MEETING_RANGE_PRESETS；週報追蹤清單傳 MEETING_RANGE_PRESETS_WITH_ALL）。 */
+  presets?: readonly { key: MeetingRangePreset; label: string }[];
 }
 
 export function ReportToolbar(props: ReportToolbarProps) {
@@ -69,6 +72,7 @@ function ToolbarForm({
   printHref,
   csv,
   summary,
+  presets = MEETING_RANGE_PRESETS,
 }: ReportToolbarProps) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -146,7 +150,7 @@ function ToolbarForm({
             aria-label="期間"
             className="flex flex-wrap gap-1.5"
           >
-            {MEETING_RANGE_PRESETS.map((p) => {
+            {presets.map((p) => {
               const on = p.key === preset;
               return (
                 <button

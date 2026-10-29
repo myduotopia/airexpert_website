@@ -560,6 +560,10 @@ describe("ERP 週報（#271）：所有子頁籤與列印頁都需要 erp 模組
     "/admin/erp/meeting/machine-issues",
     "/admin/erp/meeting/maintenance",
     "/admin/erp/print/meeting/maintenance",
+    // #272 追蹤清單的列印頁
+    "/admin/erp/print/meeting/delivery",
+    "/admin/erp/print/meeting/repairs",
+    "/admin/erp/print/meeting/machine-issues",
   ];
 
   it("掃得到週報各頁（含佔位子頁籤與列印頁）", () => {

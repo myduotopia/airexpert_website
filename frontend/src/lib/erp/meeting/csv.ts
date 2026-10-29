@@ -18,11 +18,12 @@ export function safeFilename(name: string): string {
   return name.replace(/[\\/:*?"<>|\r\n]+/g, "_").trim() || "report";
 }
 
-/** 檔名：「維護完成紀錄_2026-10-26_2026-11-01.csv」。 */
+/** 檔名：「維護完成紀錄_2026-10-26_2026-11-01.csv」；不限日期（起訖皆空）：「交機進度_全部期間.csv」。 */
 export function meetingCsvFilename(
   title: string,
   range: { from: string; to: string },
 ): string {
+  if (!range.from && !range.to) return `${safeFilename(title)}_全部期間.csv`;
   return `${safeFilename(title)}_${range.from}_${range.to}.csv`;
 }
 

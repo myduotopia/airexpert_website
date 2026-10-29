@@ -1,13 +1,50 @@
 import { requireModule } from "@/lib/admin/auth";
+import { listCustomerOptions } from "@/lib/erp/queries/pickers";
+import {
+  meetingTabHref,
+  type MeetingSearchParams,
+} from "@/lib/erp/meeting/params";
+import { pageSlice, trackingParams } from "@/lib/erp/tracking/filters";
+import { loadTrackingView } from "@/lib/erp/tracking/view";
+import { DeliveryJobsBoard } from "@/components/erp/meeting/tracking/DeliveryJobsBoard";
+import { TrackingToolbar } from "@/components/erp/meeting/tracking/TrackingToolbar";
+import { Pager } from "../../items/_components/master-ui";
 
 export const metadata = { title: "交機進度 · 週報 · ERP · 後台" };
 
-// 佔位頁（#271）：交機進度由 #272 實作（會覆蓋本檔），先放「建置中」避免子頁籤連結 404。
-export default async function MeetingDeliveryPage() {
+const KIND = "delivery" as const;
+
+// 週報 tab：交機進度（#272）。子頁籤由 #271 的 meeting/layout.tsx 提供；本頁自行守門。
+// 期間預設「全部」（看全部未結案）；列印走 /admin/erp/print/meeting/delivery（同查詢參數）。
+export default async function MeetingDeliveryPage({
+  searchParams,
+}: {
+  searchParams: Promise<MeetingSearchParams>;
+}) {
   await requireModule("erp");
+  const sp = await searchParams;
+  const [view, customers] = await Promise.all([
+    loadTrackingView(KIND, sp),
+    listCustomerOptions(),
+  ]);
+  const paged = pageSlice(view.rows, view.filters.page);
+
   return (
-    <div className="border-border text-text-muted rounded-xl border border-dashed bg-white px-6 py-10 text-center text-[14px]">
-      「交機進度」建置中，敬請期待。
-    </div>
+    <section>
+      <TrackingToolbar kind={KIND} view={view} />
+      <DeliveryJobsBoard
+        rows={paged.rows}
+        customers={customers}
+        employees={view.employees}
+        refYear={view.refYear}
+      />
+      <Pager
+        basePath={meetingTabHref(KIND)}
+        params={trackingParams(view.filters)}
+        page={paged.page}
+        total={paged.total}
+        pageSize={paged.pageSize}
+      />
+    </section>
   );
 }
