@@ -6,6 +6,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { ensureErp } from "@/lib/erp/guard";
 import { VENDOR_OPTION_COLUMNS } from "@/lib/erp/queries/pickers";
 import type { VendorOption } from "@/lib/erp/types";
+import { syncVendorReminders } from "@/lib/erp/queries/reminders";
 import {
   masterWriteError,
   normalizeVendorInput,
@@ -26,6 +27,24 @@ function revalidateVendors(id?: string) {
   if (id) revalidatePath(`/admin/erp/vendors/${id}`);
 }
 
+/**
+ * 提醒事項（#274）：廠商存檔後重新解析備註／付款條件，同步該廠商的 auto 提醒規則（不動手動規則）。
+ * 廠商已存檔成功，同步失敗不回滾也不擋存檔（只記 log）；存檔後導向的廠商詳情頁會偵測到備註與規則不一致，
+ * 顯示提示與「重新同步」鈕（也可到「提醒事項 › 全部規則」按「從廠商備註重新解析」）。
+ */
+async function syncReminders(
+  supabase: Awaited<ReturnType<typeof getServerSupabase>>,
+  vendorId: string,
+) {
+  try {
+    await syncVendorReminders(supabase, [vendorId]);
+    revalidatePath("/admin/erp/reminders");
+    revalidatePath("/admin", "layout");
+  } catch (e) {
+    console.error("[erp] 廠商提醒規則同步失敗", (e as Error)?.message);
+  }
+}
+
 export async function createVendorAction(
   input: VendorInput,
 ): Promise<CreateVendorResult> {
@@ -42,6 +61,7 @@ export async function createVendorAction(
       .single();
     if (error) return { ok: false, error: masterWriteError(error) };
     const option = data as VendorOption;
+    await syncReminders(supabase, option.id);
     revalidateVendors(option.id);
     return { ok: true, id: option.id, option };
   } catch (e) {
@@ -64,6 +84,7 @@ export async function updateVendorAction(
       .update(norm.row)
       .eq("id", id);
     if (error) return { ok: false, error: masterWriteError(error) };
+    await syncReminders(supabase, id);
     revalidateVendors(id);
     return { ok: true, id };
   } catch (e) {

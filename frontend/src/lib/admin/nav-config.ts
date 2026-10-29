@@ -145,6 +145,15 @@ export const ADMIN_NAV: AdminNavItem[] = [
     modules: ["erp"],
     group: "ERP",
   },
+  // 提醒事項（#274）：依廠商備註產生的到期提醒＋支票到期。側欄徽章（逾期＋3 天內）由 (protected) layout 傳入。
+  {
+    key: "erp-reminders",
+    label: "提醒事項",
+    href: "/admin/erp/reminders",
+    enabled: true,
+    modules: ["erp"],
+    group: "ERP",
+  },
   {
     key: "erp-sales",
     label: "銷售",

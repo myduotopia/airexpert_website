@@ -498,6 +498,30 @@ describe("員工帳號（role staff，#261）：可進範圍完全由模組（�
   });
 });
 
+describe("提醒事項（#274）：只限 erp 模組", () => {
+  it("頁面本身以 requireModule('erp') 守門；只有 erp 模組進得去", () => {
+    const page = PAGES.find((p) => p.route === "/admin/erp/reminders");
+    expect(page).toBeDefined();
+    expect(
+      guardsIn(path.join(APP_ADMIN, page!.file)).some(
+        (g) => g.kind === "module" && g.modules.includes("erp"),
+      ),
+    ).toBe(true);
+    expect(accessibleRoutes({ role: "erp", modules: ["erp"] })).toContain(
+      "/admin/erp/reminders",
+    );
+    for (const u of [
+      { role: "erp", modules: [] },
+      { role: "office", modules: ["maintenance"] },
+      { role: "hr", modules: ["hr"] },
+      { role: "staff", modules: ["service_report", "employees"] },
+      { role: "admin", modules: [] },
+    ] as User[]) {
+      expect(accessibleRoutes(u), u.role).not.toContain("/admin/erp/reminders");
+    }
+  });
+});
+
 describe("保養記錄卡：office 角色或 maintenance 模組", () => {
   const maintenance = PAGES.map((p) => p.route).filter((r) =>
     r.startsWith("/admin/maintenance"),

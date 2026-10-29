@@ -12,6 +12,7 @@ export function AdminSidebar({
   role,
   modules = [],
   mustChangePassword = false,
+  badges = {},
 }: {
   email: string;
   role: AdminRole;
@@ -19,6 +20,8 @@ export function AdminSidebar({
   modules?: AdminModule[];
   /** 員工帳號尚未改掉預設密碼（#261）：側欄只顯示「帳號設定」。 */
   mustChangePassword?: boolean;
+  /** 側欄數量徽章（依項目 key，例：{ "erp-reminders": 3 }）；0 或未列者不顯示。由 server layout 算好傳入。 */
+  badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
   const nav = navForUser(role, modules, { mustChangePassword });
@@ -144,6 +147,19 @@ export function AdminSidebar({
                     }`}
                   >
                     {item.label}
+                    {(badges[item.key] ?? 0) > 0 && (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] leading-5 font-semibold text-white"
+                        >
+                          {badges[item.key]}
+                        </span>
+                        <span className="sr-only">
+                          （{badges[item.key]} 項逾期或 3 天內到期）
+                        </span>
+                      </>
+                    )}
                   </Link>
                 </li>
               );

@@ -7,6 +7,7 @@ import {
   redirectIfMustChangePassword,
 } from "@/lib/admin/auth";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { getReminderBadgeCount } from "@/lib/erp/queries/reminders";
 
 // 後台保護殼層：所有後台角色皆可進；非後台人員由 requireRole() 導向 /admin/login。
 // 注意：此層只負責「是否為後台人員」與依角色 + 模組授權渲染側欄；側欄以 navForUser() 隱藏無權項目，
@@ -29,10 +30,19 @@ export default async function AdminProtectedLayout({
   const user = await getSessionUser();
   const email = user?.email ?? "";
   const modules = await getCurrentModules();
+  // ERP「提醒事項」徽章（#274）：逾期＋3 天內到期數；讀取失敗回 null 不影響頁面。
+  const reminderCount = modules.includes("erp")
+    ? await getReminderBadgeCount()
+    : null;
 
   return (
     <div className="flex min-h-dvh">
-      <AdminSidebar email={email} role={role} modules={modules} />
+      <AdminSidebar
+        email={email}
+        role={role}
+        modules={modules}
+        badges={reminderCount ? { "erp-reminders": reminderCount } : {}}
+      />
       {/* 行動版：上方留白避開固定漢堡鈕、左右縮排較小；lg 以上恢復原本間距。 */}
       <main className="flex-1 overflow-x-hidden px-4 pt-16 pb-8 lg:px-8 lg:py-7">
         {children}

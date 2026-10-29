@@ -17,6 +17,7 @@ import {
   StatCard,
 } from "../../items/_components/master-ui";
 import { deleteVendorAction } from "../actions";
+import { VendorReminderSection } from "../../reminders/_components/VendorReminderSection";
 
 export const metadata = { title: "廠商 · ERP 基本資料" };
 
@@ -87,6 +88,8 @@ export default async function VendorDetailPage({
           {vendor.note ?? "—"}
         </Info>
       </InfoGrid>
+
+      <VendorReminderSection vendorId={vendor.id} vendorName={vendor.name} />
 
       <PartyActivity
         partyType="vendor"
