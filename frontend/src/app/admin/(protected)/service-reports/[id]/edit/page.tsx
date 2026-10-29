@@ -8,6 +8,7 @@ import {
   getReport,
   listCustomerOptions,
   listMachineOptions,
+  listReportTechnicians,
 } from "@/lib/service-report/queries";
 import { STATUS_LABELS } from "@/lib/service-report/types";
 import { formStateFromReport } from "@/components/service-report/form-state";
@@ -63,7 +64,7 @@ export default async function EditServiceReportPage({
     );
   }
 
-  const [customers, machines, branding, stagesRes, employees] =
+  const [customers, machines, branding, stagesRes, employees, technicians] =
     await Promise.all([
       listCustomerOptions(),
       listMachineOptions(),
@@ -72,6 +73,7 @@ export default async function EditServiceReportPage({
         ? listStagesForMachine(report.machine_id)
         : Promise.resolve(null),
       tryListEmployeeOptions(),
+      listReportTechnicians(report.id),
     ]);
   const loadError = !customers.ok
     ? customers.error
@@ -80,6 +82,17 @@ export default async function EditServiceReportPage({
       : !employees.ok
         ? employees.error
         : null;
+  // 技師列讀不到時不可進表單：儲存會以「只有主技師」覆蓋既有的協同技師。
+  if (!technicians.ok) {
+    return (
+      <div
+        role="alert"
+        className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-[14px] text-red-800"
+      >
+        讀取報告單技師失敗：{technicians.error}（請重新整理頁面後再試）
+      </div>
+    );
+  }
   const stages = stagesRes?.ok ? stagesRes.data : null;
 
   return (
@@ -103,7 +116,7 @@ export default async function EditServiceReportPage({
       )}
       <ReportForm
         reportId={report.id}
-        initial={formStateFromReport(report)}
+        initial={formStateFromReport(report, technicians.data)}
         customers={customers.ok ? customers.data : []}
         machines={machines.ok ? machines.data : []}
         employees={employees.ok ? employees.data : []}

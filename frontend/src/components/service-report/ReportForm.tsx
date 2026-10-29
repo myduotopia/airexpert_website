@@ -60,6 +60,13 @@ import {
   type TimeSlot,
 } from "@/lib/service-report/types";
 import { TEXT_LIMITS } from "@/lib/service-report/validate";
+import {
+  MAX_CO_TECHNICIANS,
+  addCoTechnician,
+  removeCoTechnician,
+  updateCoTechnician,
+  validateTechnicianDraft,
+} from "@/lib/service-report/technicians";
 import { ReportSheet } from "./ReportSheet";
 import {
   FIELD_LABELS,
@@ -86,7 +93,7 @@ import {
 export const SERVICE_REPORTS_PATH = "/admin/service-reports";
 
 type SaveResult =
-  | { ok: true; data: { id: string; report_no: string } }
+  | { ok: true; data: { id: string; report_no: string; warning?: string } }
   | { ok: false; error: string };
 
 export interface ReportFormProps {
@@ -344,6 +351,12 @@ export function ReportForm({
     ) {
       return;
     }
+    const techError = validateTechnicianDraft(state);
+    if (techError) {
+      setError(techError);
+      setResultsOpen(true);
+      return;
+    }
     startTransition(async () => {
       try {
         const res = await onSave(formStateToInput(state, reportId));
@@ -351,6 +364,8 @@ export function ReportForm({
           setError(res.error);
           return;
         }
+        // 新增時協同技師同步失敗：報告單已建立，提示後照常前往（避免重按儲存而重複開單）。
+        if (res.data.warning) window.alert(res.data.warning);
         router.push(
           thenPrint
             ? `${SERVICE_REPORTS_PATH}/print/${res.data.id}`
@@ -937,6 +952,24 @@ export function ReportForm({
                       }
                     />
                   </Field>
+                  <Field label="主技師工時比例" htmlFor="sr-technician-share">
+                    <input
+                      id="sr-technician-share"
+                      className={`${ERP_INPUT} w-28`}
+                      inputMode="decimal"
+                      value={state.technician_share}
+                      maxLength={5}
+                      disabled={!state.technician_id}
+                      onChange={(e) =>
+                        set({ technician_share: e.target.value })
+                      }
+                    />
+                    <Hint>
+                      {state.technician_id
+                        ? "0～1，最多兩位小數（例：兩人各 0.5）。"
+                        : "主技師從員工清單選擇後才可設定比例。"}
+                    </Hint>
+                  </Field>
                   <Field label="客戶簽名人" htmlFor="sr-signer">
                     <input
                       id="sr-signer"
@@ -949,6 +982,75 @@ export function ReportForm({
                     />
                   </Field>
                 </Grid>
+
+                <SubSection title="協同技師">
+                  <div className="flex flex-col gap-2">
+                    {state.co_technicians.map((c, i) => (
+                      <div
+                        key={i}
+                        className="flex flex-wrap items-center gap-2 sm:flex-nowrap"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <EmployeePicker
+                            id={`sr-co-technician-${i}`}
+                            role="technician"
+                            options={employees}
+                            value={{ id: c.id, name: c.name }}
+                            allowCreate
+                            aria-label={`第 ${i + 1} 位協同技師`}
+                            onChange={(next) =>
+                              setState((s) =>
+                                updateCoTechnician(s, i, {
+                                  id: next.id,
+                                  name: next.name ?? "",
+                                }),
+                              )
+                            }
+                          />
+                        </div>
+                        <input
+                          aria-label={`第 ${i + 1} 位協同技師工時比例`}
+                          className={`${ERP_INPUT} w-24 shrink-0`}
+                          inputMode="decimal"
+                          maxLength={5}
+                          value={c.share}
+                          placeholder="比例"
+                          onChange={(e) =>
+                            setState((s) =>
+                              updateCoTechnician(s, i, {
+                                share: e.target.value,
+                              }),
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          className={`${ERP_BUTTON_SECONDARY} shrink-0`}
+                          onClick={() =>
+                            setState((s) => removeCoTechnician(s, i))
+                          }
+                        >
+                          移除
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        className={ERP_BUTTON_SECONDARY}
+                        disabled={
+                          state.co_technicians.length >= MAX_CO_TECHNICIANS
+                        }
+                        onClick={() => setState((s) => addCoTechnician(s))}
+                      >
+                        ＋ 新增協同技師
+                      </button>
+                      <Hint>
+                        新增或移除時，主技師與協同技師的比例會重新平均分配，可再手動修改；列印時「維護人員」會列出所有技師。
+                      </Hint>
+                    </div>
+                  </div>
+                </SubSection>
               </div>
             )}
           </Section>

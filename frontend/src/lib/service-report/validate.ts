@@ -2,6 +2,7 @@
 // validateReportInput：回第一個錯誤（中文）或 null。
 // normalizeReportInput：通過驗證後，挑出已知欄位、去空白（空字串 → null）、去重，供寫入 DB。
 import { isValidReportNo, normalizeReportNo } from "./report-no";
+import { validateTechnicianInput } from "./technicians";
 import {
   CHECK_STATUS_LABELS,
   FILTER_CONSUMABLE_LABELS,
@@ -271,7 +272,12 @@ export function validateReportInput(input: unknown): string | null {
     if (err) return err;
   }
 
-  return checkParts(r.parts) ?? checkResults(r.results);
+  return (
+    checkParts(r.parts) ??
+    checkResults(r.results) ??
+    // 協同技師與工時比例（0037，#271）；未帶＝不同步，通過。
+    validateTechnicianInput(r)
+  );
 }
 
 /* ------------------------------------------------------------ 正規化 */

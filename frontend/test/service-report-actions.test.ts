@@ -208,6 +208,100 @@ describe("nextReportNoAction", () => {
   });
 });
 
+describe("saveReportAction：協同技師與工時比例（#271）", () => {
+  const TECH = "22222222-2222-4333-8444-555555555555";
+  const CO = "33333333-2222-4333-8444-555555555555";
+  const withTechs = (over: Partial<ServiceReportInput> = {}) =>
+    input({
+      id: ID,
+      report_no: "X11509009",
+      technician: "測試師傅甲",
+      technician_id: TECH,
+      technician_share: 0.5,
+      co_technicians: [{ employee_id: CO, share: 0.5 }],
+      ...over,
+    });
+
+  beforeEach(() => {
+    responses["sr_reports:update"] = () => ({
+      data: [{ id: ID, report_no: "X11509009" }],
+      error: null,
+    });
+  });
+
+  it("編輯：存報告單後呼叫 sr_set_report_technicians；技師欄位不寫進 sr_reports", async () => {
+    const r = await saveReportAction(withTechs());
+    expect(r).toEqual({ ok: true, data: { id: ID, report_no: "X11509009" } });
+    expect(rpcCalls).toEqual([
+      {
+        fn: "sr_set_report_technicians",
+        args: {
+          p_report_id: ID,
+          p_primary_share: 0.5,
+          p_collaborators: [{ employee_id: CO, share: 0.5 }],
+        },
+      },
+    ]);
+    const u = updates()[0];
+    expect(u.payload).toMatchObject({
+      technician: "測試師傅甲",
+      technician_id: TECH,
+    });
+    expect(u.payload).not.toHaveProperty("co_technicians");
+    expect(u.payload).not.toHaveProperty("technician_share");
+  });
+
+  it("未帶協同欄位（舊呼叫端）→ 不呼叫 RPC", async () => {
+    await saveReportAction(input({ id: ID, report_no: "X11509009" }));
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("比例不合法 → 驗證失敗，不碰 DB", async () => {
+    const r = await saveReportAction(
+      withTechs({ co_technicians: [{ employee_id: CO, share: 1.5 }] }),
+    );
+    expect(r).toEqual({
+      ok: false,
+      error: "第 1 位協同技師工時比例須大於 0、不超過 1，最多兩位小數",
+    });
+    expect(recorded).toEqual([]);
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("編輯：RPC 失敗 → 回錯誤（報告單已存）", async () => {
+    rpcResponses = [
+      {
+        data: null,
+        error: {
+          code: "P0001",
+          message: "voided",
+          details: "報告單已作廢，不可修改技師",
+        },
+      },
+    ];
+    const r = await saveReportAction(withTechs());
+    expect(r).toEqual({
+      ok: false,
+      error:
+        "報告單已儲存，但協同技師／工時比例未儲存：報告單已作廢，不可修改技師",
+    });
+  });
+
+  it("新增：RPC 失敗 → 仍回成功（避免重複開單）並帶 warning", async () => {
+    responses["sr_reports:insert"] = () => ({
+      data: { id: ID, report_no: "X11509009" },
+      error: null,
+    });
+    rpcResponses = [{ data: null, error: { code: "42501", message: "rls" } }];
+    const r = await saveReportAction(withTechs({ id: undefined }));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.data.id).toBe(ID);
+      expect(r.data.warning).toMatch(/已建立，但協同技師／工時比例未儲存/);
+    }
+  });
+});
+
 describe("saveReportAction", () => {
   it("驗證失敗不碰 DB", async () => {
     const r = await saveReportAction(input({ report_date: "" }));

@@ -6,6 +6,7 @@ import { fetchAllRows } from "@/lib/fetch-all-rows";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { srErrorMessage } from "./errors";
 import type { SrCustomerOption, SrMachineOption } from "./prefill";
+import type { ReportTechnicianRow } from "./technicians";
 import type {
   ServiceItem,
   ServiceReport,
@@ -204,4 +205,39 @@ export async function listMachineOptions(
   });
   if (error) return { ok: false, error: srErrorMessage(error) };
   return { ok: true, data };
+}
+
+interface TechnicianJoinRow {
+  employee_id: string;
+  share: number | string;
+  is_primary: boolean;
+  sort_order: number;
+  employees: { name: string; code: string | null } | null;
+}
+
+/**
+ * 某張報告單的技師與工時比例（sr_report_technicians，0037），主技師在前、其餘依 sort_order。
+ * RLS：has_module('service_report')（技師表與 employees 皆可讀）。
+ */
+export async function listReportTechnicians(
+  reportId: string,
+): Promise<SrResult<ReportTechnicianRow[]>> {
+  if (!isUuid(reportId)) return { ok: true, data: [] };
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("sr_report_technicians")
+    .select("employee_id, share, is_primary, sort_order, employees(name, code)")
+    .eq("report_id", reportId)
+    .order("is_primary", { ascending: false })
+    .order("sort_order", { ascending: true });
+  if (error) return { ok: false, error: srErrorMessage(error) };
+  const rows = ((data ?? []) as unknown as TechnicianJoinRow[]).map((r) => ({
+    employee_id: r.employee_id,
+    name: r.employees?.name ?? "（已刪除的員工）",
+    code: r.employees?.code ?? null,
+    share: Number(r.share),
+    is_primary: r.is_primary,
+    sort_order: r.sort_order,
+  }));
+  return { ok: true, data: rows };
 }

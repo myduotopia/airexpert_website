@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/admin/auth";
 import { getBranding } from "@/lib/data/site";
-import { getReport } from "@/lib/service-report/queries";
+import { getReport, listReportTechnicians } from "@/lib/service-report/queries";
 import { sheetDataFromReport } from "@/components/service-report/form-state";
 import { SheetPrintView } from "@/components/service-report/SheetPrintView";
 import { recordPrintAction } from "../../../../(protected)/service-reports/actions";
@@ -37,14 +37,18 @@ export default async function ServiceReportPrintPage({
   const report = found.data;
   if (!report) notFound();
 
-  const branding = await getBranding();
+  const [branding, technicians] = await Promise.all([
+    getBranding(),
+    listReportTechnicians(report.id),
+  ]);
   const voided = report.status === "voided";
 
   return (
     <SheetPrintView
       title={`機台維護報告單 ${report.report_no}`}
       backHref={`${SR_PATH}/${report.id}`}
-      data={sheetDataFromReport(report)}
+      // 維護人員列出所有技師（#271）；技師列讀取失敗時退回主技師文字。
+      data={sheetDataFromReport(report, technicians.ok ? technicians.data : [])}
       logoUrl={branding.logo_url}
       onRecordPrint={recordPrintAction.bind(null, report.id)}
       blockedReason={voided ? "已作廢的報告單不可列印" : null}

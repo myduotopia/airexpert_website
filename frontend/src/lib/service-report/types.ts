@@ -138,6 +138,13 @@ export type ServiceReportInput = Pick<
    */
   technician_id?: string | null;
   /**
+   * 主技師工時比例（0037，0 < 比例 ≤ 1）；主技師不是員工主檔時為 null。
+   * 與 co_technicians 成對：兩者皆 undefined＝不同步 sr_report_technicians（舊呼叫端）。
+   */
+  technician_share?: number | null;
+  /** 協同技師與工時比例（0037，#271），順序＝顯示順序；主技師不列在這裡。 */
+  co_technicians?: { employee_id: string; share: number }[];
+  /**
    * 套用的保養方案階段（0022）。三個欄位皆為選填：
    * undefined＝不更動既有值；plan_stage_id 傳 null / ""＝清除（快照欄位一併清空）；
    * 帶了 plan_stage_id 就一定會連兩個快照欄位一起寫（缺 → null）。
@@ -155,6 +162,8 @@ export type ServiceReportSheetData = Omit<
   | "customer_id"
   | "machine_id"
   | "technician_id"
+  | "technician_share"
+  | "co_technicians"
   | "note"
   | "plan_stage_id"
   | "plan_stage_hours"
