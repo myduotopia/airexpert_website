@@ -4,10 +4,12 @@
 //
 // 網址參數（各子頁籤共用）：
 //   range = this_week（預設）| last_week | this_month | last_month | custom
+//         | all（不限日期；只有以 { allowAll: true } 解析的頁面接受，且為其預設——週報追蹤清單 #272）
 //   from / to = 自訂區間的起訖（只在 range=custom 時使用）
 import { isIsoDate, taipeiToday } from "@/lib/erp/statement";
 
 export type MeetingRangePreset =
+  | "all"
   | "this_week"
   | "last_week"
   | "this_month"
@@ -25,21 +27,36 @@ export const MEETING_RANGE_PRESETS: readonly {
   { key: "custom", label: "自訂" },
 ];
 
+/**
+ * 含「全部」（不限日期）的選項：週報追蹤清單（交機進度／進廠維修／新機問題，#272）用，
+ * 搭配 parseMeetingRange(…, { allowAll: true }) 與 ReportToolbar 的 presets。
+ */
+export const MEETING_RANGE_PRESETS_WITH_ALL: readonly {
+  key: MeetingRangePreset;
+  label: string;
+}[] = [{ key: "all", label: "全部" }, ...MEETING_RANGE_PRESETS];
+
 export const DEFAULT_MEETING_PRESET: MeetingRangePreset = "this_week";
+
+export interface MeetingRangeOptions {
+  /** 接受 range=all（不限日期），且未帶或不合法的 range 預設為 all（週報追蹤清單）。 */
+  allowAll?: boolean;
+}
 
 /** 自訂區間最長天數（起訖相差，與 DB erp_meeting_maintenance 的上限一致）。 */
 export const MEETING_RANGE_MAX_DAYS = 366;
 
 export interface MeetingRange {
   preset: MeetingRangePreset;
-  /** 起日（含），YYYY-MM-DD。 */
+  /** 起日（含），YYYY-MM-DD；preset = all 時為空字串。 */
   from: string;
-  /** 迄日（含），YYYY-MM-DD。 */
+  /** 迄日（含），YYYY-MM-DD；preset = all 時為空字串。 */
   to: string;
-  /** 自訂區間不合法時的提示（此時已退回預設的本週）。 */
+  /** 自訂區間不合法時的提示（此時已退回預設：本週，allowAll 時為全部）。 */
   error: string | null;
 }
 
+/** MEETING_RANGE_PRESETS 中的值（不含 all；all 另由 parseMeetingRange 的 allowAll 判斷）。 */
 export function isMeetingRangePreset(v: unknown): v is MeetingRangePreset {
   return (
     typeof v === "string" && MEETING_RANGE_PRESETS.some((p) => p.key === v)
@@ -82,7 +99,7 @@ function monthRange(year: number, month: number): { from: string; to: string } {
   return { from: fromUtc(first), to: fromUtc(last) };
 }
 
-/** 預設區間的起訖（custom 視同本週）。today 須為 YYYY-MM-DD。 */
+/** 預設區間的起訖（custom 視同本週；all 為空字串＝不限）。today 須為 YYYY-MM-DD。 */
 export function presetRange(
   preset: MeetingRangePreset,
   today: string,
@@ -90,6 +107,8 @@ export function presetRange(
   if (!isIsoDate(today)) throw new Error(`日期格式錯誤：${today}`);
   const [y, m] = today.split("-").map(Number);
   switch (preset) {
+    case "all":
+      return { from: "", to: "" };
     case "last_week": {
       const from = addDays(weekStart(today), -7);
       return { from, to: addDays(from, 6) };
@@ -118,25 +137,33 @@ export function validateCustomRange(from: string, to: string): string | null {
 }
 
 /**
- * 網址參數 → 區間。不合法的 range 視為預設（本週）；
- * custom 起訖不合法時退回本週並帶 error（頁面顯示提示）。
+ * 網址參數 → 區間。不合法的 range 視為預設（本週；allowAll 時為全部）；
+ * custom 起訖不合法時退回預設並帶 error（頁面顯示提示）。
+ * 未傳 allowAll 時 range=all 視為不合法 → 本週（維護完成紀錄不提供「全部」）。
  */
 export function parseMeetingRange(
   params: { range?: string | null; from?: string | null; to?: string | null },
   today: string = taipeiToday(),
+  options: MeetingRangeOptions = {},
 ): MeetingRange {
-  const preset = isMeetingRangePreset(params.range)
-    ? params.range
+  const fallback: MeetingRangePreset = options.allowAll
+    ? "all"
     : DEFAULT_MEETING_PRESET;
+  const preset: MeetingRangePreset =
+    options.allowAll && params.range === "all"
+      ? "all"
+      : isMeetingRangePreset(params.range)
+        ? params.range
+        : fallback;
   if (preset === "custom") {
     const from = params.from ?? "";
     const to = params.to ?? "";
     const error = validateCustomRange(from, to);
     if (!error) return { preset, from, to, error: null };
     return {
-      preset: DEFAULT_MEETING_PRESET,
-      ...presetRange(DEFAULT_MEETING_PRESET, today),
-      error: `自訂區間不正確（${error.replace(/。$/, "")}），已改顯示本週。`,
+      preset: fallback,
+      ...presetRange(fallback, today),
+      error: `自訂區間不正確（${error.replace(/。$/, "")}），已改顯示${fallback === "all" ? "全部" : "本週"}。`,
     };
   }
   return { preset, ...presetRange(preset, today), error: null };
@@ -160,19 +187,22 @@ function rocYmd(iso: string): string {
 }
 
 /**
- * 報表標題用的區間文字：同一年「MM/DD~MM/DD」；跨年加民國年「114/12/29~115/01/04」。
+ * 報表標題用的區間文字：同一年「MM/DD~MM/DD」；跨年加民國年「114/12/29~115/01/04」；
+ * 不限日期（起訖皆空，range=all）為空字串。
  */
 export function meetingRangeLabel(range: { from: string; to: string }): string {
+  if (!range.from && !range.to) return "";
   if (range.from.slice(0, 4) === range.to.slice(0, 4)) {
     return `${mmdd(range.from)}~${mmdd(range.to)}`;
   }
   return `${rocYmd(range.from)}~${rocYmd(range.to)}`;
 }
 
-/** 報表標題：「維護完成紀錄 10/27~11/02」。 */
+/** 報表標題：「維護完成紀錄 10/27~11/02」；不限日期時只有名稱。 */
 export function meetingReportTitle(
   name: string,
   range: { from: string; to: string },
 ): string {
-  return `${name} ${meetingRangeLabel(range)}`;
+  const label = meetingRangeLabel(range);
+  return label ? `${name} ${label}` : name;
 }

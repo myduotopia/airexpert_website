@@ -57,6 +57,9 @@ begin
       t || '：security_invoker';
     assert not has_table_privilege('anon', 'public.' || t, 'select'), t || '：anon 無 select';
     assert has_table_privilege('authenticated', 'public.' || t, 'select'), t || '：authenticated 可 select';
+    assert not has_table_privilege('authenticated', 'public.' || t, 'insert')
+       and not has_table_privilege('authenticated', 'public.' || t, 'update')
+       and not has_table_privilege('authenticated', 'public.' || t, 'delete'), t || '：authenticated 不可寫入 view';
   end loop;
   raise notice 'ok  結構';
 end $$;
@@ -255,6 +258,21 @@ do $$ begin
   raise notice 'ok  單據／機台刪除後解除連結';
 end $$;
 
+-- 連結單據的「已沖銷」只算同客戶的銷貨單（模擬連結的草稿報價單事後被改成他客戶後轉出銷貨：
+-- 以 postgres 身分直接建立客戶乙、來源為客戶甲 Q1 的已過帳 S，並以客戶乙的收款沖銷）
+do $$ begin
+  insert into erp_documents (id, doc_type, doc_no, doc_date, status, customer_id, source_doc_id, total_amount, total_twd) values
+    ('00000000-0000-0000-0000-0000000038d9', 'S', 'ZS9', '2026-10-09', 'posted', '00000000-0000-0000-0000-0000000038c2',
+     '00000000-0000-0000-0000-0000000038d1', 500, 500);
+  insert into erp_payment_allocations (payment_id, document_id, amount) values
+    ('00000000-0000-0000-0000-0000000038b3', '00000000-0000-0000-0000-0000000038d9', 500);
+  assert (select linked_allocated from delivery_jobs_view where id = '00000000-0000-0000-0000-00000038aa11') = 0,
+    '連結 Q1：他客戶的銷貨沖銷不計入';
+  assert (select linked_allocated from delivery_document_options where doc_no = 'ZQ1') = 0,
+    '選項 Q1：他客戶的銷貨沖銷不計入';
+  raise notice 'ok  已沖銷只算同客戶銷貨單';
+end $$;
+
 -- ============================================================
 -- 4) RLS：無模組、anon
 -- ============================================================
@@ -266,6 +284,7 @@ do $$ begin
   assert (select count(*) from machine_issues) = 0, '無模組讀不到新機問題';
   assert (select count(*) from tracking_progress) = 0, '無模組讀不到進度';
   assert (select count(*) from delivery_jobs_view) = 0, '無模組讀不到交機 view';
+  assert (select count(*) from delivery_document_options) = 0, '無模組讀不到可連結單據（不外洩單據金額）';
   assert (select count(*) from repair_jobs_view) = 0 and (select count(*) from machine_issues_view) = 0, '無模組讀不到 view';
   -- update／delete 無作用（RLS 過濾）
   update repair_jobs set status = 'done';

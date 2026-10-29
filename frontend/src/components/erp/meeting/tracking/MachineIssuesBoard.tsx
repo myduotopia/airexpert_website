@@ -1,7 +1,7 @@
 "use client";
 // 新機問題清單（#272）：客戶、交機日期、機型、問題、發生日期、處理進度（最新一筆）、負責人、狀態。
 // 重點追蹤的列以醒目底色顯示（列印保留底色）；狀態「待討論」以紅字顯示。
-// readOnly（列印模式）時不顯示新增／編輯／進度／刪除。
+// 列印見 TrackingPrintTables（獨立列印路由）。
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useConfirm } from "@/components/erp/ConfirmDialog";
@@ -36,7 +36,6 @@ export function MachineIssuesBoard({
   employees = [],
   refYear,
   today,
-  readOnly = false,
   emptyText = "沒有符合條件的新機問題。",
 }: {
   rows: MachineIssueRow[];
@@ -44,7 +43,6 @@ export function MachineIssuesBoard({
   employees?: EmployeeOption[];
   refYear: number;
   today: string;
-  readOnly?: boolean;
   emptyText?: string;
 }) {
   const router = useRouter();
@@ -71,29 +69,28 @@ export function MachineIssuesBoard({
 
   return (
     <div>
-      {!readOnly && (
-        <div className="mb-3 flex items-center justify-between gap-3 print:hidden">
-          {error ? (
-            <p role="alert" className="text-[14px] text-red-600">
-              {error}
-            </p>
-          ) : (
-            <span className="text-text-muted text-[13px]">
-              <span
-                className={`${KEY_ROW} mr-1 inline-block h-3 w-5 rounded-sm align-middle`}
-              />
-              重點追蹤
-            </span>
-          )}
-          <button
-            type="button"
-            className={BTN_PRIMARY}
-            onClick={() => setEditing({ issue: null })}
-          >
-            新增新機問題
-          </button>
-        </div>
-      )}
+      <div className="mb-3 flex items-center justify-between gap-3 print:hidden">
+        {error ? (
+          <p role="alert" className="text-[14px] text-red-600">
+            {error}
+          </p>
+        ) : (
+          <span className="text-text-muted text-[13px]">
+            <span
+              className={`${KEY_ROW} mr-1 inline-block h-3 w-5 rounded-sm align-middle`}
+            />
+            重點追蹤
+          </span>
+        )}
+        <button
+          type="button"
+          className={BTN_PRIMARY}
+          onClick={() => setEditing({ issue: null })}
+        >
+          新增新機問題
+        </button>
+      </div>
+
       {rows.length === 0 ? (
         <div className="border-border text-text-muted rounded-xl border border-dashed bg-white p-8 text-center text-[14px]">
           {emptyText}
@@ -111,11 +108,10 @@ export function MachineIssuesBoard({
                 <th className={TH}>處理進度</th>
                 <th className={TH}>負責人</th>
                 <th className={TH}>狀態</th>
-                {!readOnly && (
-                  <th className={`${TH} print:hidden`}>
-                    <span className="sr-only">操作</span>
-                  </th>
-                )}
+
+                <th className={`${TH} print:hidden`}>
+                  <span className="sr-only">操作</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -176,33 +172,32 @@ export function MachineIssuesBoard({
                       />
                     )}
                   </td>
-                  {!readOnly && (
-                    <td className={`${TD} print:hidden`}>
-                      <div className="flex gap-3">
-                        <button
-                          type="button"
-                          className={ROW_ACTION}
-                          onClick={() => setProgressOf(r)}
-                        >
-                          進度
-                        </button>
-                        <button
-                          type="button"
-                          className={ROW_ACTION}
-                          onClick={() => setEditing({ issue: r })}
-                        >
-                          編輯
-                        </button>
-                        <button
-                          type="button"
-                          className="text-[13px] font-semibold whitespace-nowrap text-red-600 hover:text-red-700"
-                          onClick={() => remove(r)}
-                        >
-                          刪除
-                        </button>
-                      </div>
-                    </td>
-                  )}
+
+                  <td className={`${TD} print:hidden`}>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className={ROW_ACTION}
+                        onClick={() => setProgressOf(r)}
+                      >
+                        進度
+                      </button>
+                      <button
+                        type="button"
+                        className={ROW_ACTION}
+                        onClick={() => setEditing({ issue: r })}
+                      >
+                        編輯
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[13px] font-semibold whitespace-nowrap text-red-600 hover:text-red-700"
+                        onClick={() => remove(r)}
+                      >
+                        刪除
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

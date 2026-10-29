@@ -1,6 +1,6 @@
 "use client";
 // 進廠維修清單（#272）：客戶、進廠日期、機型、問題、處理進度（最新一筆）、負責人、狀態。
-// 狀態「待確認」以紅字顯示。readOnly（列印模式）時不顯示新增／編輯／進度／刪除。
+// 狀態「待確認」以紅字顯示。列印見 TrackingPrintTables（獨立列印路由）。
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useConfirm } from "@/components/erp/ConfirmDialog";
@@ -34,7 +34,6 @@ export function RepairJobsBoard({
   employees = [],
   refYear,
   today,
-  readOnly = false,
   emptyText = "沒有符合條件的進廠維修。",
 }: {
   rows: RepairJobRow[];
@@ -42,7 +41,6 @@ export function RepairJobsBoard({
   employees?: EmployeeOption[];
   refYear: number;
   today: string;
-  readOnly?: boolean;
   emptyText?: string;
 }) {
   const router = useRouter();
@@ -69,24 +67,23 @@ export function RepairJobsBoard({
 
   return (
     <div>
-      {!readOnly && (
-        <div className="mb-3 flex items-center justify-between gap-3 print:hidden">
-          {error ? (
-            <p role="alert" className="text-[14px] text-red-600">
-              {error}
-            </p>
-          ) : (
-            <span />
-          )}
-          <button
-            type="button"
-            className={BTN_PRIMARY}
-            onClick={() => setEditing({ job: null })}
-          >
-            新增進廠維修
-          </button>
-        </div>
-      )}
+      <div className="mb-3 flex items-center justify-between gap-3 print:hidden">
+        {error ? (
+          <p role="alert" className="text-[14px] text-red-600">
+            {error}
+          </p>
+        ) : (
+          <span />
+        )}
+        <button
+          type="button"
+          className={BTN_PRIMARY}
+          onClick={() => setEditing({ job: null })}
+        >
+          新增進廠維修
+        </button>
+      </div>
+
       {rows.length === 0 ? (
         <div className="border-border text-text-muted rounded-xl border border-dashed bg-white p-8 text-center text-[14px]">
           {emptyText}
@@ -103,11 +100,10 @@ export function RepairJobsBoard({
                 <th className={TH}>處理進度</th>
                 <th className={TH}>負責人</th>
                 <th className={TH}>狀態</th>
-                {!readOnly && (
-                  <th className={`${TH} print:hidden`}>
-                    <span className="sr-only">操作</span>
-                  </th>
-                )}
+
+                <th className={`${TH} print:hidden`}>
+                  <span className="sr-only">操作</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -148,33 +144,32 @@ export function RepairJobsBoard({
                       />
                     )}
                   </td>
-                  {!readOnly && (
-                    <td className={`${TD} print:hidden`}>
-                      <div className="flex gap-3">
-                        <button
-                          type="button"
-                          className={ROW_ACTION}
-                          onClick={() => setProgressOf(r)}
-                        >
-                          進度
-                        </button>
-                        <button
-                          type="button"
-                          className={ROW_ACTION}
-                          onClick={() => setEditing({ job: r })}
-                        >
-                          編輯
-                        </button>
-                        <button
-                          type="button"
-                          className="text-[13px] font-semibold whitespace-nowrap text-red-600 hover:text-red-700"
-                          onClick={() => remove(r)}
-                        >
-                          刪除
-                        </button>
-                      </div>
-                    </td>
-                  )}
+
+                  <td className={`${TD} print:hidden`}>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className={ROW_ACTION}
+                        onClick={() => setProgressOf(r)}
+                      >
+                        進度
+                      </button>
+                      <button
+                        type="button"
+                        className={ROW_ACTION}
+                        onClick={() => setEditing({ job: r })}
+                      >
+                        編輯
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[13px] font-semibold whitespace-nowrap text-red-600 hover:text-red-700"
+                        onClick={() => remove(r)}
+                      >
+                        刪除
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

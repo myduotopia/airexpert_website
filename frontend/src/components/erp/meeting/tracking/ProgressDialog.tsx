@@ -91,6 +91,8 @@ export function ProgressDialog({
       tone: "danger",
     });
     if (!ok) return;
+    setError(null);
+    setField(null);
     const res = await deleteProgressAction(parent, entry.id);
     if (!res.ok) {
       setError(res.error);

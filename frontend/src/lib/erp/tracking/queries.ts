@@ -13,23 +13,14 @@ import {
 } from "./filters";
 import type {
   DeliveryDocumentOption,
-  DeliveryJobRow,
-  MachineIssueRow,
   MachineOption,
   ProgressEntry,
   ProgressParent,
-  RepairJobRow,
   TrackingKind,
+  TrackingRowMap,
 } from "./types";
 
-/** 清單每頁筆數（同 ERP 基本資料）。 */
-export const TRACKING_PAGE_SIZE = 50;
-
-export interface TrackingRowMap {
-  delivery: DeliveryJobRow;
-  repairs: RepairJobRow;
-  "machine-issues": MachineIssueRow;
-}
+export type { TrackingRowMap };
 
 /** 清單 view 的查詢 builder（supabase.from(view).select(...)）。 */
 type ViewQuery = ReturnType<
@@ -68,32 +59,7 @@ function applyFilter(q: ViewQuery, f: QueryFilter): ViewQuery {
   }
 }
 
-export async function listTracking<K extends TrackingKind>(
-  kind: K,
-  filters: TrackingFilters,
-): Promise<{
-  rows: TrackingRowMap[K][];
-  total: number;
-  page: number;
-  pageSize: number;
-}> {
-  const spec = trackingQuerySpec(kind, filters);
-  const start = (filters.page - 1) * TRACKING_PAGE_SIZE;
-  const supabase = await getServerSupabase();
-  const { data, error, count } = await applySpec(
-    supabase.from(spec.view).select("*", { count: "exact" }),
-    spec,
-  ).range(start, start + TRACKING_PAGE_SIZE - 1);
-  if (error) throw new Error(`讀取追蹤資料失敗：${error.message}`);
-  return {
-    rows: (data ?? []) as TrackingRowMap[K][],
-    total: count ?? 0,
-    page: filters.page,
-    pageSize: TRACKING_PAGE_SIZE,
-  };
-}
-
-/** 列印、匯出用：符合篩選的全部列（不分頁；fetchAllRows 讀完）。 */
+/** 符合篩選的全部列（不分頁；fetchAllRows 讀完）。清單（再於頁面分頁）、CSV、列印共用。 */
 export async function listAllTracking<K extends TrackingKind>(
   kind: K,
   filters: TrackingFilters,

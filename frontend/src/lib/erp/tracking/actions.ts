@@ -1,23 +1,14 @@
 "use server";
 
 // 週報追蹤資料（#272）server actions：交機進度／進廠維修／新機問題的新增、編輯、刪除，處理進度時間軸，
-// 連結單據與機台的選項讀取，CSV 匯出。
+// 連結單據與機台的選項讀取。（CSV 由週報頁 server 端以 trackingCsvFile 產生，見 #271 ReportToolbar。）
 // 每個 action 開頭 ensureErp()（layout 不保護 server action）；回傳 { ok, error }，不 throw。
 // 寫入走登入者 session（RLS：has_module('erp')）；DB 觸發器的驗證錯誤以 erpErrorMessage 顯示 detail。
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { ensureErp } from "@/lib/erp/guard";
 import { erpErrorMessage } from "@/lib/erp/errors";
-import { toCsv } from "@/lib/erp/reports";
 import type { ErpResult } from "@/lib/erp/types";
-import { taipeiToday } from "@/lib/employees/status";
-import {
-  deliveryCsvTable,
-  machineIssuesCsvTable,
-  repairsCsvTable,
-  trackingCsvFilename,
-} from "./csv";
-import { parseTrackingFilters } from "./filters";
 import {
   isUuid,
   normalizeDeliveryInput,
@@ -26,7 +17,6 @@ import {
   normalizeRepairInput,
 } from "./normalize";
 import {
-  listAllTracking,
   listCustomerMachines,
   listDeliveryDocuments,
   listProgress,
@@ -35,15 +25,12 @@ import {
 import type {
   DeliveryDocumentOption,
   DeliveryJobInput,
-  DeliveryJobRow,
   MachineIssueInput,
-  MachineIssueRow,
   MachineOption,
   ProgressEntry,
   ProgressInput,
   ProgressParent,
   RepairJobInput,
-  RepairJobRow,
   TrackingKind,
 } from "./types";
 
@@ -287,6 +274,7 @@ export async function deleteProgressAction(
       .from("tracking_progress")
       .delete()
       .eq("id", id)
+      .not(PROGRESS_PARENT_COLUMN[parent], "is", null)
       .select("id");
     if (error) return { ok: false, error: erpErrorMessage(error) };
     if (!data || data.length === 0) return { ok: false, error: NOT_FOUND };
@@ -294,41 +282,5 @@ export async function deleteProgressAction(
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: (e as Error).message || "刪除失敗。" };
-  }
-}
-
-// ── CSV 匯出 ─────────────────────────────────────────────────
-
-/** params = 清單網址參數（filtersToParams 的結果）；不分頁，匯出全部符合篩選的列。 */
-export async function exportTrackingCsvAction(
-  kind: TrackingKind,
-  params: Record<string, string>,
-): Promise<ErpResult<{ filename: string; csv: string }>> {
-  const denied = await ensureErp();
-  if (denied) return denied;
-  if (!Object.hasOwn(TABLES, kind)) return { ok: false, error: "類別不正確。" };
-  const filters = parseTrackingFilters(kind, params ?? {});
-  try {
-    const table =
-      kind === "delivery"
-        ? deliveryCsvTable(
-            (await listAllTracking(kind, filters)) as DeliveryJobRow[],
-          )
-        : kind === "repairs"
-          ? repairsCsvTable(
-              (await listAllTracking(kind, filters)) as RepairJobRow[],
-            )
-          : machineIssuesCsvTable(
-              (await listAllTracking(kind, filters)) as MachineIssueRow[],
-            );
-    return {
-      ok: true,
-      data: {
-        filename: trackingCsvFilename(kind, filters, taipeiToday()),
-        csv: toCsv(table.headers, table.rows),
-      },
-    };
-  } catch (e) {
-    return { ok: false, error: (e as Error).message || "匯出失敗。" };
   }
 }

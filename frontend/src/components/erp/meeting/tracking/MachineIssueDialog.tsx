@@ -1,6 +1,7 @@
 "use client";
 // 新機問題新增／編輯 Dialog（#272）。父層只在開啟時渲染。
-// - 機台（選填）：選客戶後讀取該客戶的機台（保養卡 mx_machines）；選了機台就帶入機型與交機日期（購買日期）。
+// - 機台（選填）：選客戶後讀取該客戶的機台（保養卡 mx_machines）；選了機台就帶入機型與交機日期（購買日期），
+//   不蓋掉使用者填的值：只在空白、或仍是上一台機器帶入的值時更新（lib/erp/tracking/autofill.ts）。
 // - 重點追蹤：清單與列印以醒目底色顯示。
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { ErpDialog } from "@/components/erp/ErpDialog";
@@ -15,6 +16,7 @@ import {
   loadCustomerMachinesAction,
   saveMachineIssueAction,
 } from "@/lib/erp/tracking/actions";
+import { autofill } from "@/lib/erp/tracking/autofill";
 import {
   MACHINE_ISSUE_STATUSES,
   MACHINE_ISSUE_STATUS_LABELS,
@@ -70,6 +72,13 @@ export function MachineIssueDialog({
   const [error, setError] = useState<string | null>(null);
   const [field, setField] = useState<keyof MachineIssueInput | null>(null);
   const [saving, startSaving] = useTransition();
+  // 上一台機器帶入的值（編輯時，已選機台的機型／交機日期視為由該機台帶入）
+  const [autoModel, setAutoModel] = useState<string | null>(
+    issue?.machine_id ? (issue.model ?? null) : null,
+  );
+  const [autoDelivered, setAutoDelivered] = useState<string | null>(
+    issue?.machine_id ? (issue.delivered_on ?? null) : null,
+  );
 
   const [machines, setMachines] = useState<MachineOption[] | null>(null);
   const [machinesError, setMachinesError] = useState<string | null>(null);
@@ -134,13 +143,18 @@ export function MachineIssueDialog({
     setCustomerId(id);
     setMachineId(null);
     setMachines(null);
+    // 重新讀取（清除後再選回同一位客戶時也要讀，否則會一直停在「讀取機台中…」）
+    setLoadedFor(null);
   }
 
   function onMachineChange(id: string) {
     const m = machineOptions.find((x) => x.id === id) ?? null;
     setMachineId(m ? m.id : null);
-    if (m?.model) setModel(m.model);
-    if (m?.purchased_at) setDeliveredOn(m.purchased_at);
+    if (!m) return;
+    setModel(autofill(model, autoModel, m.model));
+    setAutoModel(m.model);
+    setDeliveredOn(autofill(deliveredOn, autoDelivered, m.purchased_at));
+    setAutoDelivered(m.purchased_at);
   }
 
   function submit() {

@@ -319,6 +319,7 @@ select j.id,
       join erp_payments p on p.id = pa.payment_id and p.status = 'posted'
      where j.document_id is not null
        and s.doc_type = 'S' and s.status = 'posted'
+       and s.customer_id = j.customer_id  -- 只算本客戶（連結的草稿單據事後改了客戶時不混入他客戶收款）
        and (s.id = j.document_id or s.source_doc_id = j.document_id)
   ) la on true
   left join erp_party_balances pb on pb.party_type = 'customer' and pb.party_id = j.customer_id;
@@ -341,6 +342,7 @@ select d.id,
            join erp_payment_allocations pa on pa.document_id = s.id
            join erp_payments p on p.id = pa.payment_id and p.status = 'posted'
           where s.doc_type = 'S' and s.status = 'posted'
+            and s.customer_id = d.customer_id
             and (s.id = d.id or s.source_doc_id = d.id)
        ), 0)::numeric(14,2) as linked_allocated
   from erp_documents d
@@ -419,6 +421,10 @@ select i.id,
 
 revoke all on delivery_jobs_view, delivery_document_options, repair_jobs_view, machine_issues_view from anon;
 grant select on delivery_jobs_view, delivery_document_options, repair_jobs_view, machine_issues_view to authenticated;
+-- 清單 view 只讀：Supabase 預設權限會給 authenticated 全部權限，而 delivery_document_options 是可自動更新的
+-- 單表 view（寫入會落到 erp_documents）；撤掉寫入權限，資料只能經由各自的資料表與 RPC 寫入。
+revoke insert, update, delete, truncate, references, trigger
+  on delivery_jobs_view, delivery_document_options, repair_jobs_view, machine_issues_view from public, authenticated;
 
 comment on table delivery_jobs is '交機進度（週報，#272）';
 comment on column delivery_jobs.deposit_override is '訂金手動覆寫：null＝自動判斷（無連結單據＝未收）；received／not_received';

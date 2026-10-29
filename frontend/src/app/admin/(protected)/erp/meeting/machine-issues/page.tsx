@@ -1,128 +1,51 @@
 import { requireModule } from "@/lib/admin/auth";
 import { listCustomerOptions } from "@/lib/erp/queries/pickers";
-import { listEmployeeOptions } from "@/lib/employees/queries";
-import { taipeiToday } from "@/lib/employees/status";
-import { exportTrackingCsvAction } from "@/lib/erp/tracking/actions";
-import { taipeiYear } from "@/lib/erp/tracking/display";
 import {
-  filtersToParams,
-  parseTrackingFilters,
-} from "@/lib/erp/tracking/filters";
-import { listAllTracking, listTracking } from "@/lib/erp/tracking/queries";
-import {
-  MACHINE_ISSUE_STATUSES,
-  MACHINE_ISSUE_STATUS_LABELS,
-} from "@/lib/erp/tracking/types";
+  meetingTabHref,
+  type MeetingSearchParams,
+} from "@/lib/erp/meeting/params";
+import { pageSlice, trackingParams } from "@/lib/erp/tracking/filters";
+import { loadTrackingView } from "@/lib/erp/tracking/view";
 import { MachineIssuesBoard } from "@/components/erp/meeting/tracking/MachineIssuesBoard";
-import { TrackingFilterFields } from "@/components/erp/meeting/tracking/TrackingFilterFields";
-import { SectionHeader } from "@/components/erp/meeting/tracking/ui";
-import {
-  TRACKING_BASE_PATHS,
-  trackingFilterSummary,
-  trackingHref,
-  trackingReportTitle,
-} from "@/components/erp/meeting/tracking/report";
-// ⚠️ 暫代版（#271 合併後改用 #271 的 ReportToolbar 與列印版型）
-import { ReportToolbar } from "@/components/erp/meeting/tracking/_shim/ReportToolbar";
-import { PrintFrame } from "@/components/erp/meeting/tracking/_shim/PrintFrame";
+import { TrackingToolbar } from "@/components/erp/meeting/tracking/TrackingToolbar";
 import { Pager } from "../../items/_components/master-ui";
 
-export const metadata = { title: "新機問題 · 週報" };
+export const metadata = { title: "新機問題 · 週報 · ERP · 後台" };
 
 const KIND = "machine-issues" as const;
-const NONE_LABEL = "負責人未指定";
 
 // 週報 tab：新機問題（#272）。子頁籤由 #271 的 meeting/layout.tsx 提供；本頁自行守門。
-// ?print=1：列印模式（全部符合篩選的資料、A4 橫式）。
+// 期間預設「全部」（看全部未結案）；列印走 /admin/erp/print/meeting/machine-issues（同查詢參數）。
 export default async function MeetingMachineIssuesPage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<MeetingSearchParams>;
 }) {
   await requireModule("erp");
   const sp = await searchParams;
-  const filters = parseTrackingFilters(KIND, sp);
-  const today = taipeiToday();
-  const refYear = taipeiYear();
-  const printMode = sp.print === "1";
-
-  if (printMode) {
-    const [rows, employees] = await Promise.all([
-      listAllTracking(KIND, filters),
-      listEmployeeOptions({ includeInactive: true }),
-    ]);
-    return (
-      <PrintFrame
-        title={trackingReportTitle(KIND, filters)}
-        subtitle={trackingFilterSummary(
-          filters,
-          MACHINE_ISSUE_STATUS_LABELS,
-          employees,
-          NONE_LABEL,
-          today,
-        )}
-        backHref={trackingHref(KIND, filters)}
-      >
-        <MachineIssuesBoard
-          rows={rows}
-          refYear={refYear}
-          today={today}
-          readOnly
-        />
-      </PrintFrame>
-    );
-  }
-
-  const [result, customers, employees] = await Promise.all([
-    listTracking(KIND, filters),
+  const [view, customers] = await Promise.all([
+    loadTrackingView(KIND, sp),
     listCustomerOptions(),
-    listEmployeeOptions({ includeInactive: true }),
   ]);
-  const params = filtersToParams(filters);
+  const paged = pageSlice(view.rows, view.filters.page);
 
   return (
-    <div className="mx-auto max-w-[1400px]">
-      <SectionHeader
-        title="新機問題"
-        description={`共 ${result.total} 筆（${trackingFilterSummary(filters, MACHINE_ISSUE_STATUS_LABELS, employees, NONE_LABEL)}）。日期區間依發生日期；重點追蹤排在最前並以醒目底色顯示。`}
-      />
-      <ReportToolbar
-        basePath={TRACKING_BASE_PATHS[KIND]}
-        dateLabel="發生日期"
-        from={filters.from}
-        to={filters.to}
-        q={filters.q}
-        qPlaceholder="客戶、機型、機號、問題、負責人"
-        today={today}
-        printHref={trackingHref(KIND, filters, { print: "1" })}
-        exportCsv={exportTrackingCsvAction.bind(null, KIND, params)}
-      >
-        <TrackingFilterFields
-          filters={filters}
-          statuses={MACHINE_ISSUE_STATUSES.map((s) => ({
-            value: s,
-            label: MACHINE_ISSUE_STATUS_LABELS[s],
-          }))}
-          employees={employees}
-          roles={["technician"]}
-          ownerLabel="負責人"
-          noneLabel={NONE_LABEL}
-        />
-      </ReportToolbar>
+    <section>
+      <TrackingToolbar kind={KIND} view={view} />
       <MachineIssuesBoard
-        rows={result.rows}
+        rows={paged.rows}
         customers={customers}
-        employees={employees}
-        refYear={refYear}
-        today={today}
+        employees={view.employees}
+        refYear={view.refYear}
+        today={view.today}
       />
       <Pager
-        basePath={TRACKING_BASE_PATHS[KIND]}
-        params={params}
-        page={result.page}
-        total={result.total}
-        pageSize={result.pageSize}
+        basePath={meetingTabHref(KIND)}
+        params={trackingParams(view.filters)}
+        page={paged.page}
+        total={paged.total}
+        pageSize={paged.pageSize}
       />
-    </div>
+    </section>
   );
 }

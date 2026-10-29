@@ -5,23 +5,31 @@ import {
   normalizeProgressInput,
   normalizeRepairInput,
 } from "@/lib/erp/tracking/normalize";
-import { autoDeposit, resolveDeposit } from "@/lib/erp/tracking/deposit";
+import {
+  autoDeposit,
+  depositBasisLabel,
+  resolveDeposit,
+} from "@/lib/erp/tracking/deposit";
+import { autofill, autofillEmployee } from "@/lib/erp/tracking/autofill";
 import {
   formatDeliveryWindow,
   formatTrackingDate,
   latestProgressText,
 } from "@/lib/erp/tracking/display";
 import {
-  filtersToParams,
-  parseTrackingFilters,
+  pageSlice,
+  parseTrackingFilters as parseFilters,
+  trackingParams,
+  trackingQuery,
   trackingQuerySpec,
 } from "@/lib/erp/tracking/filters";
 import {
   deliveryCsvTable,
   machineIssuesCsvTable,
   repairsCsvTable,
-  trackingCsvFilename,
+  trackingCsvFile,
 } from "@/lib/erp/tracking/csv";
+import type { MeetingSearchParams } from "@/lib/erp/meeting/params";
 import type {
   DeliveryJobInput,
   DeliveryJobRow,
@@ -38,6 +46,13 @@ const C1 = "11111111-1111-4111-8111-111111111111";
 const E1 = "22222222-2222-4222-8222-222222222222";
 const E2 = "33333333-3333-4333-8333-333333333333";
 const D1 = "44444444-4444-4444-8444-444444444444";
+/** 測試基準日：2026-10-29（星期四）。 */
+const TODAY = "2026-10-29";
+const parseTrackingFilters = (
+  kind: "delivery" | "repairs" | "machine-issues",
+  sp: MeetingSearchParams,
+) => parseFilters(kind, sp, TODAY);
+const ALL_RANGE = { preset: "all", from: "", to: "", error: null } as const;
 
 function deliveryInput(
   patch: Partial<DeliveryJobInput> = {},
@@ -281,7 +296,27 @@ describe("訂金自動判斷", () => {
       customerPrepaid: 500,
     });
     expect(r.status).toBe("received");
-    expect(r.reason).toContain("預收");
+    expect(r).toMatchObject({ source: "auto", basis: "prepaid" });
+    expect(r.reason).toContain("依客戶預收判斷");
+    // 清單／列印／CSV 明確標示依據（客戶層級預收，未必是此筆訂金）
+    expect(depositBasisLabel(r)).toBe("依客戶預收");
+  });
+
+  it("訂金依據標示：手動 →「手動」；依沖銷或未收不另標示", () => {
+    const facts = {
+      hasDocument: true,
+      linkedAllocated: 3000,
+      customerPrepaid: 0,
+    };
+    expect(depositBasisLabel(resolveDeposit(null, facts))).toBe("");
+    expect(depositBasisLabel(resolveDeposit("received", facts))).toBe("手動");
+    expect(
+      depositBasisLabel(resolveDeposit(null, { ...facts, linkedAllocated: 0 })),
+    ).toBe("");
+    // 同時有沖銷與預收：以沖銷為依據（不標「依客戶預收」）
+    expect(resolveDeposit(null, { ...facts, customerPrepaid: 500 }).basis).toBe(
+      "linked",
+    );
   });
 
   it("連結單據：無沖銷、無預收 → 未收；負數（銷退沖抵）不算", () => {
@@ -354,35 +389,58 @@ describe("交機時間顯示", () => {
 });
 
 describe("篩選參數", () => {
-  it("預設：只看未結案、無日期、第 1 頁", () => {
+  it("預設：只看未結案、不限日期（range=all）、第 1 頁", () => {
     expect(parseTrackingFilters("delivery", {})).toEqual({
       q: "",
       status: "open",
       owner: "",
-      from: "",
-      to: "",
+      range: ALL_RANGE,
       page: 1,
     });
   });
 
-  it("不合法的狀態／負責人／日期 → 忽略；起迄顛倒 → 對調", () => {
+  it("期間沿用 #271 週報參數：本週／自訂；不合法的自訂區間退回全部並提示", () => {
+    expect(
+      parseTrackingFilters("repairs", { range: "this_week" }).range,
+    ).toEqual({
+      preset: "this_week",
+      from: "2026-10-26",
+      to: "2026-11-01",
+      error: null,
+    });
+    expect(
+      parseTrackingFilters("repairs", {
+        range: "custom",
+        from: "2026-10-01",
+        to: "2026-10-31",
+      }).range,
+    ).toMatchObject({ preset: "custom", from: "2026-10-01", to: "2026-10-31" });
+    const bad = parseTrackingFilters("repairs", {
+      range: "custom",
+      from: "2026-10-31",
+      to: "2026-10-01",
+    }).range;
+    expect(bad).toMatchObject({ preset: "all", from: "", to: "" });
+    expect(bad.error).toMatch(/已改顯示全部/);
+    // 舊網址的 from／to（沒有 range=custom）不生效，視為全部
+    expect(
+      parseTrackingFilters("repairs", { from: "2026-10-01", to: "2026-10-31" })
+        .range.preset,
+    ).toBe("all");
+    expect(
+      parseTrackingFilters("repairs", { range: "bogus" }).range.preset,
+    ).toBe("all");
+  });
+
+  it("不合法的狀態／負責人／頁碼 → 忽略；關鍵字最長 100 字", () => {
     const f = parseTrackingFilters("repairs", {
       status: "delivered",
       owner: "not-a-uuid",
-      from: "2026-10-31",
-      to: "2026-10-01",
       page: "0",
+      q: "x".repeat(150),
     });
-    expect(f).toMatchObject({
-      status: "open",
-      owner: "",
-      from: "2026-10-01",
-      to: "2026-10-31",
-      page: 1,
-    });
-    expect(parseTrackingFilters("repairs", { from: "2026/10/01" }).from).toBe(
-      "",
-    );
+    expect(f).toMatchObject({ status: "open", owner: "", page: 1 });
+    expect(f.q).toHaveLength(100);
   });
 
   it("接受各類的狀態值、all、none（負責人待確認）與 uuid", () => {
@@ -397,23 +455,43 @@ describe("篩選參數", () => {
     ).toBe("delivered");
   });
 
-  it("filtersToParams 省略預設值（分頁連結）", () => {
-    expect(filtersToParams(parseTrackingFilters("delivery", {}))).toEqual({});
-    expect(
-      filtersToParams({
-        q: "壓縮機",
-        status: "all",
-        owner: "none",
-        from: "2026-10-01",
-        to: "",
-        page: 3,
-      }),
-    ).toEqual({
+  it("trackingQuery：期間必帶、省略預設狀態與頁碼（工具列 key、列印、分頁共用）", () => {
+    expect(trackingQuery(parseTrackingFilters("delivery", {}))).toBe(
+      "range=all",
+    );
+    const f = parseTrackingFilters("delivery", {
+      q: " 壓縮機 ",
+      status: "all",
+      owner: "none",
+      range: "custom",
+      from: "2026-10-01",
+      to: "2026-10-15",
+      page: "3",
+    });
+    expect(trackingQuery(f)).toBe(
+      "range=custom&from=2026-10-01&to=2026-10-15&q=%E5%A3%93%E7%B8%AE%E6%A9%9F&status=all&owner=none",
+    );
+    expect(trackingParams(f)).toEqual({
+      range: "custom",
+      from: "2026-10-01",
+      to: "2026-10-15",
       q: "壓縮機",
       status: "all",
       owner: "none",
-      from: "2026-10-01",
     });
+    // 解析回來條件相同（上一頁／下一頁、列印頁讀同一組參數）
+    expect(parseTrackingFilters("delivery", trackingParams(f))).toEqual({
+      ...f,
+      page: 1,
+    });
+  });
+
+  it("pageSlice：每頁 50 筆；頁碼超過最後一頁 → 最後一頁", () => {
+    const rows = Array.from({ length: 120 }, (_, i) => i);
+    expect(pageSlice(rows, 1)).toMatchObject({ page: 1, total: 120 });
+    expect(pageSlice(rows, 3).rows).toEqual(rows.slice(100));
+    expect(pageSlice(rows, 9).page).toBe(3);
+    expect(pageSlice([], 2)).toMatchObject({ rows: [], page: 1, total: 0 });
   });
 
   it("查詢規格：未結案排除結案狀態、關鍵字逐字 ilike（跳脫萬用字元）", () => {
@@ -476,18 +554,26 @@ describe("篩選參數", () => {
     ).toContainEqual({ op: "eq", column: "owner_id", value: E2 });
   });
 
-  it("查詢規格：日期區間（交機時間重疊／進廠日期／發生日期）", () => {
-    const range = { from: "2026-11-01", to: "2026-11-07" };
+  it("查詢規格：期間 all → 不篩日期", () => {
+    for (const kind of ["delivery", "repairs", "machine-issues"] as const) {
+      const spec = trackingQuerySpec(kind, parseTrackingFilters(kind, {}));
+      expect(spec.filters).toEqual([
+        expect.objectContaining({ op: "not_in", column: "status" }),
+      ]);
+    }
+  });
+
+  it("查詢規格：期間（交機時間重疊且列出待確認／進廠日期／發生日期）", () => {
+    const range = { range: "custom", from: "2026-11-01", to: "2026-11-07" };
+    // 交機進度：與期間重疊，或交機時間待確認（起迄皆空，DB check 保證同時為空）
     expect(
-      trackingQuerySpec("delivery", {
-        ...parseTrackingFilters("delivery", range),
-      }).filters,
-    ).toEqual(
-      expect.arrayContaining([
-        { op: "gte", column: "delivery_end", value: "2026-11-01" },
-        { op: "lte", column: "delivery_start", value: "2026-11-07" },
-      ]),
-    );
+      trackingQuerySpec("delivery", parseTrackingFilters("delivery", range))
+        .filters,
+    ).toContainEqual({
+      op: "or",
+      value:
+        "and(delivery_end.gte.2026-11-01,delivery_start.lte.2026-11-07),delivery_start.is.null",
+    });
     expect(
       trackingQuerySpec("repairs", parseTrackingFilters("repairs", range))
         .filters,
@@ -500,11 +586,26 @@ describe("篩選參數", () => {
     expect(
       trackingQuerySpec(
         "machine-issues",
-        parseTrackingFilters("machine-issues", { to: "2026-11-07" }),
+        parseTrackingFilters("machine-issues", { range: "this_week" }),
       ).filters,
     ).toEqual([
       { op: "not_in", column: "status", values: ["resolved"] },
-      { op: "lte", column: "occurred_on", value: "2026-11-07" },
+      { op: "gte", column: "occurred_on", value: "2026-10-26" },
+      { op: "lte", column: "occurred_on", value: "2026-11-01" },
+    ]);
+  });
+
+  it("查詢規格：交機進度同時篩負責人與期間 → 合併成單一 or 參數", () => {
+    const spec = trackingQuerySpec(
+      "delivery",
+      parseTrackingFilters("delivery", { owner: E1, range: "this_week" }),
+    );
+    const ors = spec.filters.filter((f) => f.op === "or");
+    expect(ors).toEqual([
+      {
+        op: "or",
+        value: `and(or(sales_rep_id.eq.${E1},delivery_owner_id.eq.${E1}),or(and(delivery_end.gte.2026-10-26,delivery_start.lte.2026-11-01),delivery_start.is.null))`,
+      },
     ]);
   });
 });
@@ -572,6 +673,7 @@ describe("CSV 列", () => {
     expect(t.headers).toEqual([
       "客戶",
       "訂金",
+      "訂金依據",
       "負責業務",
       "交機負責人",
       "材料確認",
@@ -584,6 +686,7 @@ describe("CSV 列", () => {
     expect(t.rows[0]).toEqual([
       "測試客戶甲",
       "已收",
+      "依客戶預收",
       "測試業務",
       "待確認",
       "已確認",
@@ -605,9 +708,14 @@ describe("CSV 列", () => {
       }),
     ]).rows[0];
     expect(pending[1]).toBe("未收");
-    expect(pending[4]).toBe("未確認");
-    expect(pending[6]).toBe("待確認");
-    expect(pending[9]).toBe("");
+    expect(pending[2]).toBe("");
+    expect(pending[5]).toBe("未確認");
+    expect(pending[7]).toBe("待確認");
+    expect(pending[10]).toBe("");
+    expect(
+      deliveryCsvTable([deliveryRow({ deposit_override: "received" })])
+        .rows[0][2],
+    ).toBe("手動");
   });
 
   it("進廠維修：處理進度為最新一筆", () => {
@@ -698,16 +806,44 @@ describe("CSV 列", () => {
     ]);
   });
 
-  it("檔名：類別 + 日期區間或今天", () => {
+  it("trackingCsvFile：#271 共用格式（BOM）；檔名含期間，不限日期為「全部期間」", () => {
+    const f = trackingCsvFile("delivery", [deliveryRow()], {
+      from: "2026-11-01",
+      to: "2026-11-07",
+    });
+    expect(f.filename).toBe("交機進度_2026-11-01_2026-11-07.csv");
+    expect(f.content.startsWith("\uFEFF客戶,訂金,訂金依據")).toBe(true);
     expect(
-      trackingCsvFilename(
-        "delivery",
-        { from: "2026-11-01", to: "2026-11-07" },
-        "2026-10-29",
-      ),
-    ).toBe("交機進度_2026-11-01_2026-11-07.csv");
-    expect(
-      trackingCsvFilename("machine-issues", { from: "", to: "" }, "2026-10-29"),
-    ).toBe("新機問題_2026-10-29.csv");
+      trackingCsvFile("machine-issues", [], { from: "", to: "" }).filename,
+    ).toBe("新機問題_全部期間.csv");
+  });
+});
+
+describe("自動帶入不覆蓋已填值", () => {
+  it("autofill：空白或仍是上次帶入的值 → 換新值；使用者改過 → 保留", () => {
+    expect(autofill("", null, "螺旋式空壓機")).toBe("螺旋式空壓機");
+    expect(autofill("  ", null, "A")).toBe("A");
+    expect(autofill("自填設備", null, "A")).toBe("自填設備");
+    expect(autofill("A", "A", "B")).toBe("B");
+    expect(autofill("A 改過", "A", "B")).toBe("A 改過");
+    // 新來源沒有值：清掉上次帶入的舊值；空白維持空白；自填保留
+    expect(autofill("A", "A", null)).toBe("");
+    expect(autofill("", "A", null)).toBe("");
+    expect(autofill("自填", "A", null)).toBe("自填");
+  });
+
+  it("autofillEmployee：未指定或仍是上次帶入者 → 換人；已自行指定 → 保留", () => {
+    const none = { id: null, name: null };
+    const a = { id: E1, name: "業務甲" };
+    const b = { id: E2, name: "業務乙" };
+    expect(autofillEmployee(none, null, a)).toEqual(a);
+    expect(autofillEmployee(a, null, b)).toEqual(a);
+    expect(autofillEmployee(a, E1, b)).toEqual(b);
+    expect(autofillEmployee(a, E1, null)).toEqual(a);
+    // 只有文字快照（舊資料）視為已填
+    expect(autofillEmployee({ id: null, name: "舊業務" }, null, b)).toEqual({
+      id: null,
+      name: "舊業務",
+    });
   });
 });

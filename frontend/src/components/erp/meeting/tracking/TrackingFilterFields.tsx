@@ -1,6 +1,6 @@
-// 週報追蹤清單（#272）工具列的額外篩選：狀態、負責人（原生 <select>，隨報表工具列的 GET 表單送出）。
+// 週報追蹤清單（#272）工具列的額外篩選：狀態、負責人（原生 <select name>，由 #271 ReportToolbar 讀表單後導頁）。
 // 無 hooks，server component 直接使用。
-import { ERP_SELECT } from "@/components/erp/styles";
+import { ERP_LABEL, ERP_SELECT } from "@/components/erp/styles";
 import type { EmployeeOption, EmployeeRole } from "@/lib/employees/types";
 import type { TrackingFilters } from "@/lib/erp/tracking/filters";
 
@@ -29,8 +29,8 @@ export function TrackingFilterFields({
   const people = ownerChoices(employees, roles, filters.owner);
   return (
     <>
-      <label className="flex flex-col gap-1 text-[13px]">
-        <span className="text-text-muted">狀態</span>
+      <label className="flex flex-col gap-1.5">
+        <span className={ERP_LABEL}>狀態</span>
         <select
           name="status"
           defaultValue={filters.status}
@@ -45,8 +45,8 @@ export function TrackingFilterFields({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1 text-[13px]">
-        <span className="text-text-muted">{ownerLabel}</span>
+      <label className="flex flex-col gap-1.5">
+        <span className={ERP_LABEL}>{ownerLabel}</span>
         <select
           name="owner"
           defaultValue={filters.owner}

@@ -1,7 +1,8 @@
 "use client";
 // 交機進度新增／編輯 Dialog（#272）。父層只在開啟時渲染（每次開啟都是新的 state）。
-// - 客戶：CustomerPicker；改客戶時清除連結單據並重新讀取該客戶的報價單／銷貨單；負責業務空白時帶入客戶預設業務。
-// - 來源單據（選填）：選了之後，機器設備空白時帶入整機品項、負責業務空白時帶入單據業務。
+// - 客戶：CustomerPicker；改客戶時清除連結單據並重新讀取該客戶的報價單／銷貨單；負責業務未指定時帶入客戶預設業務。
+// - 來源單據（選填）：選了之後帶入整機品項（機器設備）與單據業務（負責業務）。
+//   自動帶入不蓋掉使用者填的值：只在空白、或仍是上一次自動帶入的值時更新（lib/erp/tracking/autofill.ts）。
 // - 訂金：有連結單據時顯示自動判斷結果（可手動覆寫）；沒有連結單據時手動選擇（預設未收）。
 // - 交機時間：起迄可只填一個（視為單日），都空白＝待確認。
 import { useEffect, useMemo, useState, useTransition } from "react";
@@ -18,6 +19,7 @@ import {
   loadDeliveryDocumentsAction,
   saveDeliveryJobAction,
 } from "@/lib/erp/tracking/actions";
+import { autofill, autofillEmployee } from "@/lib/erp/tracking/autofill";
 import { DEPOSIT_RULE_TEXT, resolveDeposit } from "@/lib/erp/tracking/deposit";
 import { rocDate } from "@/lib/admin/minguo";
 import {
@@ -85,6 +87,9 @@ export function DeliveryJobDialog({
   const [error, setError] = useState<string | null>(null);
   const [field, setField] = useState<keyof DeliveryJobInput | null>(null);
   const [saving, startSaving] = useTransition();
+  // 上一次自動帶入的值（使用者沒改過才會被下一次帶入取代）
+  const [autoEquipment, setAutoEquipment] = useState<string | null>(null);
+  const [autoSalesId, setAutoSalesId] = useState<string | null>(null);
 
   // 連結單據選項（依客戶讀取）；編輯時先以資料列上的數字顯示訂金判斷，讀完後更新。
   const [docs, setDocs] = useState<DeliveryDocumentOption[] | null>(null);
@@ -165,14 +170,23 @@ export function DeliveryJobDialog({
   });
   const autoLabel = deposit.auto === null ? null : DEPOSIT_LABELS[deposit.auto];
 
+  function fillSalesRep(id: string | null, name: string | null) {
+    if (!id) return;
+    const next = autofillEmployee(salesRep, autoSalesId, { id, name });
+    if (next !== salesRep) {
+      setSalesRep(next);
+      setAutoSalesId(id);
+    }
+  }
+
   function onCustomerChange(id: string | null, c: CustomerOption | null) {
     setCustomerId(id);
     setDocumentId(null);
     setDocs(null);
     setPrepaid(0);
-    if (!salesRep.id && !salesRep.name && c?.sales_rep_id) {
-      setSalesRep({ id: c.sales_rep_id, name: c.sales_rep });
-    }
+    // 重新讀取（清除後再選回同一位客戶時也要讀，否則會一直停在「讀取單據中…」）
+    setLoadedFor(null);
+    fillSalesRep(c?.sales_rep_id ?? null, c?.sales_rep ?? null);
   }
 
   function onDocumentChange(
@@ -181,12 +195,11 @@ export function DeliveryJobDialog({
   ) {
     setDocumentId(id);
     if (!d) return;
-    if (!equipment.trim() && d.machine_items.length > 0) {
-      setEquipment(d.machine_items.join("、"));
-    }
-    if (!salesRep.id && !salesRep.name && d.sales_rep_id) {
-      setSalesRep({ id: d.sales_rep_id, name: d.sales_rep });
-    }
+    const items =
+      d.machine_items.length > 0 ? d.machine_items.join("、") : null;
+    setEquipment(autofill(equipment, autoEquipment, items));
+    setAutoEquipment(items);
+    fillSalesRep(d.sales_rep_id, d.sales_rep);
   }
 
   function submit() {

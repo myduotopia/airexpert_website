@@ -12,7 +12,7 @@
 //     </MeetingPrintSheet>
 //   </PrintShell>
 // 表格可用 class：mtg-table（外框）、mtg-num（數字靠右）、mtg-nowrap、mtg-wrap（長文字換行）、
-//   tfoot 列為合計（只印在最後一頁）。
+//   tfoot 列為合計（只印在最後一頁）；tr.mtg-key（重點追蹤醒目底色）、mtg-alert（紅字，例：待確認）。
 import type { ReactNode } from "react";
 import { COMPANY_INFO } from "@/lib/erp/print";
 import { rocShortDate } from "@/lib/erp/meeting/maintenance";
@@ -36,6 +36,9 @@ const CSS = `
 .mtg-table .mtg-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mtg-table .mtg-nowrap { white-space: nowrap; }
 .mtg-table .mtg-wrap { white-space: pre-wrap; word-break: break-all; }
+.mtg-table tr.mtg-key td { background: #fef3c7; }
+.mtg-alert { color: #dc2626; font-weight: 600; }
+.mtg-sub { display: block; font-size: 8pt; color: #555; }
 .mtg-empty { padding: 8mm 0; text-align: center; color: #555; }
 @media print {
   .mtg-sheet { width: auto; min-height: 0; padding: 0; box-shadow: none; }

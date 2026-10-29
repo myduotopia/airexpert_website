@@ -159,6 +159,13 @@ export interface MachineIssueRow {
   progress_count: number;
 }
 
+/** 各類別的清單資料列。 */
+export interface TrackingRowMap {
+  delivery: DeliveryJobRow;
+  repairs: RepairJobRow;
+  "machine-issues": MachineIssueRow;
+}
+
 export interface ProgressEntry {
   id: string;
   progress_date: string;

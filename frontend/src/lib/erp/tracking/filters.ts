@@ -1,10 +1,22 @@
 // 週報追蹤清單（#272）的篩選參數與查詢規格。純函式，client / server 共用。
 //
-// 網址參數：q（關鍵字，空白分隔多字＝皆須符合）、status（open＝未結案〔預設〕／all／各狀態值）、
-//          owner（員工 uuid／none＝負責人待確認）、from／to（YYYY-MM-DD）、page。
+// 網址參數：q（關鍵字，空白分隔多字＝皆須符合；最長 100 字）、status（open＝未結案〔預設〕／all／各狀態值）、
+//          owner（員工 uuid／none＝負責人待確認）、page，
+//          以及 #271 週報共用的期間 range／from／to（lib/erp/meeting/date-range.ts；本清單預設 range=all＝不限日期）。
 // 查詢規格（trackingQuerySpec）是與 supabase-js 無關的描述，由 queries.ts 套到 PostgREST 查詢上，
 // 方便以單元測試確認篩選與排序。
-import { isIsoDate, isUuid } from "./normalize";
+import {
+  parseMeetingRange,
+  type MeetingRange,
+} from "@/lib/erp/meeting/date-range";
+import {
+  firstParam,
+  keywordParam,
+  meetingQuery,
+  type MeetingSearchParams,
+} from "@/lib/erp/meeting/params";
+import { taipeiToday } from "@/lib/erp/statement";
+import { isUuid } from "./normalize";
 import {
   DELIVERY_CLOSED,
   DELIVERY_STATUSES,
@@ -21,15 +33,9 @@ export interface TrackingFilters {
   status: string;
   /** '' = 不限；none = 待確認（未指定）；或員工 uuid。 */
   owner: string;
-  from: string;
-  to: string;
+  /** 期間（preset = all 時不限日期，from／to 為空字串）。 */
+  range: MeetingRange;
   page: number;
-}
-
-type SearchParams = Record<string, string | string[] | undefined>;
-
-function first(v: string | string[] | undefined): string {
-  return ((Array.isArray(v) ? v[0] : v) ?? "").trim();
 }
 
 const STATUSES: Record<TrackingKind, readonly string[]> = {
@@ -46,35 +52,46 @@ const CLOSED: Record<TrackingKind, readonly string[]> = {
 
 export function parseTrackingFilters(
   kind: TrackingKind,
-  sp: SearchParams,
+  sp: MeetingSearchParams,
+  today: string = taipeiToday(),
 ): TrackingFilters {
-  const statusRaw = first(sp.status);
+  const statusRaw = firstParam(sp.status);
   const status =
     statusRaw === "all" || STATUSES[kind].includes(statusRaw)
       ? statusRaw
       : "open";
-  const ownerRaw = first(sp.owner);
+  const ownerRaw = firstParam(sp.owner);
   const owner =
     ownerRaw === "none" || isUuid(ownerRaw) ? ownerRaw.toLowerCase() : "";
-  let from = first(sp.from);
-  let to = first(sp.to);
-  if (!isIsoDate(from)) from = "";
-  if (!isIsoDate(to)) to = "";
-  if (from && to && from > to) [from, to] = [to, from];
-  const pageNum = Number(first(sp.page));
+  const range = parseMeetingRange(
+    {
+      range: firstParam(sp.range),
+      from: firstParam(sp.from),
+      to: firstParam(sp.to),
+    },
+    today,
+    { allowAll: true },
+  );
+  const pageNum = Number(firstParam(sp.page));
   const page = Number.isInteger(pageNum) && pageNum > 0 ? pageNum : 1;
-  return { q: first(sp.q), status, owner, from, to, page };
+  return { q: keywordParam(sp.q), status, owner, range, page };
 }
 
-/** 篩選 → 網址參數（省略預設值與頁碼；分頁、列印、匯出連結共用）。 */
-export function filtersToParams(f: TrackingFilters): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (f.q) out.q = f.q;
-  if (f.status !== "open") out.status = f.status;
-  if (f.owner) out.owner = f.owner;
-  if (f.from) out.from = f.from;
-  if (f.to) out.to = f.to;
-  return out;
+/**
+ * 目前條件的查詢字串（不含頁碼；省略預設的狀態 open）：
+ * 工具列 query（換頁重新掛載表單）、列印連結、分頁連結共用。
+ */
+export function trackingQuery(f: TrackingFilters): string {
+  return meetingQuery(f.range, {
+    q: f.q,
+    status: f.status === "open" ? null : f.status,
+    owner: f.owner,
+  });
+}
+
+/** 分頁元件用的參數物件（同 trackingQuery）。 */
+export function trackingParams(f: TrackingFilters): Record<string, string> {
+  return Object.fromEntries(new URLSearchParams(trackingQuery(f)));
 }
 
 // ── 查詢規格 ─────────────────────────────────────────────────
@@ -86,7 +103,10 @@ export type QueryFilter =
   | { op: "gte"; column: string; value: string }
   | { op: "lte"; column: string; value: string }
   | { op: "ilike"; column: string; value: string }
-  /** PostgREST or=(…) 字串；值只會是 uuid，不需跳脫。 */
+  /**
+   * PostgREST or=(…) 內容；值只會是 uuid 或已驗證的 YYYY-MM-DD，不需跳脫。
+   * 一份規格最多一個（多組條件以 and(or(…),or(…)) 合併成一個參數）。
+   */
   | { op: "or"; value: string };
 
 export interface QueryOrder {
@@ -121,6 +141,8 @@ export function trackingQuerySpec(
   f: TrackingFilters,
 ): TrackingQuerySpec {
   const filters: QueryFilter[] = [];
+  /** 各組 or 條件（最後合併成一個 or 參數）。 */
+  const orGroups: string[] = [];
 
   if (f.status === "open") {
     filters.push({ op: "not_in", column: "status", values: [...CLOSED[kind]] });
@@ -134,26 +156,38 @@ export function trackingQuerySpec(
       column: kind === "delivery" ? "delivery_owner_id" : "owner_id",
     });
   } else if (f.owner) {
-    filters.push(
-      kind === "delivery"
-        ? {
-            op: "or",
-            value: `sales_rep_id.eq.${f.owner},delivery_owner_id.eq.${f.owner}`,
-          }
-        : { op: "eq", column: "owner_id", value: f.owner },
-    );
+    if (kind === "delivery") {
+      orGroups.push(
+        `sales_rep_id.eq.${f.owner},delivery_owner_id.eq.${f.owner}`,
+      );
+    } else {
+      filters.push({ op: "eq", column: "owner_id", value: f.owner });
+    }
   }
 
-  // 日期區間：交機進度以「交機時間與區間重疊」判斷（待確認者不列入）；其餘為單一日期欄位。
-  if (kind === "delivery") {
-    if (f.from)
-      filters.push({ op: "gte", column: "delivery_end", value: f.from });
-    if (f.to)
-      filters.push({ op: "lte", column: "delivery_start", value: f.to });
-  } else {
-    const col = kind === "repairs" ? "received_on" : "occurred_on";
-    if (f.from) filters.push({ op: "gte", column: col, value: f.from });
-    if (f.to) filters.push({ op: "lte", column: col, value: f.to });
+  // 日期區間（range = all 不限）：交機進度以「交機時間與區間重疊」判斷，
+  // 交機時間待確認（起迄皆空）者也列出（週會要看到還沒排定的交機；排序在最後、畫面標紅字「待確認」）；
+  // 其餘為單一日期欄位（皆 not null）。
+  const { from, to } = f.range;
+  if (f.range.preset !== "all" && from && to) {
+    if (kind === "delivery") {
+      orGroups.push(
+        `and(delivery_end.gte.${from},delivery_start.lte.${to}),delivery_start.is.null`,
+      );
+    } else {
+      const col = kind === "repairs" ? "received_on" : "occurred_on";
+      filters.push({ op: "gte", column: col, value: from });
+      filters.push({ op: "lte", column: col, value: to });
+    }
+  }
+
+  if (orGroups.length === 1) {
+    filters.push({ op: "or", value: orGroups[0] });
+  } else if (orGroups.length > 1) {
+    filters.push({
+      op: "or",
+      value: `and(${orGroups.map((g) => `or(${g})`).join(",")})`,
+    });
   }
 
   for (const value of searchPatterns(f.q)) {
@@ -179,4 +213,30 @@ export function trackingQuerySpec(
           ];
 
   return { view: VIEWS[kind], filters, order };
+}
+
+// ── 分頁 ─────────────────────────────────────────────────────
+
+/** 清單每頁筆數（同 ERP 基本資料）。 */
+export const TRACKING_PAGE_SIZE = 50;
+
+/**
+ * 清單分頁（頁面一次讀出全部符合篩選的列，CSV 與列印也用同一份；畫面只顯示一頁）。
+ * 頁碼超過最後一頁時改顯示最後一頁。
+ */
+export function pageSlice<T>(
+  rows: T[],
+  page: number,
+  pageSize: number = TRACKING_PAGE_SIZE,
+): { rows: T[]; page: number; total: number; pageSize: number } {
+  const total = rows.length;
+  const last = Math.max(1, Math.ceil(total / pageSize));
+  const p = Math.min(Math.max(1, page), last);
+  const start = (p - 1) * pageSize;
+  return {
+    rows: rows.slice(start, start + pageSize),
+    page: p,
+    total,
+    pageSize,
+  };
 }
