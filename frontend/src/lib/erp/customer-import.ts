@@ -6,6 +6,19 @@
 // 個資：本檔產生的錯誤原因、衝突只含列號與欄位名稱，不含任何儲存格內容（腳本輸出可安全貼到 issue）。
 import { normalizeEmailList } from "./email";
 import { FB_SOURCE, normalizeCustomerSource } from "./customer-source";
+import {
+  cell,
+  combineDeliveryAddress,
+  headerFinder,
+  isBlank,
+  isBlankRow,
+  isStandardTaxId,
+  mergeNote,
+  segment,
+} from "./import-common";
+
+// 共用函式（import-common.ts）原本定義在本檔，保留同名匯出供既有呼叫端與測試使用。
+export { combineDeliveryAddress, mergeNote };
 
 /** 舊系統匯出檔預設工作表（「工作表2」欄位較少，以工作表4 為準）。 */
 export const DEFAULT_CUSTOMER_IMPORT_SHEET = "工作表4";
@@ -96,14 +109,6 @@ export const CUSTOMER_IMPORT_MAX_LENGTH: Partial<
 
 // ── 標題對應 ────────────────────────────────────────────────
 
-/** 標題比對鍵：NFKC（全形括號／英數 → 半形）、去所有空白、不分大小寫。 */
-function headerKey(v: unknown): string {
-  return String(v ?? "")
-    .normalize("NFKC")
-    .replace(/\s+/g, "")
-    .toLowerCase();
-}
-
 export interface CustomerColumnMap {
   /** 一對一欄位 → 欄索引（找不到為 null；code、name 必有）。 */
   fields: Record<DirectField, number | null>;
@@ -123,12 +128,7 @@ export function mapCustomerHeaders(
 ):
   | { ok: true; map: CustomerColumnMap; missing: string[] }
   | { ok: false; error: string } {
-  const index = new Map<string, number>();
-  header.forEach((h, i) => {
-    const k = headerKey(h);
-    if (k && !index.has(k)) index.set(k, i);
-  });
-  const find = (label: string) => index.get(headerKey(label)) ?? null;
+  const find = headerFinder(header);
 
   for (const required of [
     CUSTOMER_IMPORT_HEADERS.code,
@@ -171,41 +171,12 @@ export function mapCustomerHeaders(
 
 // ── 欄位規則 ────────────────────────────────────────────────
 
-/** 去頭尾空白、統一換行為 \n；空字串 → null。 */
-function cell(row: readonly unknown[], i: number | null): string | null {
-  if (i === null) return null;
-  const s = String(row[i] ?? "")
-    .replace(/\r\n?/g, "\n")
-    .trim();
-  return s ? s : null;
-}
-
 /** 名稱含 (FA)／（FA）（不分大小寫、括號內可有空白）→ FB（Facebook）來的客戶。 */
 export function hasFaMark(name: string | null | undefined): boolean {
   return /\(\s*fa\s*\)/i.test((name ?? "").normalize("NFKC"));
 }
 
-/**
- * 送貨郵遞＋送貨地址 → delivery_address：郵遞區號在前、中間一個空白；郵遞區號非數字時照原文。
- * 地址本身已以該郵遞區號開頭時不重複加。兩者皆空 → null。
- */
-export function combineDeliveryAddress(
-  zip: string | null | undefined,
-  address: string | null | undefined,
-): string | null {
-  const z = (zip ?? "").trim();
-  const a = (address ?? "").trim();
-  if (!z) return a || null;
-  if (!a) return z;
-  if (a.startsWith(z)) return a;
-  return `${z} ${a}`;
-}
-
 const EMAIL_PENDING_MARK = "（Email 格式待確認）";
-
-function segment(label: string, content: string): string {
-  return `【${label}】${content}`;
-}
 
 // ── 解析 ────────────────────────────────────────────────────
 
@@ -257,7 +228,7 @@ export function parseCustomerSheet(
   for (let r = headerRow + 1; r < grid.length; r++) {
     const raw = grid[r] ?? [];
     const line = r + 1;
-    if (raw.every((c) => String(c ?? "").trim() === "")) continue;
+    if (isBlankRow(raw)) continue;
 
     const code = cell(raw, map.fields.code);
     const name = cell(raw, map.fields.name);
@@ -352,32 +323,10 @@ export function parseCustomerSheet(
       faMark,
       noteSegments,
       emailInvalid,
-      taxIdNonStandard: !!values.tax_id && !/^\d{8}$/.test(values.tax_id),
+      taxIdNonStandard: !!values.tax_id && !isStandardTaxId(values.tax_id),
     });
   }
   return { ok: true, rows, errors, missingHeaders: mapped.missing };
-}
-
-// ── note 合併 ───────────────────────────────────────────────
-
-/**
- * 把段落附加到既有 note 之後（換行分隔）。已整段存在（以整行為界、CRLF 視同 LF）的段落不重複附加，
- * 故重跑結果不變。沒有要附加的段落時回傳既有值本身（未改動）。既有 note 只有空白視為空。
- */
-export function mergeNote(
-  existing: string | null | undefined,
-  segments: readonly string[],
-): string | null {
-  const base = existing ?? null;
-  const hasBase = !!base && base.trim() !== "";
-  const haystack = `\n${hasBase ? base!.replace(/\r\n?/g, "\n") : ""}\n`;
-  const toAdd: string[] = [];
-  for (const seg of segments) {
-    if (haystack.includes(`\n${seg}\n`) || toAdd.includes(seg)) continue;
-    toAdd.push(seg);
-  }
-  if (toAdd.length === 0) return base;
-  return hasBase ? `${base}\n${toAdd.join("\n")}` : toAdd.join("\n");
 }
 
 // ── 比對既有客戶 ────────────────────────────────────────────
@@ -423,10 +372,6 @@ export interface CustomerPlanRow {
   parsed: ParsedCustomerRow;
 }
 
-function blank(v: string | null | undefined): boolean {
-  return (v ?? "").trim() === "";
-}
-
 /** 同值判斷：去頭尾空白；Email、來源不分大小寫。 */
 function sameValue(
   field: CustomerFillField | "source",
@@ -470,11 +415,11 @@ export function buildCustomerImportPlan(
       const next = p.values[f];
       if (!next) continue;
       const cur = hit[f];
-      if (blank(cur)) patch[f] = next;
+      if (isBlank(cur)) patch[f] = next;
       else if (!sameValue(f, cur!, next)) conflicts.push(f);
     }
     if (p.source) {
-      if (blank(hit.source)) patch.source = p.source;
+      if (isBlank(hit.source)) patch.source = p.source;
       else if (!sameValue("source", hit.source!, p.source))
         conflicts.push("source");
     }
