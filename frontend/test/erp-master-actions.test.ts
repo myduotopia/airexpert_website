@@ -102,6 +102,14 @@ vi.mock("@/lib/supabase-server", () => ({
   getServerSupabase: vi.fn(async () => fakeSupabase),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// 廠商存檔後的提醒規則同步（#274）另有 erp-reminders-actions.test.ts 測試；此處不連帶執行。
+vi.mock("@/lib/erp/queries/reminders", () => ({
+  syncVendorReminders: vi.fn(async () => ({
+    vendors: 1,
+    inserted: 0,
+    updated: 0,
+  })),
+}));
 
 import {
   createItemAction,

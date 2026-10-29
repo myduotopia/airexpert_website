@@ -103,9 +103,10 @@ describe("navForUser（模組授權 gating，spec §3.2）", () => {
     (i) => i.key,
   );
 
-  it("ERP 項目一次列齊：9 項（含週報 #271）、group ERP、總覽為 enabled", () => {
+  it("ERP 項目一次列齊：10 項（含週報 #271、提醒事項 #274）、group ERP、總覽為 enabled", () => {
     expect(erpKeys).toEqual([
       "erp",
+      "erp-reminders",
       "erp-sales",
       "erp-purchases",
       "erp-inventory",
@@ -274,6 +275,7 @@ describe("activeNavHref（側欄 active 取最長匹配）", () => {
       ["/admin/erp/vendors/abc/edit", "/admin/erp/items"],
       ["/admin/erp/customers", "/admin/erp/items"],
       ["/admin/erp/statements", "/admin/erp/statements"],
+      ["/admin/erp/reminders", "/admin/erp/reminders"],
     ];
     for (const [path, expected] of cases) {
       expect(activeNavHref(path, erpHrefs)).toBe(expected);
