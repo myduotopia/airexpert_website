@@ -153,10 +153,11 @@ insert into erp_warehouses (id, code, name) values
   ('00000000-0000-0000-0000-00000000a002', 'WH2', '二倉');
 insert into erp_vendors (id, code, name, contact_person, phone, tax_id) values
   ('00000000-0000-0000-0000-00000000b001', 'KA405', '開山壓縮機', '王先生', '02-1111-2222', '87654321');
--- 0042：horsepower／voltage 以 authenticated 寫入（驗證欄位級 insert 授權）；c001 有值、其餘未填（null）
+-- 0042：horsepower／voltage 以 authenticated 寫入（驗證欄位級 insert 授權）；c001、c002 有值、其餘未填（null）
+-- （c002 有值，用來驗證「連結既有機台」不回寫馬力／電壓）
 insert into erp_items (id, code, name, kind, unit, track_serial, track_stock, mx_card_type, model, horsepower, voltage) values
   ('00000000-0000-0000-0000-00000000c001', 'ALH-15AI', '螺旋式空壓機 15HP', 'machine', '台', true,  true,  'compressor', 'ALH-15AI', ' 15HP ', '220V'),
-  ('00000000-0000-0000-0000-00000000c002', 'EA350',    '過濾器組',          'machine', '組', true,  true,  'filter',     null,       null,     null),
+  ('00000000-0000-0000-0000-00000000c002', 'EA350',    '過濾器組',          'machine', '組', true,  true,  'filter',     null,       '7.5HP',  '380V'),
   ('00000000-0000-0000-0000-00000000c003', 'OIL-20L',  '空壓機專用油 20L',  'part',    '桶', false, true,  null,         null,       null,     null),
   ('00000000-0000-0000-0000-00000000c004', 'SVC-INST', '安裝工資',          'service', '式', false, false, null,         null,       null,     null),
   ('00000000-0000-0000-0000-00000000c005', 'EXP-SHIP', '運費',              'expense', '式', false, false, null,         null,       null,     null);
