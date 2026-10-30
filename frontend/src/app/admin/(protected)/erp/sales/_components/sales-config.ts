@@ -26,7 +26,3 @@ export const SALES_TABS: SalesDocType[] = ["Q", "S", "SR"];
 export function printHref(docId: string): string {
   return `/admin/erp/print/${docId}`;
 }
-
-export function maintenanceMachineHref(machineId: string): string {
-  return `/admin/maintenance/${machineId}`;
-}

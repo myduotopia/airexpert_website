@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { requireModule } from "@/lib/admin/auth";
+import { hasMaintenanceAccess, requireModule } from "@/lib/admin/auth";
+import { GatedLink, PermissionHint } from "@/components/erp/GatedLink";
 import { ERP_INPUT, ERP_SELECT } from "@/components/erp/styles";
 import { DOC_TYPE_LABEL } from "@/lib/erp/doc-no";
+import { maintenanceMachineHref } from "@/lib/erp/admin-links";
 import { formatMoney } from "@/lib/erp/format";
 import { listWarehouseOptions } from "@/lib/erp/queries/pickers";
 import {
@@ -88,9 +90,11 @@ export default async function SerialsPage({
   const q = firstParam(sp.q);
   const page = parsePage(sp.page);
 
-  const [result, warehouses] = await Promise.all([
+  // 保養卡欄：有保養卡權限才可點（#283）；沒有權限時只顯示文字，欄名旁提示一次。
+  const [result, warehouses, canOpenMaintenance] = await Promise.all([
     listSerials({ status, warehouseId, itemId, q, page }),
     listWarehouseOptions({ includeInactive: true }),
+    hasMaintenanceAccess(),
   ]);
 
   return (
@@ -161,7 +165,10 @@ export default async function SerialsPage({
               <th className={TH}>入庫單</th>
               <th className={TH}>出庫單 / 最後異動</th>
               <th className={`${TH} text-right`}>進貨成本</th>
-              <th className={TH}>保養卡</th>
+              <th className={TH}>
+                保養卡
+                {!canOpenMaintenance && <PermissionHint />}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -216,12 +223,13 @@ export default async function SerialsPage({
                 </td>
                 <td className={TD}>
                   {s.mx_machine_id ? (
-                    <Link
-                      href={`/admin/maintenance/${s.mx_machine_id}`}
+                    <GatedLink
+                      href={maintenanceMachineHref(s.mx_machine_id)}
+                      allowed={canOpenMaintenance}
                       className="text-primary-deep hover:underline"
                     >
                       機台
-                    </Link>
+                    </GatedLink>
                   ) : (
                     <span className="text-text-muted">—</span>
                   )}
