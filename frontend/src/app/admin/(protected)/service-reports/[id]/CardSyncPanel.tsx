@@ -119,7 +119,7 @@ export async function CardSyncPanel({ report }: { report: ServiceReport }) {
     <>
       <p className="text-ink">
         {report.status === "completed"
-          ? "尚未同步（此單在同步功能上線前結案）。"
+          ? "尚未同步到保養卡（同步功能上線前結案，或結案時尚未關聯機台）。需要同步請重新開啟後再結案，結案時會寫入以下內容："
           : "結案時會寫入一列到此機台的保養卡："}
       </p>
       <dl className="flex flex-col gap-1.5">

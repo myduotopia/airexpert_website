@@ -3,14 +3,18 @@
 --   * 欄位：mx_records.source_service_report_id（nullable、FK sr_reports、唯一）＝這列由哪張報告單同步而來。
 --           同一張報告單最多一列，重新開啟後再結案是「更新同一列」而不是新增第二列。
 --   * 函式：
---       sr_card_sync_apply(p_report_id)：security definer，依報告單「目前狀態」對帳（不檢查權限，只給受信任身分）：
---         已結案且有機台 → upsert 一列（以 source_service_report_id 為衝突鍵）；
+--       sr_card_sync_apply(p_report_id, p_allow_insert)：security definer，依報告單「目前狀態」對帳（不檢查權限，只給受信任身分）：
+--         已結案且有機台 → upsert 一列（以 source_service_report_id 為衝突鍵）；p_allow_insert = false 時只更新既有同步列、不新增；
 --         已作廢、或已結案但機台已清空 → 刪除該報告單同步過的列；
 --         草稿／已列印（含重新開啟）→ 不動（保留上次同步的列，再結案時更新同一列）。
---       sr_sync_card_record(p_report_id)：security definer，第一行檢查 has_module('service_report')，再呼叫上者。
+--       sr_sync_card_record(p_report_id, p_allow_insert default true)：security definer，第一行檢查 has_module('service_report')，再呼叫上者。
 --         授權 authenticated（可手動重新對帳；觸發器替 API 角色呼叫的也是這支）。
---       sr_card_part_column(name)／sr_card_cell(parts)：料件 → 保養卡欄位的對應規則（純函式）。
---   * 觸發器 sr_reports_card_sync（AFTER UPDATE ON sr_reports）：狀態改變，或已結案的報告單被修改時對帳。
+--       sr_card_part_column(name)／sr_card_cell(parts)／sr_card_trim(text)：料件 → 保養卡欄位的對應規則（純函式）。
+--   * 觸發器 sr_reports_card_sync（AFTER UPDATE ON sr_reports）：
+--       狀態改變 → 對帳（結案＝新增或更新同一列；作廢＝刪除；重新開啟＝不動）；
+--       已結案、狀態沒變，但「同步會用到的欄位」有變（機台、日期、單號、服務項目、記要、回填結果、料件、維護人員）
+--         → 只更新既有同步列（沒有同步列就不新增，見決策 7）；
+--       其他更新（列印次數／列印時間、保養階段、內部備註、表頭快照、updated_at…）不觸發，不會覆蓋保養卡上的手動修改。
 --     結案／作廢／已結案再編輯與同步在「同一個交易」完成，不會出現報告單已結案但保養卡沒寫到的半套狀態。
 -- 依賴 0011（mx_records／mx_machines）、0014（mx_records.service_type）、0015（card_type、mx_machine_columns、
 --   mx_records.values）、0021（sr_reports、錯誤契約、受信任身分判斷）、0032（has_module 職位權限版）。
@@ -18,7 +22,8 @@
 --
 -- ⚠️ 套用正式 DB 前需使用者確認並先備份（以 pooler 連線或 SQL Editor 貼上執行，身分須為 postgres）。
 -- ⚠️ 套用後，之後每次結案都會寫保養卡；本檔不回填既有已結案的報告單（避免和已手動／拍照匯入的保養卡列重複）。
---    需要補同步某張舊單時，以 service_report 帳號呼叫 sr_sync_card_record(<報告單 id>)。
+--    已結案的舊單「重新開啟後再結案」或以 service_report 帳號呼叫 sr_sync_card_record(<報告單 id>) 才會補寫；
+--    只編輯舊單內容不會新增列（決策 7）。
 -- 本檔可重複執行：add column / create index if not exists、create or replace function、drop trigger if exists 後再建立。
 --
 -- 錯誤契約（沿用 0020 §9）：raise exception using errcode = 'P0001', message = '<code>', detail = '<中文訊息>'
@@ -52,6 +57,11 @@
 --   4. 重新開啟不刪同步列：之後再結案以同一列更新；改為作廢才刪除。
 --   5. 報告單為主：保養卡上被手動修改過的同步列，下次對帳（再結案／已結案再編輯）會被報告單內容覆蓋。
 --   6. 機台改掛到另一張卡（已結案再編輯換機台）→ 同一列改掛到新機台並依新卡別重算欄位。
+--   7. 已結案再編輯（狀態沒變）只更新既有同步列、不新增：本檔不回填上線前已結案的報告單，那些單多半已手動／
+--      拍照登錄在保養卡上；若編輯舊單就新增一列會與手動登錄重複。新增只發生在「結案」那一刻（或手動呼叫 RPC）。
+--      代價：結案時沒掛機台、事後才補掛機台的單不會自動寫入，需重新開啟後再結案（詳情頁會提示）。
+--   8. 觸發條件收斂到同步會用到的欄位：列印已結案的單（print_count／last_printed_at）、改保養階段等更新不對帳，
+--      避免每次列印都把保養卡上手動修正過的同步列蓋回去。
 
 -- ============================================================
 -- 1) 欄位與唯一索引
@@ -78,6 +88,16 @@ immutable
 set search_path = public, pg_temp
 as $$
   select lower(regexp_replace(coalesce(p_text, ''), '[[:space:]　]+', '', 'g'));
+$$;
+
+-- 去頭尾空白（含全形空白、換行、tab；btrim 預設只去半形空白）。與前端 String.prototype.trim 對齊。
+create or replace function sr_card_trim(p_text text)
+returns text
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select regexp_replace(coalesce(p_text, ''), '^[[:space:]　]+|[[:space:]　]+$', '', 'g');
 $$;
 
 -- 空壓機卡：品名 → 欄位名；'skip'＝工資（不是料件）；null＝沒有明確對應（記入備註）。
@@ -121,7 +141,11 @@ $$;
 -- 3) 對帳（不檢查權限；只給受信任身分與 sr_sync_card_record 呼叫）
 --    回傳：'synced'（已寫入／更新）、'deleted'（已移除同步列）、'skipped'（不需動作）、'missing'（查無報告單）
 -- ============================================================
-create or replace function sr_card_sync_apply(p_report_id uuid)
+-- 舊版（單參數）簽章：開發過程中的草稿版本，若存在先移除，避免與新簽章並存成多載。
+drop function if exists sr_sync_card_record(uuid);
+drop function if exists sr_card_sync_apply(uuid);
+
+create or replace function sr_card_sync_apply(p_report_id uuid, p_allow_insert boolean default true)
 returns text
 language plpgsql
 security definer
@@ -156,6 +180,12 @@ begin
     return 'skipped';
   end if;
 
+  -- 只更新模式（已結案再編輯）：沒有同步列就不新增（決策 7）。
+  if not coalesce(p_allow_insert, true)
+     and not exists (select 1 from mx_records where source_service_report_id = r.id) then
+    return 'skipped';
+  end if;
+
   select card_type into v_card from mx_machines where id = r.machine_id;
   if not found then
     -- 機台已不存在（FK 尚未 set null 的極短窗口）：沒有可寫的卡。
@@ -164,7 +194,7 @@ begin
 
   -- 料件分欄（依報告單列順序；只看數量非空白、品名非空白的列）
   for v_name, v_qty in
-    select btrim(coalesce(e ->> 'name', '')), btrim(coalesce(e ->> 'qty', ''))
+    select sr_card_trim(e ->> 'name'), sr_card_trim(e ->> 'qty')
       from jsonb_array_elements(
              case when jsonb_typeof(r.parts) = 'array' then r.parts else '[]'::jsonb end
            ) with ordinality as t(e, i)
@@ -198,10 +228,10 @@ begin
     end if;
   end loop;
 
-  v_hours := nullif(btrim(coalesce(
+  v_hours := nullif(sr_card_trim(
     case when v_card = 'filter'
          then r.results #>> '{dryer,total_hours}'
-         else r.results #>> '{compressor,run_hours}' end, '')), '');
+         else r.results #>> '{compressor,run_hours}' end), '');
 
   v_type := case
     when 'periodic' = any (r.service_items) then 'maintenance'
@@ -211,7 +241,7 @@ begin
   end;
 
   v_note := nullif(concat_ws(E'\n',
-    nullif(btrim(coalesce(r.summary, '')), ''),
+    nullif(sr_card_trim(r.summary), ''),
     case when jsonb_array_length(v_other) > 0 then
       '其他料件：' || (
         select string_agg((e ->> 'name') || '×' || (e ->> 'qty'), '、' order by i)
@@ -237,7 +267,7 @@ begin
     sr_card_cell(v_cols -> 'oil'), sr_card_cell(v_cols -> 'oil_filter'),
     sr_card_cell(v_cols -> 'air_filter'), sr_card_cell(v_cols -> 'oil_separator'),
     sr_card_cell(v_cols -> 'inverter'), sr_card_cell(v_cols -> 'filter_system'),
-    nullif(btrim(coalesce(r.technician, '')), ''), v_note, v_vals_out, v_type, 'manual', r.id
+    nullif(sr_card_trim(r.technician), ''), v_note, v_vals_out, v_type, 'manual', r.id
   )
   on conflict (source_service_report_id) do update set
     machine_id    = excluded.machine_id,
@@ -261,7 +291,7 @@ $$;
 -- ============================================================
 -- 4) 對外 RPC：檢查 service_report 模組後對帳
 -- ============================================================
-create or replace function sr_sync_card_record(p_report_id uuid)
+create or replace function sr_sync_card_record(p_report_id uuid, p_allow_insert boolean default true)
 returns text
 language plpgsql
 security definer
@@ -272,12 +302,12 @@ begin
     raise exception using errcode = 'P0001', message = 'forbidden',
       detail = '沒有機台維護報告單模組權限';
   end if;
-  return sr_card_sync_apply(p_report_id);
+  return sr_card_sync_apply(p_report_id, p_allow_insert);
 end;
 $$;
 
 -- ============================================================
--- 5) 觸發器：狀態改變、或已結案的報告單被修改 → 對帳（與該次更新同一交易）
+-- 5) 觸發器：狀態改變 → 對帳；已結案且同步欄位有變 → 只更新既有同步列（與該次更新同一交易）
 -- ============================================================
 create or replace function sr_reports_card_sync()
 returns trigger
@@ -285,11 +315,14 @@ language plpgsql
 security invoker
 set search_path = public, pg_temp
 as $$
+declare
+  -- 狀態改變（結案／重新開啟／作廢）才可新增；已結案再編輯只更新既有同步列。
+  v_allow_insert boolean := new.status is distinct from old.status;
 begin
   if current_user::text in ('authenticated', 'anon') then
-    perform sr_sync_card_record(new.id);
+    perform sr_sync_card_record(new.id, v_allow_insert);
   else
-    perform sr_card_sync_apply(new.id);
+    perform sr_card_sync_apply(new.id, v_allow_insert);
   end if;
   return null;
 end;
@@ -299,17 +332,26 @@ drop trigger if exists sr_reports_card_sync on sr_reports;
 create trigger sr_reports_card_sync
   after update on sr_reports
   for each row
-  when (new.status is distinct from old.status or new.status = 'completed')
+  when (
+    new.status is distinct from old.status
+    or (new.status = 'completed'
+        and (new.machine_id, new.report_date, new.report_no, new.service_items,
+             new.summary, new.results, new.parts, new.technician)
+            is distinct from
+            (old.machine_id, old.report_date, old.report_no, old.service_items,
+             old.summary, old.results, old.parts, old.technician))
+  )
   execute function sr_reports_card_sync();
 
 -- ============================================================
 -- 6) 權限
 -- ============================================================
+revoke execute on function sr_card_trim(text)          from public, anon, authenticated;
 revoke execute on function sr_card_key(text)           from public, anon, authenticated;
 revoke execute on function sr_card_part_column(text)   from public, anon, authenticated;
 revoke execute on function sr_card_cell(jsonb)         from public, anon, authenticated;
-revoke execute on function sr_card_sync_apply(uuid)    from public, anon, authenticated;
-grant  execute on function sr_card_sync_apply(uuid)    to service_role;
+revoke execute on function sr_card_sync_apply(uuid, boolean)  from public, anon, authenticated;
+grant  execute on function sr_card_sync_apply(uuid, boolean)  to service_role;
 revoke execute on function sr_reports_card_sync()      from public, anon, authenticated;
-revoke execute on function sr_sync_card_record(uuid)   from public, anon;
-grant  execute on function sr_sync_card_record(uuid)   to authenticated;
+revoke execute on function sr_sync_card_record(uuid, boolean) from public, anon;
+grant  execute on function sr_sync_card_record(uuid, boolean) to authenticated;

@@ -101,6 +101,24 @@ describe("applyPhotoExtraction", () => {
     expect(filled).toEqual([]);
   });
 
+  it("檢查數值逐欄合併：照片只有部分欄位 → 其他既有欄位保留", () => {
+    const start = {
+      ...base(),
+      results: {
+        compressor: { run_hours: "12", current: "26" },
+        dryer: { total_hours: "800" },
+      },
+    };
+    const { state } = applyPhotoExtraction(
+      start,
+      extraction({ results: { compressor: { temperature: "81" } } }),
+    );
+    expect(state.results).toEqual({
+      compressor: { run_hours: "12", current: "26", temperature: "81" },
+      dryer: { total_hours: "800" },
+    });
+  });
+
   it("料件依品名比對填數量（覆蓋），比不到的放空白列，放不下的提示", () => {
     const { state, notices } = applyPhotoExtraction(
       base(),

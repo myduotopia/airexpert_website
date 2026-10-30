@@ -30,8 +30,16 @@ import {
 
 /** 一次最多上傳幾張照片（正反面／分頁拍）。 */
 export const MAX_PHOTOS = 4;
-/** 單張照片 base64 長度上限（約 10MB 原始大小；前端已先壓縮到長邊 2400）。 */
-export const MAX_PHOTO_BASE64_LENGTH = 14_000_000;
+/**
+ * 一次送出的照片 base64 總長度預算。Vercel Functions 的請求主體上限為 4.5MB（與 next.config 的
+ * serverActions.bodySizeLimit 無關，平台層就會回 413），多張 2400px 照片很容易超過；
+ * 前端依此預算逐張再壓縮（compressImageToFit），伺服器端以 MAX_TOTAL_PHOTO_BASE64_LENGTH 把關。
+ */
+export const PHOTO_BASE64_BUDGET = 3_600_000;
+/** 伺服器端總長度上限（比前端預算略寬，留給其他欄位與編碼的餘裕仍低於 4.5MB）。 */
+export const MAX_TOTAL_PHOTO_BASE64_LENGTH = 4_000_000;
+/** 單張照片 base64 長度上限。 */
+export const MAX_PHOTO_BASE64_LENGTH = MAX_TOTAL_PHOTO_BASE64_LENGTH;
 export const ALLOWED_PHOTO_TYPES: readonly string[] = [
   "image/jpeg",
   "image/png",
@@ -54,6 +62,7 @@ export function validatePhotos(images: unknown): string | null {
     return "請至少選擇一張照片";
   }
   if (images.length > MAX_PHOTOS) return `一次最多 ${MAX_PHOTOS} 張照片`;
+  let total = 0;
   for (const img of images) {
     const i = img as { base64?: unknown; mimeType?: unknown } | null;
     if (
@@ -68,6 +77,10 @@ export function validatePhotos(images: unknown): string | null {
       return `不支援的照片格式：${i.mimeType}`;
     }
     if (i.base64.length > MAX_PHOTO_BASE64_LENGTH) return "照片過大";
+    total += i.base64.length;
+  }
+  if (total > MAX_TOTAL_PHOTO_BASE64_LENGTH) {
+    return "照片總大小過大，請減少張數後再試";
   }
   return null;
 }

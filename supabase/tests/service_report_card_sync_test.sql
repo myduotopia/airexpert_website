@@ -5,7 +5,8 @@
 -- 涵蓋：結案 → 1 列（欄位對應與前端 card-sync.ts 同一組範例）；只有 service_report（無 maintenance）也能結案，
 --       但不能直接寫 mx_records；重新開啟 → 列保留、已列印時修改不同步；再結案 → 仍 1 列且為同一列、內容更新；
 --       已結案再編輯 → 更新；作廢 → 移除；machine_id 為 null → 不寫；過濾卡依欄名寫 values；
---       無模組呼叫 RPC → forbidden；anon／authenticated 不可直接呼叫內部函式；
+--       列印已結案單／改內部備註不對帳；上線前已結案的舊單只編輯不新增、重新開啟再結案才寫入；
+--       已結案單清除機台 → 移除；無模組呼叫 RPC → forbidden；anon／authenticated 不可直接呼叫內部函式；
 --       受信任身分（service_role、刪機台的 FK set null）不受模組檢查影響。
 
 \set ON_ERROR_STOP 1
@@ -87,18 +88,18 @@ grant execute on all functions in schema cs_test to authenticated, anon, service
 -- 1) 函式屬性與權限
 -- ============================================================
 do $$ begin
-  assert (select prosecdef from pg_proc where oid = 'sr_sync_card_record(uuid)'::regprocedure),
+  assert (select prosecdef from pg_proc where oid = 'sr_sync_card_record(uuid, boolean)'::regprocedure),
     'sr_sync_card_record 為 security definer';
-  assert (select prosecdef from pg_proc where oid = 'sr_card_sync_apply(uuid)'::regprocedure),
+  assert (select prosecdef from pg_proc where oid = 'sr_card_sync_apply(uuid, boolean)'::regprocedure),
     'sr_card_sync_apply 為 security definer';
   assert (select proconfig::text like '%search_path=public, pg_temp%' from pg_proc
-           where oid = 'sr_sync_card_record(uuid)'::regprocedure), 'RPC 設定 search_path';
+           where oid = 'sr_sync_card_record(uuid, boolean)'::regprocedure), 'RPC 設定 search_path';
   assert (select proconfig::text like '%search_path=public, pg_temp%' from pg_proc
-           where oid = 'sr_card_sync_apply(uuid)'::regprocedure), '內部函式設定 search_path';
-  assert has_function_privilege('authenticated', 'sr_sync_card_record(uuid)', 'execute'), 'authenticated 可呼叫 RPC';
-  assert not has_function_privilege('anon', 'sr_sync_card_record(uuid)', 'execute'), 'anon 不可呼叫 RPC';
-  assert not has_function_privilege('authenticated', 'sr_card_sync_apply(uuid)', 'execute'), 'authenticated 不可直接呼叫內部函式';
-  assert not has_function_privilege('anon', 'sr_card_sync_apply(uuid)', 'execute'), 'anon 不可直接呼叫內部函式';
+           where oid = 'sr_card_sync_apply(uuid, boolean)'::regprocedure), '內部函式設定 search_path';
+  assert has_function_privilege('authenticated', 'sr_sync_card_record(uuid, boolean)', 'execute'), 'authenticated 可呼叫 RPC';
+  assert not has_function_privilege('anon', 'sr_sync_card_record(uuid, boolean)', 'execute'), 'anon 不可呼叫 RPC';
+  assert not has_function_privilege('authenticated', 'sr_card_sync_apply(uuid, boolean)', 'execute'), 'authenticated 不可直接呼叫內部函式';
+  assert not has_function_privilege('anon', 'sr_card_sync_apply(uuid, boolean)', 'execute'), 'anon 不可直接呼叫內部函式';
   assert (select count(*) from mx_records) = 0, '起始沒有保養紀錄';
 end $$;
 
@@ -201,6 +202,23 @@ do $$ begin
 end $$;
 
 -- ============================================================
+-- 3b) 與同步無關的更新（列印已結案單、內部備註）不對帳：保養卡上手動修正過的同步列不被覆蓋
+-- ============================================================
+update mx_records set hours = 'TEST-手動修正'
+ where source_service_report_id = '00000000-0000-0000-0000-0000000041b1';
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000041a1","role":"authenticated"}';
+update sr_reports set print_count = print_count + 1, last_printed_at = now(), note = 'TEST 內部備註'
+ where id = '00000000-0000-0000-0000-0000000041b1';
+reset role;
+
+do $$ begin
+  assert (select hours from mx_records where source_service_report_id = '00000000-0000-0000-0000-0000000041b1') = 'TEST-手動修正',
+    '列印已結案單／改內部備註 → 不對帳、不覆蓋手動修正';
+end $$;
+
+-- ============================================================
 -- 4) 作廢 → 同步列移除
 -- ============================================================
 set local role authenticated;
@@ -248,6 +266,58 @@ begin
   assert m.service_type is null, '只有「其他」→ 服務類型待人工判定';
   assert m.technician is null, '沒有維護人員';
   assert m.hours = '500', '時數';
+end $$;
+
+-- ============================================================
+-- 5b) 上線前已結案的舊單（沒有同步列）：只編輯內容不新增列；重新開啟後再結案才寫入
+-- ============================================================
+insert into sr_reports (id, report_no, report_date, status, print_count, machine_id, customer_id,
+                        service_items, summary, results, parts, technician, completed_at) values
+  ('00000000-0000-0000-0000-0000000041b5', 'TEST-X41-5', '2026-09-01', 'printed', 1,
+   '00000000-0000-0000-0000-0000000041d1', '00000000-0000-0000-0000-0000000041c1',
+   '{periodic}', '舊單', '{"compressor":{"run_hours":"300"}}', '[]', 'TEST-師傅甲', null);
+-- 模擬 0041 套用前就已結案：暫停觸發器直接改狀態（postgres 身分，交易內）
+alter table sr_reports disable trigger sr_reports_card_sync;
+update sr_reports set status = 'completed', completed_at = now()
+ where id = '00000000-0000-0000-0000-0000000041b5';
+alter table sr_reports enable trigger sr_reports_card_sync;
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000041a1","role":"authenticated"}';
+update sr_reports set summary = '舊單修正錯字'
+ where id = '00000000-0000-0000-0000-0000000041b5';
+reset role;
+
+do $$ begin
+  assert (select count(*) from mx_records where source_service_report_id = '00000000-0000-0000-0000-0000000041b5') = 0,
+    '舊單只編輯內容 → 不新增保養卡列（避免與手動登錄重複）';
+end $$;
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000041a1","role":"authenticated"}';
+update sr_reports set status = 'printed', completed_at = null
+ where id = '00000000-0000-0000-0000-0000000041b5';
+update sr_reports set status = 'completed', completed_at = now()
+ where id = '00000000-0000-0000-0000-0000000041b5';
+reset role;
+
+do $$ begin
+  assert (select count(*) from mx_records where source_service_report_id = '00000000-0000-0000-0000-0000000041b5') = 1,
+    '舊單重新開啟後再結案 → 寫入 1 列';
+  assert (select note from mx_records where source_service_report_id = '00000000-0000-0000-0000-0000000041b5')
+         = E'舊單修正錯字\n維護報告單 TEST-X41-5', '舊單同步內容';
+end $$;
+
+-- 已結案單清除機台（狀態沒變）→ 同步列移除
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000041a1","role":"authenticated"}';
+update sr_reports set machine_id = null
+ where id = '00000000-0000-0000-0000-0000000041b5';
+reset role;
+
+do $$ begin
+  assert (select count(*) from mx_records where source_service_report_id = '00000000-0000-0000-0000-0000000041b5') = 0,
+    '已結案單清除機台 → 同步列移除';
 end $$;
 
 -- ============================================================

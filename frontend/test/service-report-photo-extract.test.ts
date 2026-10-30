@@ -184,9 +184,26 @@ describe("validatePhotos", () => {
     );
     expect(
       validatePhotos([
-        { base64: "A".repeat(14_000_001), mimeType: "image/png" },
+        { base64: "A".repeat(4_000_001), mimeType: "image/png" },
       ]),
     ).toBe("照片過大");
+    // 單張未超過、但合計超過（Vercel 請求主體 4.5MB 上限）
+    expect(
+      validatePhotos(
+        Array(2).fill({
+          base64: "A".repeat(2_000_001),
+          mimeType: "image/jpeg",
+        }),
+      ),
+    ).toMatch(/總大小/);
+    expect(
+      validatePhotos(
+        Array(2).fill({
+          base64: "A".repeat(2_000_000),
+          mimeType: "image/jpeg",
+        }),
+      ),
+    ).toBeNull();
   });
 });
 

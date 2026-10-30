@@ -10,8 +10,11 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { useConfirm } from "@/components/erp/ConfirmDialog";
-import { compressImage } from "@/lib/admin/image-compress";
-import { MAX_PHOTOS } from "@/lib/service-report/photo-extract";
+import { compressImage, compressImageToFit } from "@/lib/admin/image-compress";
+import {
+  MAX_PHOTOS,
+  PHOTO_BASE64_BUDGET,
+} from "@/lib/service-report/photo-extract";
 import type { SrResult } from "@/lib/service-report/types";
 import type { PhotoBackfillResult } from "@/app/admin/(protected)/service-reports/photo-actions";
 import { ReportForm, type ReportFormProps } from "./ReportForm";
@@ -22,6 +25,8 @@ const PRIMARY =
 
 interface Photo {
   name: string;
+  /** 原始檔：多張合計超過預算時，送出前依每張分配的預算重新壓縮。 */
+  file: File;
   base64: string;
   mimeType: string;
   dataUrl: string;
@@ -38,6 +43,30 @@ export interface PhotoBackfillEditorProps extends ReportFormProps {
   }) => Promise<SrResult<PhotoBackfillResult>>;
   /** 「略過」回到一般編輯頁的網址。 */
   plainEditHref: string;
+}
+
+/**
+ * 合計 base64 不超過 PHOTO_BASE64_BUDGET（Vercel 請求主體 4.5MB 上限）：
+ * 已在預算內 → 直接用預覽時的壓縮結果；超過 → 每張依平均分配的預算從原始檔重新壓縮。
+ */
+async function fitToBudget(
+  photos: readonly Photo[],
+): Promise<{ base64: string; mimeType: string }[]> {
+  const total = photos.reduce((n, p) => n + p.base64.length, 0);
+  if (total <= PHOTO_BASE64_BUDGET) {
+    return photos.map((p) => ({ base64: p.base64, mimeType: p.mimeType }));
+  }
+  const each = Math.floor(PHOTO_BASE64_BUDGET / photos.length);
+  const out: { base64: string; mimeType: string }[] = [];
+  for (const p of photos) {
+    if (p.base64.length <= each) {
+      out.push({ base64: p.base64, mimeType: p.mimeType });
+      continue;
+    }
+    const img = await compressImageToFit(p.file, each);
+    out.push({ base64: img.base64, mimeType: img.mimeType });
+  }
+  return out;
 }
 
 export function PhotoBackfillEditor({
@@ -75,6 +104,7 @@ export function PhotoBackfillEditor({
         const img = await compressImage(file);
         added.push({
           name: file.name,
+          file,
           base64: img.base64,
           mimeType: img.mimeType,
           dataUrl: img.dataUrl,
@@ -107,12 +137,10 @@ export function PhotoBackfillEditor({
     }
     startTransition(async () => {
       try {
+        const images = await fitToBudget(photos);
         const res = await onRecognize({
           reportId: formProps.reportId as string,
-          images: photos.map((p) => ({
-            base64: p.base64,
-            mimeType: p.mimeType,
-          })),
+          images,
         });
         if (!res.ok) {
           setError(res.error);

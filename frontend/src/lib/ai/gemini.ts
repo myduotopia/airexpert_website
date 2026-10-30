@@ -637,7 +637,12 @@ export async function extractServiceReportPhotos(
         buildServiceReportPhotoRequest(images, SERVICE_REPORT_PHOTO_SCHEMA),
       );
     } catch (err) {
-      if (err instanceof GeminiHttpError && err.status === 400) {
+      // 400 才可能是 responseSchema 被拒；金鑰無效（API_KEY_INVALID 也回 400）重試沒有意義。
+      if (
+        err instanceof GeminiHttpError &&
+        err.status === 400 &&
+        !/API_KEY_INVALID|API key not valid/i.test(err.message)
+      ) {
         return fetchGeminiWithRetry(
           buildUrl(model),
           buildServiceReportPhotoRequest(images, null),

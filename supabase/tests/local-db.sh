@@ -206,7 +206,7 @@ psql_run <<'SQL'
 do $$ begin
   assert (select count(*) from pg_trigger where tgname = 'sr_reports_card_sync') = 1, '0041 重跑後觸發器只有一個';
   assert (select count(*) from pg_indexes where indexname = 'mx_records_source_service_report_key') = 1, '0041 唯一索引存在';
-  assert to_regprocedure('public.sr_sync_card_record(uuid)') is not null, '0041 的 RPC 存在';
+  assert to_regprocedure('public.sr_sync_card_record(uuid, boolean)') is not null, '0041 的 RPC 存在';
 end $$;
 SQL
 

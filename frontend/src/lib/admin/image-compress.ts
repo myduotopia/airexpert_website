@@ -31,3 +31,29 @@ export async function compressImage(
     dataUrl,
   };
 }
+
+/** 壓縮階梯：依序嘗試，直到 base64 長度不超過預算（手寫細節優先保留長邊）。 */
+const FIT_STEPS: readonly (readonly [number, number])[] = [
+  [2400, 0.9],
+  [2400, 0.8],
+  [2000, 0.8],
+  [1600, 0.75],
+  [1280, 0.7],
+  [1024, 0.65],
+];
+
+/**
+ * 壓縮到 base64 長度 <= maxBase64Length（多張照片一起送 Server Action 時，平台請求主體上限 4.5MB）。
+ * 階梯用盡仍超過 → 回最後一階的結果，交給伺服器端驗證回錯誤訊息。
+ */
+export async function compressImageToFit(
+  file: File,
+  maxBase64Length: number,
+): Promise<CompressedImage> {
+  let last: CompressedImage | null = null;
+  for (const [edge, quality] of FIT_STEPS) {
+    last = await compressImage(file, edge, quality);
+    if (last.base64.length <= maxBase64Length) return last;
+  }
+  return last as CompressedImage;
+}
