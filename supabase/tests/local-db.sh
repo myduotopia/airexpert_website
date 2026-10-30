@@ -2,8 +2,8 @@
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
 # supabase/migrations/*.sql，再依序執行 supabase/tests/erp_posting_test.sql、
 # service_report_test.sql、service_plan_test.sql、employees_test.sql、employee_hr_test.sql、staff_rbac_test.sql、
-# staff_email_test.sql、party_activity_test.sql、customer_source_test.sql、report_technicians_test.sql、reminders_test.sql 與 meeting_tracking_test.sql
-# （erp_posting_test.sql 含 0042 品項馬力／電壓帶入保養卡機台的斷言）。
+# staff_email_test.sql、party_activity_test.sql、customer_source_test.sql、report_technicians_test.sql、reminders_test.sql、meeting_tracking_test.sql
+# 與 service_report_card_sync_test.sql（erp_posting_test.sql 含 0042 品項馬力／電壓帶入保養卡機台的斷言）。
 # Vault（vault.decrypted_secrets）只在本機以資料表 + view 模擬，並放入「測試用」金鑰。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
@@ -198,6 +198,18 @@ do $$ begin
 end $$;
 SQL
 
+# 0041 新增 mx_records.source_service_report_id、結案同步保養卡的函式與 sr_reports 觸發器（不改既有物件），
+# 重跑僅驗證可重複執行，並確認觸發器與唯一索引各只有一個。
+echo "==> 重跑 0041（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0041_service_report_card_sync.sql"
+psql_run <<'SQL'
+do $$ begin
+  assert (select count(*) from pg_trigger where tgname = 'sr_reports_card_sync') = 1, '0041 重跑後觸發器只有一個';
+  assert (select count(*) from pg_indexes where indexname = 'mx_records_source_service_report_key') = 1, '0041 唯一索引存在';
+  assert to_regprocedure('public.sr_sync_card_record(uuid, boolean)') is not null, '0041 的 RPC 存在';
+end $$;
+SQL
+
 # 0042 以 0028 為底 create or replace erp_post_document（建機台帶入馬力／電壓），並補新欄位的欄位級授權；
 # 重跑 0020 會撤銷 erp_items 欄位級授權、重跑 0023–0028 會蓋回舊版函式，故需在其後重跑。
 echo "==> 重跑 0042（驗證可重複執行）"
@@ -347,12 +359,15 @@ psql_run < "$ROOT/tests/reminders_test.sql"
 echo "==> 執行 meeting_tracking_test.sql"
 psql_run < "$ROOT/tests/meeting_tracking_test.sql"
 
+echo "==> 執行 service_report_card_sync_test.sql"
+psql_run < "$ROOT/tests/service_report_card_sync_test.sql"
+
 echo "==> 確認 rollback 未留資料"
 LEFT=$(docker exec "$NAME" psql -U postgres -tAc \
-  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_report_technicians) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr') + (select count(*) from admin_profiles) + (select count(*) from position_permissions) + (select count(*) from positions where name not in ('業務','內勤','服務','負責人','會計')) + (select count(*) from mx_customers) + (select count(*) from erp_reminder_rules) + (select count(*) from erp_reminder_occurrences) + (select count(*) from delivery_jobs) + (select count(*) from repair_jobs) + (select count(*) from machine_issues) + (select count(*) from tracking_progress)")
+  "select (select count(*) from erp_documents) + (select count(*) from erp_items) + (select count(*) from auth.users) + (select count(*) from sr_reports) + (select count(*) from sr_report_technicians) + (select count(*) from sr_sequences) + (select count(*) from sr_service_plans) + (select count(*) from sr_service_plan_stages) + (select count(*) from sr_machine_plans) + (select count(*) from employees) + (select count(*) from employee_private) + (select count(*) from employee_private_access_log) + (select count(*) from admin_module_grants where module = 'hr') + (select count(*) from admin_profiles) + (select count(*) from position_permissions) + (select count(*) from positions where name not in ('業務','內勤','服務','負責人','會計')) + (select count(*) from mx_customers) + (select count(*) from erp_reminder_rules) + (select count(*) from erp_reminder_occurrences) + (select count(*) from delivery_jobs) + (select count(*) from repair_jobs) + (select count(*) from machine_issues) + (select count(*) from tracking_progress) + (select count(*) from mx_records) + (select count(*) from mx_machines)")
 if [ "$LEFT" != "0" ]; then
   echo "FAIL：測試後仍殘留 $LEFT 列" >&2
   exit 1
 fi
 
-echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + STAFF EMAIL + PARTY ACTIVITY + CUSTOMER SOURCE + REPORT TECHNICIANS + REMINDERS + MEETING TRACKING TESTS PASSED"
+echo "==> ALL ERP + SERVICE REPORT + SERVICE PLAN + EMPLOYEES + HR + STAFF RBAC + STAFF EMAIL + PARTY ACTIVITY + CUSTOMER SOURCE + REPORT TECHNICIANS + REMINDERS + MEETING TRACKING + CARD SYNC TESTS PASSED"

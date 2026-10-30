@@ -12,20 +12,27 @@ import {
 } from "@/lib/service-report/queries";
 import { STATUS_LABELS } from "@/lib/service-report/types";
 import { formStateFromReport } from "@/components/service-report/form-state";
+import { PhotoBackfillEditor } from "@/components/service-report/PhotoBackfillEditor";
 import { ReportForm } from "@/components/service-report/ReportForm";
+import { canPhotoBackfill } from "@/lib/service-report/photo-extract";
 import { nextReportNoAction, saveReportAction } from "../../actions";
+import { recognizeReportPhotosAction } from "../../photo-actions";
 import { listMachineStagesAction } from "../../stage-actions";
 
 export const metadata = { title: "編輯機台維護報告單 · 後台" };
 
 // 編輯頁：與開單頁同一個 ReportForm；作廢後唯讀（不進表單，導回詳情）。
+// ?photo=1（詳情頁「拍照辨識回填」，#280）：已列印的報告單先拍照辨識，結果預填同一個 ReportForm。
 export default async function EditServiceReportPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ photo?: string | string[] }>;
 }) {
   await requireModule("service_report");
   const { id } = await params;
+  const { photo } = await searchParams;
 
   const found = await getReport(id);
   if (!found.ok) {
@@ -94,12 +101,28 @@ export default async function EditServiceReportPage({
     );
   }
   const stages = stagesRes?.ok ? stagesRes.data : null;
+  const photoParam = Array.isArray(photo) ? photo[0] : photo;
+  const photoMode = photoParam === "1" && canPhotoBackfill(report.status);
+  const formProps = {
+    reportId: report.id,
+    initial: formStateFromReport(report, technicians.data),
+    customers: customers.ok ? customers.data : [],
+    machines: machines.ok ? machines.data : [],
+    employees: employees.ok ? employees.data : [],
+    status: report.status,
+    printed: report.print_count > 0,
+    logoUrl: branding.logo_url,
+    onSave: saveReportAction,
+    onReserveNo: report.print_count > 0 ? undefined : nextReportNoAction,
+    stages,
+    onLoadStages: listMachineStagesAction,
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-ink text-[24px] font-bold">
-          編輯報告單 {report.report_no}
+          {photoMode ? "拍照辨識回填" : "編輯報告單"} {report.report_no}
         </h1>
         <span className="text-text-muted text-[14px]">
           狀態：{STATUS_LABELS[report.status]}
@@ -114,20 +137,17 @@ export default async function EditServiceReportPage({
           讀取客戶／機台／員工清單失敗：{loadError}（請重新整理頁面後再試）
         </div>
       )}
-      <ReportForm
-        reportId={report.id}
-        initial={formStateFromReport(report, technicians.data)}
-        customers={customers.ok ? customers.data : []}
-        machines={machines.ok ? machines.data : []}
-        employees={employees.ok ? employees.data : []}
-        status={report.status}
-        printed={report.print_count > 0}
-        logoUrl={branding.logo_url}
-        onSave={saveReportAction}
-        onReserveNo={report.print_count > 0 ? undefined : nextReportNoAction}
-        stages={stages}
-        onLoadStages={listMachineStagesAction}
-      />
+      {photoMode ? (
+        <PhotoBackfillEditor
+          {...formProps}
+          reportId={report.id}
+          reportNo={report.report_no}
+          onRecognize={recognizeReportPhotosAction}
+          plainEditHref={`/admin/service-reports/${report.id}/edit`}
+        />
+      ) : (
+        <ReportForm {...formProps} />
+      )}
     </div>
   );
 }

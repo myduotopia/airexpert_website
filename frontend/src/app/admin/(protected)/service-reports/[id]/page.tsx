@@ -13,9 +13,14 @@ import { getBranding } from "@/lib/data/site";
 import { getReport, listReportTechnicians } from "@/lib/service-report/queries";
 import { shareText } from "@/lib/service-report/technicians";
 import { TIME_SLOT_LABELS } from "@/lib/service-report/types";
+import {
+  PhotoBackfillEntry,
+  showPhotoBackfillEntry,
+} from "../_components/PhotoBackfillEntry";
 import { ReportActions } from "../_components/ReportActions";
 import { ReportStatusBadge } from "../_components/ReportStatusBadge";
 import { SERVICE_REPORTS_PATH } from "../_components/list-params";
+import { CardSyncPanel } from "./CardSyncPanel";
 import { PlanStagePanel } from "./PlanStagePanel";
 
 export const metadata = { title: "報告單明細 · 機台維護報告單" };
@@ -80,12 +85,24 @@ export default async function ServiceReportDetailPage({
         </p>
       )}
 
-      <div className="mb-6">
+      <div className="mb-6 flex flex-col gap-3">
         <ReportActions
           id={report.id}
           status={report.status}
           printCount={report.print_count}
         />
+        {showPhotoBackfillEntry(report.status, report.print_count) && (
+          <div className="flex flex-wrap items-center gap-3">
+            <PhotoBackfillEntry
+              id={report.id}
+              status={report.status}
+              printCount={report.print_count}
+            />
+            <span className="text-text-muted text-[13px]">
+              拍下師傅交回的手寫報告單，AI 辨識後預填回填欄位。
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -169,6 +186,8 @@ export default async function ServiceReportDetailPage({
               </ul>
             )}
           </section>
+
+          <CardSyncPanel report={report} />
 
           {stageText && (
             <PlanStagePanel
