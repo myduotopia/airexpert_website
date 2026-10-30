@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { Combobox } from "@/components/erp/Combobox";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import { EmployeePicker } from "@/components/erp/EmployeePicker";
 import type { EmployeeOption } from "@/lib/employees/types";
 import { RocDateInput } from "@/components/erp/RocDateInput";
@@ -81,6 +82,7 @@ import {
   formStateToInput,
   formStateToSheetData,
   planStageText,
+  saveButtonLabel,
   setFilterConsumable,
   setResultField,
   stageApplyNeedsConfirm,
@@ -204,6 +206,8 @@ export function ReportForm({
     status === "printed" || status === "completed",
   );
   const [pending, startTransition] = useTransition();
+  // 頁內確認框（#281，沿用 ERP #220 的 useConfirm）；開著時為 modal，背景按鈕點不到、不會重複送出。
+  const [askConfirm, confirmDialog] = useConfirm();
 
   // ── 保養階段（spec §6.2）
   const [stageData, setStageData] = useState<MachineStagesData | null>(stages);
@@ -238,7 +242,7 @@ export function ReportForm({
     [machines, state.customer_id],
   );
 
-  function pickCustomer(option: SrCustomerOption | null) {
+  async function pickCustomer(option: SrCustomerOption | null) {
     setError(null);
     if (!option) {
       setState((s) => clearCustomer(s));
@@ -246,13 +250,22 @@ export function ReportForm({
     }
     if (state.customer_id === option.id) return;
     const conflicts = customerPrefillConflicts(state, option);
+    // 取消／Esc＝保留現有內容（仍帶入，只補空白欄位），與原本原生確認框相同。
     const overwrite =
       conflicts.length === 0 ||
-      window.confirm(
-        `以下欄位已有內容，要改用「${customerOptionLabel(option)}」的資料嗎？\n\n` +
-          conflicts.map((f) => FIELD_LABELS[f]).join("、") +
-          "\n\n確定：覆蓋這些欄位；取消：保留現有內容，只補空白欄位。",
-      );
+      (await askConfirm({
+        title: `以下欄位已有內容，要改用「${customerOptionLabel(option)}」的資料嗎？`,
+        message: (
+          <>
+            <p>{conflicts.map((f) => FIELD_LABELS[f]).join("、")}</p>
+            <p className="mt-2">
+              覆蓋：覆蓋這些欄位；保留現有內容：只補空白欄位。
+            </p>
+          </>
+        ),
+        confirmLabel: "覆蓋",
+        cancelLabel: "保留現有內容",
+      }));
     setState((s) => applyCustomerPrefill(s, option, overwrite));
   }
 
@@ -305,14 +318,17 @@ export function ReportForm({
   }
 
   /** 套用里程碑：料件已有內容時先問覆蓋（取消＝只填空白列）。 */
-  function applyStage(row: MachineMilestoneRow) {
+  async function applyStage(row: MachineMilestoneRow) {
     setError(null);
+    // 取消／Esc＝只填入空白列（仍套用），與原本原生確認框相同。
     const overwrite =
       !stageApplyNeedsConfirm(state) ||
-      window.confirm(
-        `更換料件已有內容，要改用「${milestoneRowLabel(row)}」的料件嗎？\n\n` +
-          "確定：同品名的數量改成方案的數量；取消：只填入空白列。",
-      );
+      (await askConfirm({
+        title: `更換料件已有內容，要改用「${milestoneRowLabel(row)}」的料件嗎？`,
+        message: "覆蓋：同品名的數量改成方案的數量；只填空白列：只填入空白列。",
+        confirmLabel: "覆蓋",
+        cancelLabel: "只填空白列",
+      }));
     const applied = applyStageToState(state, row, { overwrite });
     setState(applied.state);
     setResultsOpen(true);
@@ -344,11 +360,14 @@ export function ReportForm({
     });
   }
 
-  function save(thenPrint: boolean) {
+  async function save(thenPrint: boolean) {
     setError(null);
     if (
       status === "completed" &&
-      !window.confirm("這張報告單已結案，確定要修改內容並儲存嗎？")
+      !(await askConfirm({
+        title: "這張報告單已結案，確定要修改內容並儲存嗎？",
+        confirmLabel: thenPrint ? "儲存並列印" : "儲存",
+      }))
     ) {
       return;
     }
@@ -407,6 +426,8 @@ export function ReportForm({
           {error}
         </div>
       )}
+
+      {confirmDialog}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,440px)]">
         <div className="flex min-w-0 flex-col gap-4">
@@ -1075,7 +1096,7 @@ export function ReportForm({
               disabled={pending}
               onClick={() => save(false)}
             >
-              {pending ? "儲存中…" : "儲存草稿"}
+              {pending ? "儲存中…" : saveButtonLabel(status)}
             </button>
             <button
               type="button"

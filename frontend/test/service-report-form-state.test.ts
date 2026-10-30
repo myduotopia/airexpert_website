@@ -11,6 +11,7 @@ import {
   formStateToInput,
   formStateToSheetData,
   normalizeParts,
+  saveButtonLabel,
   setFilterConsumable,
   setResultField,
   sheetDataFromReport,
@@ -40,6 +41,7 @@ const CUSTOMER: SrCustomerOption = {
   tax_id: "12345678",
   contact_person: "王先生 0912-000-000",
   address: "新北市三重區重新路一段 1 號",
+  delivery_address: null,
 };
 
 const OTHER_CUSTOMER: SrCustomerOption = {
@@ -51,6 +53,7 @@ const OTHER_CUSTOMER: SrCustomerOption = {
   tax_id: "87654321",
   contact_person: null,
   address: null,
+  delivery_address: null,
 };
 
 const MACHINE: SrMachineOption = {
@@ -87,6 +90,16 @@ describe("emptyFormState / normalizeParts", () => {
     expect(rows.map((r) => r.no)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(rows[2]).toEqual({ no: 3, name: "自訂濾芯", qty: "2" });
     expect(rows[0].name).toBe("螺旋專用油");
+  });
+});
+
+describe("saveButtonLabel（#281 P3-6）", () => {
+  it("開單（無狀態）與草稿 →「儲存草稿」；已列印／已結案 →「儲存」", () => {
+    expect(saveButtonLabel()).toBe("儲存草稿");
+    expect(saveButtonLabel(null)).toBe("儲存草稿");
+    expect(saveButtonLabel("draft")).toBe("儲存草稿");
+    expect(saveButtonLabel("printed")).toBe("儲存");
+    expect(saveButtonLabel("completed")).toBe("儲存");
   });
 });
 
@@ -130,6 +143,19 @@ describe("客戶帶入的覆蓋判斷（spec §6）", () => {
     const next = applyCustomerPrefill(s, OTHER_CUSTOMER, true);
     expect(next.contact).toBe("");
     expect(next.address).toBe("");
+  });
+
+  it("只有送貨地址的客戶 → 地址欄帶入送貨地址（#281）", () => {
+    const deliveryOnly: SrCustomerOption = {
+      ...OTHER_CUSTOMER,
+      delivery_address: "測試市送貨路 2 號",
+    };
+    const next = applyCustomerPrefill(
+      emptyFormState(TODAY),
+      deliveryOnly,
+      false,
+    );
+    expect(next.address).toBe("測試市送貨路 2 號");
   });
 
   it("換客戶會清掉已選機台（機台清單以客戶為範圍）", () => {

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import type { ActionResult } from "@/lib/admin/crud";
 
 // 列表列上的單一動作按鈕：呼叫「已 bind 好的」server action，並把失敗訊息就地顯示在
@@ -12,6 +13,9 @@ import type { ActionResult } from "@/lib/admin/crud";
 // 看不到「該怎麼處理」（#167 / #168）。
 //
 // 錯誤狀態掛在每個按鈕自己的 state 上，同一張表的不同列不會互相汙染。
+//
+// 確認改用頁內確認框（#281，沿用 ERP #220 的 useConfirm），不再用瀏覽器原生確認框：
+// 原生框開著時 AI／e2e 自動化會卡住。確認鈕文字＝按鈕的 label；variant="danger" 時為紅色、焦點在取消。
 export const ACTION_BUTTON_VARIANT_CLASS = {
   danger:
     "h-9 rounded-md px-3 text-[13px] font-medium text-red-600 hover:bg-red-50",
@@ -31,22 +35,32 @@ export function ActionButton({
   action: () => Promise<ActionResult>;
   label: string;
   pendingLabel: string;
-  /** 有給才會先跳確認視窗；不給就直接執行。 */
+  /** 有給才會先跳頁內確認框（作為標題）；不給就直接執行。 */
   confirmText?: string;
   variant?: keyof typeof ACTION_BUTTON_VARIANT_CLASS;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [askConfirm, confirmDialog] = useConfirm();
 
   return (
     <span className="inline-flex items-center gap-2">
       <button
         type="button"
         disabled={pending}
-        onClick={() => {
+        onClick={async () => {
           // 每次送出先清掉上一次的錯誤，避免舊訊息殘留讓人誤判這次也失敗。
           setError(null);
-          if (confirmText && !window.confirm(confirmText)) return;
+          if (
+            confirmText &&
+            !(await askConfirm({
+              title: confirmText,
+              confirmLabel: label,
+              tone: variant === "danger" ? "danger" : "primary",
+            }))
+          ) {
+            return;
+          }
           startTransition(async () => {
             try {
               const res = await action();
@@ -79,6 +93,7 @@ export function ActionButton({
           {error}
         </span>
       ) : null}
+      {confirmDialog}
     </span>
   );
 }

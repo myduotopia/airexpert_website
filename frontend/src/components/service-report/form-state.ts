@@ -19,6 +19,7 @@ import {
   type ServiceReportPart,
   type ServiceReportResults,
   type ServiceReportSheetData,
+  type ServiceReportStatus,
   type Suggestion,
   type TimeSlot,
 } from "@/lib/service-report/types";
@@ -481,6 +482,14 @@ export interface ApplyStageToStateResult {
   state: ReportFormState;
   /** 10 列放不下而未填入的料件（呼叫端提示手動調整）。 */
   overflow: PlanPart[];
+}
+
+/**
+ * 表單主按鈕文字（#281 P3-6）：開單（無狀態）與草稿叫「儲存草稿」；
+ * 已列印／已結案的報告單存檔不會回到草稿，叫「儲存」。
+ */
+export function saveButtonLabel(status?: ServiceReportStatus | null): string {
+  return !status || status === "draft" ? "儲存草稿" : "儲存";
 }
 
 /** 套用階段前是否需要先問「要覆蓋已填的料件嗎」（任一列已有數量）。 */

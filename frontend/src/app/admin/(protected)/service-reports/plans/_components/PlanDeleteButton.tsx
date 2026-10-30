@@ -1,7 +1,8 @@
 "use client";
-// 方案列表每列的刪除按鈕：先 confirm（訊息含套用機台數），再呼叫 deletePlanAction。
+// 方案列表每列的刪除按鈕：先頁內確認（訊息含套用機台數；#281 沿用 ERP useConfirm），再呼叫 deletePlanAction。
 import { useState, useTransition } from "react";
 import { unstable_rethrow, useRouter } from "next/navigation";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import { deletePlanAction } from "../actions";
 import { planDeleteConfirmText } from "./plan-form-state";
 
@@ -17,12 +18,15 @@ export function PlanDeleteButton({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [askConfirm, confirmDialog] = useConfirm();
 
-  function onClick() {
+  async function onClick() {
     if (
-      !window.confirm(
-        planDeleteConfirmText({ name, machine_count: machineCount }),
-      )
+      !(await askConfirm({
+        title: planDeleteConfirmText({ name, machine_count: machineCount }),
+        confirmLabel: "刪除",
+        tone: "danger",
+      }))
     ) {
       return;
     }
@@ -57,6 +61,7 @@ export function PlanDeleteButton({
           {error}
         </span>
       )}
+      {confirmDialog}
     </span>
   );
 }

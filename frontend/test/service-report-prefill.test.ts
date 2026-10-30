@@ -17,6 +17,7 @@ const customer: SrCustomerOption = {
   tax_id: "12345678",
   contact_person: "王先生 0912-345-678",
   address: "新北市樹林區",
+  delivery_address: "測試市送貨路 1 號",
 };
 
 const machine: SrMachineOption = {
@@ -49,12 +50,33 @@ describe("prefillFromCustomer", () => {
       tax_id: null,
       contact_person: null,
       address: " ",
+      delivery_address: "",
     });
     expect(r.customer_name).toBe("金凱");
     expect(r.phone).toBeNull();
     expect(r.tax_id).toBeNull();
     expect(r.contact).toBeNull();
     expect(r.address).toBeNull();
+  });
+  it("地址：聯絡地址優先；聯絡地址空白 → 改帶送貨地址（#281）", () => {
+    // 兩者皆有 → 聯絡地址
+    expect(prefillFromCustomer(customer).address).toBe("新北市樹林區");
+    // 只有送貨地址（舊系統匯入客戶常見）→ 送貨地址（去空白）
+    expect(
+      prefillFromCustomer({
+        ...customer,
+        address: null,
+        delivery_address: " 測試市送貨路 1 號 ",
+      }).address,
+    ).toBe("測試市送貨路 1 號");
+    expect(prefillFromCustomer({ ...customer, address: "  " }).address).toBe(
+      "測試市送貨路 1 號",
+    );
+    // 兩者皆空 → null
+    expect(
+      prefillFromCustomer({ ...customer, address: "", delivery_address: null })
+        .address,
+    ).toBeNull();
   });
 });
 
