@@ -1,10 +1,14 @@
 // 銷售單據明細頁（server component，報價 / 銷貨 / 銷退共用）：
 // 表頭資訊、明細（含機號）、合計；銷貨單另顯示每行成本毛利（僅畫面）與保養卡機台連結；
 // 來源單據與衍生單據連結；動作列（SalesDocActions）。
+// 保養卡連結只給有保養卡權限的人（#283）；沒有權限時顯示純文字與「需保養卡權限」提示。
 import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DocStatusBadge } from "@/components/erp/DocStatusBadge";
+import { GatedLink, PermissionHint } from "@/components/erp/GatedLink";
+import { hasMaintenanceAccess } from "@/lib/admin/auth";
+import { maintenanceMachineHref } from "@/lib/erp/admin-links";
 import { MoneyText } from "@/components/erp/MoneyText";
 import { rocDate, rocDateTime } from "@/lib/admin/minguo";
 import { computeSubtotals, subtotalLabel } from "@/lib/erp/calc";
@@ -30,11 +34,7 @@ import type { TaxType } from "@/lib/erp/types";
 import { collectPostErrors } from "@/lib/erp/validate";
 import { SalesDocActions } from "./SalesDocActions";
 import { SalesTabs } from "./SalesTabs";
-import {
-  maintenanceMachineHref,
-  SALES_BASE_PATH,
-  SALES_DOC_LABEL,
-} from "./sales-config";
+import { SALES_BASE_PATH, SALES_DOC_LABEL } from "./sales-config";
 
 const TAX_LABEL: Record<TaxType, string> = {
   excluded: "外加稅",
@@ -67,18 +67,26 @@ export async function SalesDocDetail({
 
   const derivedType: SalesDocType | null =
     docType === "Q" ? "S" : docType === "S" ? "SR" : null;
-  const [items, warehouses, source, derived, machineLinks, balance] =
-    await Promise.all([
-      listItemOptions({ includeInactive: true }),
-      listWarehouseOptions({ includeInactive: true }),
-      doc.source_doc_id ? getDocumentBrief(doc.source_doc_id) : null,
-      derivedType ? listDerivedDocuments(doc.id, derivedType) : [],
-      docType === "S" && !isDraft
-        ? listMachineLinks(doc.lines.map((l) => l.id))
-        : [],
-      // 已收款／未收餘額（#241 A-7）：與列印同一來源；讀取失敗只是不顯示，不擋整頁。
-      getSaleDocumentBalance(doc),
-    ]);
+  const [
+    items,
+    warehouses,
+    source,
+    derived,
+    machineLinks,
+    balance,
+    canOpenMaintenance,
+  ] = await Promise.all([
+    listItemOptions({ includeInactive: true }),
+    listWarehouseOptions({ includeInactive: true }),
+    doc.source_doc_id ? getDocumentBrief(doc.source_doc_id) : null,
+    derivedType ? listDerivedDocuments(doc.id, derivedType) : [],
+    docType === "S" && !isDraft
+      ? listMachineLinks(doc.lines.map((l) => l.id))
+      : [],
+    // 已收款／未收餘額（#241 A-7）：與列印同一來源；讀取失敗只是不顯示，不擋整頁。
+    getSaleDocumentBalance(doc),
+    hasMaintenanceAccess(),
+  ]);
   const itemById = new Map(items.map((i) => [i.id, i]));
   const warehouse = warehouses.find((w) => w.id === doc.warehouse_id);
   const margins = showCost ? calcSaleMargins(doc) : null;
@@ -175,6 +183,7 @@ export async function SalesDocDetail({
             created_at: d.created_at,
           }))}
           postErrors={postErrors}
+          canOpenMaintenance={canOpenMaintenance}
         />
       </div>
 
@@ -314,14 +323,16 @@ export async function SalesDocDetail({
                                   <>
                                     {" "}
                                     →{" "}
-                                    <Link
+                                    <GatedLink
                                       href={maintenanceMachineHref(
                                         link.machine.id,
                                       )}
+                                      allowed={canOpenMaintenance}
                                       className="text-primary-deep hover:underline"
+                                      hint
                                     >
                                       保養卡
-                                    </Link>
+                                    </GatedLink>
                                   </>
                                 )}
                               </li>
@@ -435,6 +446,12 @@ export async function SalesDocDetail({
         <section className="border-border mb-6 rounded-xl border bg-white p-4">
           <h3 className="text-ink mb-2 text-[15px] font-semibold">
             保養卡機台
+            {!canOpenMaintenance && (
+              <>
+                {" "}
+                <PermissionHint />
+              </>
+            )}
           </h3>
           {doc.status === "voided" && (
             <p className="text-text-muted mb-2 text-[13px]">
@@ -447,13 +464,14 @@ export async function SalesDocDetail({
                 <span className="font-mono">{m.serial_no ?? "—"}</span>
                 {"　"}
                 {m.machine ? (
-                  <Link
+                  <GatedLink
                     href={maintenanceMachineHref(m.machine.id)}
+                    allowed={canOpenMaintenance}
                     className="text-primary-deep hover:underline"
                   >
                     {CARD_LABEL[m.machine.card_type] ?? "保養卡"}
                     {m.machine.model ? ` · ${m.machine.model}` : ""}
-                  </Link>
+                  </GatedLink>
                 ) : (
                   <span className="text-text-muted">機台已不存在</span>
                 )}

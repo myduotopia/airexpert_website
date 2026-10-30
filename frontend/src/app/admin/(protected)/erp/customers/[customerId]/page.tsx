@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireModule } from "@/lib/admin/auth";
+import { hasMaintenanceAccess, requireModule } from "@/lib/admin/auth";
 import {
   getErpCustomer,
   getPartyBalance,
@@ -10,7 +10,12 @@ import type { MxMachine } from "@/lib/admin/maintenance";
 import { cardTypeLabel } from "@/lib/admin/maintenance-normalize";
 import { machineTagLabel } from "@/lib/admin/machine-identity";
 import { rocDateTime } from "@/lib/admin/minguo";
+import {
+  MAINTENANCE_PERMISSION_HINT,
+  maintenanceMachineHref,
+} from "@/lib/erp/admin-links";
 import { DataTable, type Column } from "@/components/admin/DataTable";
+import { GatedLink } from "@/components/erp/GatedLink";
 import { MoneyText } from "@/components/erp/MoneyText";
 import { PartyActivity } from "@/components/erp/PartyActivity";
 import { CustomerSourceBadge } from "@/components/erp/CustomerSourceBadge";
@@ -27,52 +32,64 @@ import {
 
 export const metadata = { title: "客戶 · ERP 基本資料" };
 
-const MACHINE_COLUMNS: Column<MxMachine>[] = [
-  {
-    header: "卡別",
-    cell: (m) => (
-      <span className="border-border text-text-muted inline-flex items-center rounded-full border px-2 py-0.5 text-[12px]">
-        {cardTypeLabel(m.card_type)}
-      </span>
-    ),
-  },
-  {
-    header: "機台",
-    cell: (m) => (
-      <Link
-        href={`/admin/maintenance/${m.id}`}
-        className="text-ink hover:text-primary-deep font-medium"
-      >
-        {machineTagLabel(m)}
-      </Link>
-    ),
-  },
-  { header: "機型", cell: (m) => m.model ?? "—" },
-  { header: "使用地點", cell: (m) => m.location ?? "—" },
-  {
-    header: "狀態",
-    cell: (m) =>
-      m.archived_at ? (
-        <span className="text-text-muted text-[13px]">
-          已封存 {rocDateTime(m.archived_at)}
+// 名下保養卡機台：有保養卡權限才可點進保養卡（#283）；沒有權限時機台照常顯示、不可點，
+// 「進入保養卡」改為「需保養卡權限」提示。
+function machineColumns(canOpenMaintenance: boolean): Column<MxMachine>[] {
+  return [
+    {
+      header: "卡別",
+      cell: (m) => (
+        <span className="border-border text-text-muted inline-flex items-center rounded-full border px-2 py-0.5 text-[12px]">
+          {cardTypeLabel(m.card_type)}
         </span>
-      ) : (
-        "使用中"
       ),
-  },
-  {
-    header: "",
-    className: "text-right whitespace-nowrap",
-    cell: (m) => (
-      <Link
-        href={`/admin/maintenance/${m.id}`}
-        className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
-      >
-        進入保養卡
-      </Link>
-    ),
-  },
-];
+    },
+    {
+      header: "機台",
+      cell: (m) => (
+        <GatedLink
+          href={maintenanceMachineHref(m.id)}
+          allowed={canOpenMaintenance}
+          className="text-ink hover:text-primary-deep font-medium"
+          plainClassName="text-ink font-medium"
+        >
+          {machineTagLabel(m)}
+        </GatedLink>
+      ),
+    },
+    { header: "機型", cell: (m) => m.model ?? "—" },
+    { header: "使用地點", cell: (m) => m.location ?? "—" },
+    {
+      header: "狀態",
+      cell: (m) =>
+        m.archived_at ? (
+          <span className="text-text-muted text-[13px]">
+            已封存 {rocDateTime(m.archived_at)}
+          </span>
+        ) : (
+          "使用中"
+        ),
+    },
+    {
+      header: "",
+      className: "text-right whitespace-nowrap",
+      cell: (m) => (
+        <GatedLink
+          href={maintenanceMachineHref(m.id)}
+          allowed={canOpenMaintenance}
+          className="text-primary-deep hover:bg-surface-muted inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium"
+          fallback={
+            <span className="text-text-muted inline-flex h-9 items-center px-3 text-[12px]">
+              {MAINTENANCE_PERMISSION_HINT}
+            </span>
+          }
+        >
+          進入保養卡
+        </GatedLink>
+      ),
+    },
+  ];
+}
 
 export default async function ErpCustomerDetailPage({
   params,
@@ -86,9 +103,10 @@ export default async function ErpCustomerDetailPage({
   const sp = await searchParams;
   const customer = await getErpCustomer(customerId);
   if (!customer) notFound();
-  const [balance, machines] = await Promise.all([
+  const [balance, machines, canOpenMaintenance] = await Promise.all([
     getPartyBalance("customer", customerId),
     listCustomerMachines(customerId),
+    hasMaintenanceAccess(),
   ]);
 
   return (
@@ -166,7 +184,7 @@ export default async function ErpCustomerDetailPage({
       </h2>
       <DataTable
         rows={machines}
-        columns={MACHINE_COLUMNS}
+        columns={machineColumns(canOpenMaintenance)}
         getKey={(m) => m.id}
         empty="此客戶尚無保養卡機台。"
       />

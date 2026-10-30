@@ -1,7 +1,8 @@
-import Link from "next/link";
+import { GatedLink } from "@/components/erp/GatedLink";
 import { ReportToolbar } from "@/components/erp/meeting/ReportToolbar";
 import { ERP_LABEL, ERP_SELECT } from "@/components/erp/styles";
 import { hasModule, requireModule } from "@/lib/admin/auth";
+import { serviceReportHref } from "@/lib/erp/admin-links";
 import { meetingCsvFile } from "@/lib/erp/meeting/csv";
 import {
   formatShare,
@@ -104,17 +105,14 @@ export default async function MeetingMaintenancePage({
               {table.rows.map((r) => (
                 <tr key={r.id} className="border-border border-t">
                   <td className={`${TD} whitespace-nowrap tabular-nums`}>
-                    {canOpenReport ? (
-                      <Link
-                        href={`/admin/service-reports/${r.id}`}
-                        className="text-primary-deep font-semibold hover:underline"
-                        title={`報告單 ${r.report_no}`}
-                      >
-                        {rocShortDate(r.report_date)}
-                      </Link>
-                    ) : (
-                      rocShortDate(r.report_date)
-                    )}
+                    <GatedLink
+                      href={serviceReportHref(r.id)}
+                      allowed={canOpenReport}
+                      className="text-primary-deep font-semibold hover:underline"
+                      title={`報告單 ${r.report_no}`}
+                    >
+                      {rocShortDate(r.report_date)}
+                    </GatedLink>
                     <div className="text-text-muted font-mono text-[12px]">
                       {r.report_no}
                     </div>

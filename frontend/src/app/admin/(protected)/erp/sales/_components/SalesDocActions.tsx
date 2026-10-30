@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter, unstable_rethrow } from "next/navigation";
 import { DocStatusBadge } from "@/components/erp/DocStatusBadge";
 import { ErrorList } from "@/components/erp/ErrorList";
+import { GatedLink, PermissionHint } from "@/components/erp/GatedLink";
 import { ERP_BUTTON_SECONDARY, ERP_INPUT } from "@/components/erp/styles";
 import {
   useConfirm,
@@ -20,6 +21,7 @@ import {
   type DerivedConfirm,
   type DerivedDocInput,
 } from "@/lib/erp/derived-confirm";
+import { maintenanceMachineHref } from "@/lib/erp/admin-links";
 import type { SalesDocType } from "@/lib/erp/queries/sales";
 import { gateSubmit } from "@/lib/erp/submit-gate";
 import type { DocStatus, ErpResult } from "@/lib/erp/types";
@@ -32,7 +34,6 @@ import {
   type SalesPostResult,
 } from "../actions";
 import {
-  maintenanceMachineHref,
   printHref,
   SALES_BASE_PATH,
   SALES_DOC_LABEL,
@@ -79,6 +80,7 @@ export function SalesDocActions({
   status,
   derivedDocs = [],
   postErrors = [],
+  canOpenMaintenance = false,
 }: {
   docId: string;
   docType: SalesDocType;
@@ -87,6 +89,8 @@ export function SalesDocActions({
   derivedDocs?: DerivedDocInput[];
   /** 草稿過帳前的前端檢核錯誤（lib/erp/validate collectPostErrors）；按過帳並確認後，有錯只列出錯誤。 */
   postErrors?: string[];
+  /** 可否開啟保養卡（明細頁以 hasMaintenanceAccess() 算好傳入）；否則機台只顯示文字（#283）。 */
+  canOpenMaintenance?: boolean;
 }) {
   const router = useRouter();
   const basePath = SALES_BASE_PATH[docType];
@@ -314,17 +318,19 @@ export function SalesDocActions({
             <div className="mt-2">
               <p className="text-text-muted text-[13px]">
                 已建立 / 連結保養卡機台：
+                {!canOpenMaintenance && <PermissionHint />}
               </p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {postResult.machines.map((m) => (
                   <li key={m.id}>
-                    <Link
+                    <GatedLink
                       href={maintenanceMachineHref(m.id)}
+                      allowed={canOpenMaintenance}
                       className="text-primary-deep hover:underline"
                     >
                       {[m.model, m.serial_no].filter(Boolean).join(" · ") ||
                         "保養卡機台"}
-                    </Link>
+                    </GatedLink>
                   </li>
                 ))}
               </ul>
