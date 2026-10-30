@@ -6,6 +6,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { unstable_rethrow, useRouter } from "next/navigation";
+import { useConfirm } from "@/components/erp/ConfirmDialog";
 import { ERP_AREA, ERP_INPUT } from "@/components/erp/styles";
 import {
   MAX_STAGE_PARTS,
@@ -91,6 +92,8 @@ export function PlanForm({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 頁內確認框（#281，沿用 ERP #220 的 useConfirm）。
+  const [askConfirm, confirmDialog] = useConfirm();
 
   function set<K extends keyof PlanDraft>(key: K, value: PlanDraft[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -160,15 +163,17 @@ export function PlanForm({
     }
   }
 
-  function onDeletePlan() {
+  async function onDeletePlan() {
     if (!planId || busy) return;
     if (
-      !window.confirm(
-        planDeleteConfirmText({
+      !(await askConfirm({
+        title: planDeleteConfirmText({
           name: draft.name.trim() || "（未命名）",
           machine_count: machineCount,
         }),
-      )
+        confirmLabel: "刪除方案",
+        tone: "danger",
+      }))
     ) {
       return;
     }
@@ -442,6 +447,7 @@ export function PlanForm({
           </button>
         )}
       </div>
+      {confirmDialog}
     </form>
   );
 }

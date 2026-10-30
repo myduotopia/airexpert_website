@@ -172,7 +172,7 @@ export async function listCustomerOptions(): Promise<
     supabase
       .from("mx_customers")
       .select(
-        "id, code, name, invoice_title, phone, tax_id, contact_person, address",
+        "id, code, name, invoice_title, phone, tax_id, contact_person, address, delivery_address",
       )
       .order("code", { ascending: true, nullsFirst: false })
       .order("name", { ascending: true })

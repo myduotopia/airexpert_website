@@ -11,7 +11,10 @@ export interface SrCustomerOption {
   phone: string | null;
   tax_id: string | null;
   contact_person: string | null;
+  /** 聯絡地址。 */
   address: string | null;
+  /** 送貨地址（ERP 0020 加入；舊系統匯入的客戶多半只有這欄）。 */
+  delivery_address: string | null;
 }
 
 /** 機台選項（mx_machines 未封存；見 queries.listMachineOptions）。 */
@@ -53,7 +56,10 @@ function joinParts(
   return kept.length ? kept.join(sep) : null;
 }
 
-/** 選客戶 → 客戶名稱（發票抬頭優先）、電話、統編、聯絡人、地址。 */
+/**
+ * 選客戶 → 客戶名稱（發票抬頭優先）、電話、統編、聯絡人、地址。
+ * 地址：聯絡地址優先，空白時改帶送貨地址（#281；舊系統匯入的客戶多半只有送貨地址）。
+ */
 export function prefillFromCustomer(
   customer: SrCustomerOption,
 ): CustomerPrefill {
@@ -63,7 +69,7 @@ export function prefillFromCustomer(
     phone: clean(customer.phone),
     tax_id: clean(customer.tax_id),
     contact: clean(customer.contact_person),
-    address: clean(customer.address),
+    address: clean(customer.address) ?? clean(customer.delivery_address),
   };
 }
 

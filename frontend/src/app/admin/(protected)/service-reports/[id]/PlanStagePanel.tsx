@@ -3,12 +3,21 @@
 // 可清除（清除後該階段視為未開過，會重新出現在提醒與開單提示中）。
 import { useState, useTransition } from "react";
 import { unstable_rethrow, useRouter } from "next/navigation";
+import {
+  useConfirm,
+  type ConfirmOptions,
+} from "@/components/erp/ConfirmDialog";
 import { clearReportStageAction } from "../stage-actions";
 
 const SECONDARY =
   "border-border hover:bg-surface-muted inline-flex h-9 items-center rounded-lg border bg-white px-3 text-[14px] font-semibold disabled:opacity-60";
 
-const CONFIRM = "清除後這個階段會視為未開過（重新出現在到期提醒）。確定清除？";
+// 頁內確認框（#281，沿用 ERP #220 的 useConfirm）。
+const CONFIRM: ConfirmOptions = {
+  title: "確定清除？",
+  message: "清除後這個階段會視為未開過（重新出現在到期提醒）。",
+  confirmLabel: "清除",
+};
 
 export function PlanStagePanel({
   id,
@@ -24,10 +33,11 @@ export function PlanStagePanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [askConfirm, confirmDialog] = useConfirm();
 
-  function clear() {
+  async function clear() {
     setError(null);
-    if (!window.confirm(CONFIRM)) return;
+    if (!(await askConfirm(CONFIRM))) return;
     startTransition(async () => {
       try {
         const res = await clearReportStageAction(id);
@@ -64,6 +74,7 @@ export function PlanStagePanel({
           {error}
         </p>
       )}
+      {confirmDialog}
     </section>
   );
 }

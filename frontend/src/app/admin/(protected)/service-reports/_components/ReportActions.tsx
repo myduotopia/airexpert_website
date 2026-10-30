@@ -5,6 +5,10 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { unstable_rethrow, useRouter } from "next/navigation";
+import {
+  useConfirm,
+  type ConfirmOptions,
+} from "@/components/erp/ConfirmDialog";
 import { ERP_AREA, ERP_BUTTON_SECONDARY } from "@/components/erp/styles";
 import type { ServiceReportStatus, SrResult } from "@/lib/service-report/types";
 import {
@@ -29,7 +33,12 @@ const SECONDARY =
 const DANGER =
   "inline-flex h-10 items-center rounded-lg border border-red-200 bg-white px-4 text-[14px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60";
 
-const EDIT_CONFIRM = "此報告單已結案，確定要再修改內容嗎？（結案時間不會改變）";
+// 確認改用頁內確認框（#281，沿用 ERP #220 的 useConfirm），不再用瀏覽器原生確認框。
+const EDIT_CONFIRM: ConfirmOptions = {
+  title: "此報告單已結案，確定要再修改內容嗎？",
+  message: "（結案時間不會改變）",
+  confirmLabel: "編輯",
+};
 
 export function ReportActions({
   id,
@@ -45,18 +54,19 @@ export function ReportActions({
   const [error, setError] = useState<string | null>(null);
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
+  const [askConfirm, confirmDialog] = useConfirm();
 
   const keys = actionsForStatus(status, printCount);
   const editHref = `${SERVICE_REPORTS_PATH}/${id}/edit`;
   const printHref = `${SERVICE_REPORTS_PATH}/print/${id}`;
 
-  function run<T>(
+  async function run<T>(
     action: () => Promise<SrResult<T>>,
     onOk: () => void,
-    confirmText?: string,
+    confirm?: ConfirmOptions,
   ) {
     setError(null);
-    if (confirmText && !window.confirm(confirmText)) return;
+    if (confirm && !(await askConfirm(confirm))) return;
     startTransition(async () => {
       try {
         const res = await action();
@@ -82,8 +92,8 @@ export function ReportActions({
             type="button"
             disabled={pending}
             className={PRIMARY}
-            onClick={() => {
-              if (window.confirm(EDIT_CONFIRM)) router.push(editHref);
+            onClick={async () => {
+              if (await askConfirm(EDIT_CONFIRM)) router.push(editHref);
             }}
           >
             {label}
@@ -116,7 +126,11 @@ export function ReportActions({
               run(
                 () => completeReportAction(id),
                 () => router.refresh(),
-                "確定結案此報告單？結案後仍可重新開啟。",
+                {
+                  title: "確定結案此報告單？",
+                  message: "結案後仍可重新開啟。",
+                  confirmLabel: "結案",
+                },
               )
             }
           >
@@ -134,7 +148,11 @@ export function ReportActions({
               run(
                 () => reopenReportAction(id),
                 () => router.refresh(),
-                "確定重新開啟此報告單？狀態會回到「已列印」並清除結案時間。",
+                {
+                  title: "確定重新開啟此報告單？",
+                  message: "狀態會回到「已列印」並清除結案時間。",
+                  confirmLabel: "重新開啟",
+                },
               )
             }
           >
@@ -170,7 +188,12 @@ export function ReportActions({
                   router.push(SERVICE_REPORTS_PATH);
                   router.refresh();
                 },
-                "確定刪除此草稿？刪除後無法復原。",
+                {
+                  title: "確定刪除此草稿？",
+                  message: "刪除後無法復原。",
+                  confirmLabel: "刪除",
+                  tone: "danger",
+                },
               )
             }
           >
@@ -221,7 +244,12 @@ export function ReportActions({
                     setReason("");
                     router.refresh();
                   },
-                  "確定作廢此報告單？作廢後為唯讀，無法復原。",
+                  {
+                    title: "確定作廢此報告單？",
+                    message: "作廢後為唯讀，無法復原。",
+                    confirmLabel: "作廢",
+                    tone: "danger",
+                  },
                 )
               }
             >
@@ -263,6 +291,7 @@ export function ReportActions({
           )}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }
