@@ -2,7 +2,8 @@
 # 本機以 Docker 起一個拋棄式 Postgres 17，模擬 Supabase 基本環境後依序套用
 # supabase/migrations/*.sql，再依序執行 supabase/tests/erp_posting_test.sql、
 # service_report_test.sql、service_plan_test.sql、employees_test.sql、employee_hr_test.sql、staff_rbac_test.sql、
-# staff_email_test.sql、party_activity_test.sql、customer_source_test.sql、report_technicians_test.sql、reminders_test.sql 與 meeting_tracking_test.sql。
+# staff_email_test.sql、party_activity_test.sql、customer_source_test.sql、report_technicians_test.sql、reminders_test.sql 與 meeting_tracking_test.sql
+# （erp_posting_test.sql 含 0042 品項馬力／電壓帶入保養卡機台的斷言）。
 # Vault（vault.decrypted_secrets）只在本機以資料表 + view 模擬，並放入「測試用」金鑰。
 # 結束（成功或失敗）時自動移除容器。絕不連線正式 DB。
 #
@@ -194,6 +195,19 @@ psql_run <<'SQL'
 do $$ begin
   assert (select count(*) from pg_policies where tablename in ('erp_reminder_rules','erp_reminder_occurrences')) = 2, '0040 重跑後 policy 各一條';
   assert to_regprocedure('public.erp_apply_reminder_sync(jsonb)') is not null, '0040 的 RPC 存在';
+end $$;
+SQL
+
+# 0042 以 0028 為底 create or replace erp_post_document（建機台帶入馬力／電壓），並補新欄位的欄位級授權；
+# 重跑 0020 會撤銷 erp_items 欄位級授權、重跑 0023–0028 會蓋回舊版函式，故需在其後重跑。
+echo "==> 重跑 0042（驗證可重複執行）"
+psql_run -1 < "$ROOT/migrations/0042_item_horsepower_voltage.sql"
+psql_run <<'SQL'
+do $$ begin
+  assert pg_get_functiondef('public.erp_post_document(uuid)'::regprocedure) like '%v_item.horsepower%', 'erp_post_document 為 0042 版';
+  assert has_column_privilege('authenticated', 'public.erp_items', 'horsepower', 'INSERT')
+     and has_column_privilege('authenticated', 'public.erp_items', 'voltage', 'UPDATE'), '0042 欄位級授權';
+  assert not has_column_privilege('authenticated', 'public.erp_items', 'avg_cost', 'UPDATE'), 'avg_cost 仍不可由用戶端更新';
 end $$;
 SQL
 

@@ -35,6 +35,10 @@ export interface ItemInput {
   mx_card_type: MxCardType | null;
   brand: string;
   model: string;
+  /** 馬力（選填，原文照存，例「15HP」）：銷貨建立保養卡機台時帶入（0042）。 */
+  horsepower: string;
+  /** 電壓（選填，例「220V」）：銷貨建立保養卡機台時帶入（0042）。 */
+  voltage: string;
   sale_price: number | null;
   purchase_price: number | null;
   safety_stock: number;
@@ -54,6 +58,8 @@ export interface ItemRow {
   mx_card_type: MxCardType | null;
   brand: string | null;
   model: string | null;
+  horsepower: string | null;
+  voltage: string | null;
   sale_price: number | null;
   purchase_price: number | null;
   safety_stock: number;
@@ -90,18 +96,28 @@ export function applyItemKindRules<
   return { ...input, track_serial, track_stock };
 }
 
-/** 新增品項的預設值；整機預設追蹤機號。 */
+/** 各類別的預設單位：整機「台」、零件耗材「個」、服務／費用「式」。 */
+export function defaultUnitForKind(kind: ItemKind): string {
+  return kind === "machine" ? "台" : kind === "part" ? "個" : "式";
+}
+
+/** 新增整機時預設的保養卡卡別（#282：避免賣出的整機不出現在保養卡）。 */
+export const MACHINE_DEFAULT_CARD_TYPE: MxCardType = "compressor";
+
+/** 新增品項的預設值；整機預設追蹤機號並建立空壓機卡。 */
 export function defaultItemInput(kind: ItemKind = "part"): ItemInput {
   return applyItemKindRules({
     code: "",
     name: "",
     kind,
-    unit: kind === "machine" ? "台" : kind === "part" ? "個" : "式",
+    unit: defaultUnitForKind(kind),
     track_stock: true,
     track_serial: kind === "machine",
-    mx_card_type: null,
+    mx_card_type: kind === "machine" ? MACHINE_DEFAULT_CARD_TYPE : null,
     brand: "",
     model: "",
+    horsepower: "",
+    voltage: "",
     sale_price: null,
     purchase_price: null,
     safety_stock: 0,
@@ -109,6 +125,64 @@ export function defaultItemInput(kind: ItemKind = "part"): ItemInput {
     active: true,
     note: "",
   });
+}
+
+/** 表單切換類別時的上下文。 */
+export interface KindChangeContext {
+  /** 新增品項（含就地新增）；編輯既有品項為 false。 */
+  isNew: boolean;
+  /** 使用者已手動修改過單位：不再自動切換。 */
+  unitTouched: boolean;
+  /** 使用者已手動選過保養卡卡別：不再自動帶入或清除。 */
+  cardTouched: boolean;
+}
+
+/**
+ * 切換類別（client 表單）：只在「新增品項」時套用預設，編輯既有品項不悄悄改動已存的設定。
+ *   * 切到整機：預設追蹤機號與庫存；保養卡仍是「不建卡」且未手動選過 → 預設空壓機卡（#282）。
+ *   * 由整機切走：保養卡仍是自動帶入的空壓機卡（未手動選過）→ 還原「不建卡」。
+ *   * 由服務／費用切到庫存類別：預設追蹤庫存。
+ *   * 單位未手動修改且仍是原類別的預設值 → 改為新類別的預設（整機「台」，切回還原「個」／「式」）（P3-5）。
+ * 最後一律套用 applyItemKindRules（服務／費用關閉追蹤與保養卡等）。
+ */
+export function applyKindChange(
+  prev: ItemInput,
+  kind: ItemKind,
+  ctx: KindChangeContext,
+): ItemInput {
+  const next: ItemInput = { ...prev, kind };
+  if (ctx.isNew && kind !== prev.kind) {
+    if (kind === "machine") {
+      next.track_stock = true;
+      next.track_serial = true;
+      if (!ctx.cardTouched && prev.mx_card_type === null) {
+        next.mx_card_type = MACHINE_DEFAULT_CARD_TYPE;
+      }
+    } else if (
+      prev.kind === "machine" &&
+      !ctx.cardTouched &&
+      prev.mx_card_type === MACHINE_DEFAULT_CARD_TYPE
+    ) {
+      next.mx_card_type = null;
+    }
+    if (!isNonStockKind(kind) && isNonStockKind(prev.kind)) {
+      next.track_stock = true;
+    }
+    if (
+      !ctx.unitTouched &&
+      prev.unit.trim() === defaultUnitForKind(prev.kind)
+    ) {
+      next.unit = defaultUnitForKind(kind);
+    }
+  }
+  return applyItemKindRules(next);
+}
+
+/** 整機但不建保養卡：表單顯示提示「此整機銷貨後不會出現在保養卡」。 */
+export function isMachineWithoutCard(
+  input: Pick<ItemInput, "kind" | "mx_card_type">,
+): boolean {
+  return input.kind === "machine" && input.mx_card_type === null;
 }
 
 function text(v: string | null | undefined): string | null {
@@ -160,6 +234,8 @@ export function normalizeItemInput(
       mx_card_type: ruled.mx_card_type,
       brand: text(input.brand),
       model: text(input.model),
+      horsepower: text(input.horsepower),
+      voltage: text(input.voltage),
       sale_price: sale,
       purchase_price: purchase,
       safety_stock: safety,

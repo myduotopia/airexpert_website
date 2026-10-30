@@ -42,6 +42,8 @@ export default async function EditItemPage({
           mx_card_type: item.mx_card_type,
           brand: item.brand ?? "",
           model: item.model ?? "",
+          horsepower: item.horsepower ?? "",
+          voltage: item.voltage ?? "",
           sale_price: item.sale_price,
           purchase_price: item.purchase_price,
           safety_stock: Number(item.safety_stock) || 0,

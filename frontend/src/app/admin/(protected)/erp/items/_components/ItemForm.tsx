@@ -1,6 +1,8 @@
 "use client";
 // 品項新增／編輯表單（受控；錯誤時保留輸入）。
 // kind 連動：服務／費用強制關閉庫存與機號追蹤；整機預設追蹤機號；建保養卡需追蹤機號。
+// 新增品項切到整機時預設「空壓機卡」、單位自動切「台」（#282；規則見 _lib/rules.ts applyKindChange），
+// 編輯既有品項切換類別不會悄悄改動已存的卡別與單位。
 // 傳 onSaved 時為「就地新增」模式（建單頁 Dialog 內，#218）：只新增、不導頁不 refresh，
 // 存檔後以新品項的 Picker 選項回呼；取消改呼叫 onCancel；
 // 精簡欄位：不顯示預設廠商、安全存量、啟用勾選（一律啟用，其餘可日後到品項主檔補）。
@@ -22,6 +24,8 @@ import {
   ITEM_KIND_LABEL,
   MX_CARD_TYPE_LABEL,
   applyItemKindRules,
+  applyKindChange,
+  isMachineWithoutCard,
   isNonStockKind,
   type ItemInput,
 } from "../_lib/rules";
@@ -58,6 +62,9 @@ export function ItemForm({
   const [v, setV] = useState<ItemInput>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 使用者手動改過單位／保養卡卡別後，切換類別不再自動覆蓋。
+  const [unitTouched, setUnitTouched] = useState(false);
+  const [cardTouched, setCardTouched] = useState(false);
   const cancelHref = itemId ? `/admin/erp/items/${itemId}` : "/admin/erp/items";
   const nonStock = isNonStockKind(v.kind);
   const trackingLocked = hasStockActivity;
@@ -67,18 +74,13 @@ export function ItemForm({
   }
 
   function changeKind(kind: ItemKind) {
-    setV((prev) => {
-      // 新增時切到整機，預設追蹤機號；其他情況保留使用者的勾選（規則再過濾）。
-      const next = { ...prev, kind };
-      if (!itemId && kind === "machine" && prev.kind !== "machine") {
-        next.track_stock = true;
-        next.track_serial = true;
-      }
-      if (!itemId && !isNonStockKind(kind) && isNonStockKind(prev.kind)) {
-        next.track_stock = true;
-      }
-      return applyItemKindRules(next);
-    });
+    setV((prev) =>
+      applyKindChange(prev, kind, {
+        isNew: !itemId,
+        unitTouched,
+        cardTouched,
+      }),
+    );
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -156,7 +158,10 @@ export function ItemForm({
             id={fid("unit")}
             className={ERP_INPUT}
             value={v.unit}
-            onChange={(e) => set("unit", e.target.value)}
+            onChange={(e) => {
+              setUnitTouched(true);
+              set("unit", e.target.value);
+            }}
             placeholder="台"
           />
         </Field>
@@ -178,6 +183,32 @@ export function ItemForm({
             className={ERP_INPUT}
             value={v.model}
             onChange={(e) => set("model", e.target.value)}
+          />
+        </Field>
+        <Field
+          label="馬力"
+          htmlFor={fid("horsepower")}
+          hint="銷貨建立保養卡機台時帶入；保養方案依馬力比對。"
+        >
+          <input
+            id={fid("horsepower")}
+            className={ERP_INPUT}
+            value={v.horsepower}
+            onChange={(e) => set("horsepower", e.target.value)}
+            placeholder="例：15HP"
+          />
+        </Field>
+        <Field
+          label="電壓"
+          htmlFor={fid("voltage")}
+          hint="銷貨建立保養卡機台時帶入。"
+        >
+          <input
+            id={fid("voltage")}
+            className={ERP_INPUT}
+            value={v.voltage}
+            onChange={(e) => set("voltage", e.target.value)}
+            placeholder="例：220V"
           />
         </Field>
         {!embedded && (
@@ -233,12 +264,13 @@ export function ItemForm({
             className={ERP_SELECT}
             value={v.mx_card_type ?? ""}
             disabled={nonStock}
-            onChange={(e) =>
+            onChange={(e) => {
+              setCardTouched(true);
               set(
                 "mx_card_type",
                 e.target.value ? (e.target.value as MxCardType) : null,
-              )
-            }
+              );
+            }}
           >
             <option value="">不建卡</option>
             {(Object.keys(MX_CARD_TYPE_LABEL) as MxCardType[]).map((k) => (
@@ -247,6 +279,11 @@ export function ItemForm({
               </option>
             ))}
           </select>
+          {isMachineWithoutCard(v) && (
+            <p role="status" className="text-[13px] text-amber-700">
+              此整機銷貨後不會出現在保養卡
+            </p>
+          )}
         </Field>
         {!embedded && (
           <Field label="安全存量" htmlFor="safety_stock">
