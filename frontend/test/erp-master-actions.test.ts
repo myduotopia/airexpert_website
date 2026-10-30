@@ -327,6 +327,8 @@ describe("品項 kind 規則", () => {
         track_stock: false,
         track_serial: false,
         mx_card_type: "compressor",
+        horsepower: " 15HP ",
+        voltage: "220V",
       }),
     );
     expect(res.ok).toBe(true);
@@ -337,6 +339,8 @@ describe("品項 kind 規則", () => {
       track_serial: true,
       track_stock: true,
       mx_card_type: "compressor",
+      horsepower: "15HP",
+      voltage: "220V",
     });
     expect(payload).not.toHaveProperty("avg_cost");
   });

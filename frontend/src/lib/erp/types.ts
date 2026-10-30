@@ -91,6 +91,9 @@ export interface ErpItem {
   mx_card_type: MxCardType | null;
   brand: string | null;
   model: string | null;
+  /** 馬力／電壓（0042，選填）：銷貨建立保養卡機台時帶入 mx_machines。 */
+  horsepower: string | null;
+  voltage: string | null;
   sale_price: number | null;
   purchase_price: number | null;
   avg_cost: number;

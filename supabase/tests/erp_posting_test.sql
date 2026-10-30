@@ -153,12 +153,13 @@ insert into erp_warehouses (id, code, name) values
   ('00000000-0000-0000-0000-00000000a002', 'WH2', '二倉');
 insert into erp_vendors (id, code, name, contact_person, phone, tax_id) values
   ('00000000-0000-0000-0000-00000000b001', 'KA405', '開山壓縮機', '王先生', '02-1111-2222', '87654321');
-insert into erp_items (id, code, name, kind, unit, track_serial, track_stock, mx_card_type, model) values
-  ('00000000-0000-0000-0000-00000000c001', 'ALH-15AI', '螺旋式空壓機 15HP', 'machine', '台', true,  true,  'compressor', 'ALH-15AI'),
-  ('00000000-0000-0000-0000-00000000c002', 'EA350',    '過濾器組',          'machine', '組', true,  true,  'filter',     null),
-  ('00000000-0000-0000-0000-00000000c003', 'OIL-20L',  '空壓機專用油 20L',  'part',    '桶', false, true,  null,         null),
-  ('00000000-0000-0000-0000-00000000c004', 'SVC-INST', '安裝工資',          'service', '式', false, false, null,         null),
-  ('00000000-0000-0000-0000-00000000c005', 'EXP-SHIP', '運費',              'expense', '式', false, false, null,         null);
+-- 0042：horsepower／voltage 以 authenticated 寫入（驗證欄位級 insert 授權）；c001 有值、其餘未填（null）
+insert into erp_items (id, code, name, kind, unit, track_serial, track_stock, mx_card_type, model, horsepower, voltage) values
+  ('00000000-0000-0000-0000-00000000c001', 'ALH-15AI', '螺旋式空壓機 15HP', 'machine', '台', true,  true,  'compressor', 'ALH-15AI', ' 15HP ', '220V'),
+  ('00000000-0000-0000-0000-00000000c002', 'EA350',    '過濾器組',          'machine', '組', true,  true,  'filter',     null,       null,     null),
+  ('00000000-0000-0000-0000-00000000c003', 'OIL-20L',  '空壓機專用油 20L',  'part',    '桶', false, true,  null,         null,       null,     null),
+  ('00000000-0000-0000-0000-00000000c004', 'SVC-INST', '安裝工資',          'service', '式', false, false, null,         null,       null,     null),
+  ('00000000-0000-0000-0000-00000000c005', 'EXP-SHIP', '運費',              'expense', '式', false, false, null,         null,       null,     null);
 insert into mx_customers (id, name, code, tax_id, contact_person, phone, delivery_address, sales_rep) values
   ('00000000-0000-0000-0000-00000000d001', '華淨科技股份有限公司', 'C001', '12345678', '林小姐', '03-333-4444', '桃園市中壢區測試路 1 號', '陳業務'),
   ('00000000-0000-0000-0000-00000000d002', '測試二號工廠',         'C002', null,       null,     null,          null,                     null);
@@ -480,6 +481,11 @@ begin
   select * into m from mx_machines where id = s.mx_machine_id;
   assert m.customer_id = '00000000-0000-0000-0000-00000000d001' and m.card_type = 'compressor'
      and m.serial_no = '26-PM15060010' and m.model = 'ALH-15AI' and m.purchased_at = '2026-09-11', format('mx_machine %s', m);
+  -- 0042：品項馬力／電壓帶入新建機台（去前後空白）
+  assert m.horsepower = '15HP' and m.voltage = '220V', format('mx_machine 馬力／電壓 %s／%s', m.horsepower, m.voltage);
+  -- 連結既有機台時不回寫馬力／電壓
+  assert (select horsepower is null and voltage is null from mx_machines where id = '00000000-0000-0000-0000-000000009001'),
+    '連結既有機台不回寫馬力／電壓';
   assert (v->'mx_machine_ids') ? m.id::text, '回傳含新建機台';
 
   assert (erp_test.serial('F-100HA-01')).mx_machine_id = '00000000-0000-0000-0000-000000009001', '連結既有過濾器卡';
@@ -621,6 +627,8 @@ insert into erp_document_lines (id, document_id, line_no, line_type, item_id, qt
   ('00000000-0000-0000-0000-0000f0120001', '00000000-0000-0000-0000-00000000e012', 1, 'item', '00000000-0000-0000-0000-00000000c001', 1, 200000);
 insert into erp_document_line_serials (line_id, serial_id)
   select '00000000-0000-0000-0000-0000f0120001', id from erp_serials where serial_no = 'A-NEW-01';
+-- 0042：品項未填馬力、電壓只有空白（以 authenticated 更新，驗證欄位級 update 授權）→ 仍可過帳，機台兩欄為 null
+update erp_items set horsepower = null, voltage = '  ' where id = '00000000-0000-0000-0000-00000000c001';
 
 do $$
 declare v jsonb; w jsonb; mid uuid; s erp_serials; d erp_documents;
@@ -628,6 +636,7 @@ begin
   v := erp_post_document('00000000-0000-0000-0000-00000000e012');
   mid := (v->'mx_machine_ids'->>0)::uuid;
   assert mid is not null and exists (select 1 from mx_machines where id = mid), 'S3 建立機台';
+  assert (select horsepower is null and voltage is null from mx_machines where id = mid), 'S3 品項未填馬力／電壓 → 機台為 null';
   assert erp_test.qty('00000000-0000-0000-0000-00000000c001', erp_test.main()) = 1, 'S3 −1';
 
   w := erp_void_document('00000000-0000-0000-0000-00000000e012', '客戶取消訂單');

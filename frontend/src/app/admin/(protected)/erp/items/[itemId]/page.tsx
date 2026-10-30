@@ -131,6 +131,8 @@ export default async function ItemDetailPage({
         </Info>
         <Info label="品牌">{item.brand ?? "—"}</Info>
         <Info label="機型">{item.model ?? "—"}</Info>
+        <Info label="馬力">{item.horsepower ?? "—"}</Info>
+        <Info label="電壓">{item.voltage ?? "—"}</Info>
         <Info label="預設廠商">
           {vendor ? (
             <Link
