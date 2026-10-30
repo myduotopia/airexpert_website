@@ -7,6 +7,10 @@ import { getAdminSupabase } from "../supabase-admin";
 import { decryptSecret } from "../crypto";
 import { sanitizeBodyHtml } from "../sanitize";
 import { getAiPrompts } from "./prompts-server";
+import {
+  SERVICE_REPORT_PHOTO_PROMPT,
+  SERVICE_REPORT_PHOTO_SCHEMA,
+} from "../service-report/photo-extract";
 
 export const AI_CONFIG_KEY = "ai_config";
 // gemini-2.0-flash 已於 2026-06-01 停用；預設改用 2.5 Flash。
@@ -573,6 +577,90 @@ machine_no 與 serial_no 是兩回事：serial_no 是「機號」那一欄的原
     raw = JSON.parse(text);
   } catch {
     throw new Error("辨識結果非 JSON，無法解析，請改用手動輸入。");
+  }
+  return { raw, model: usedModel };
+}
+
+/** 拍照辨識的一張照片（不含 data: 前綴的 base64）。 */
+export interface PhotoInput {
+  base64: string;
+  mimeType: string;
+}
+
+/**
+ * 組「維護報告單」拍照辨識的 generateContent 請求主體（純函式，便於測試）。
+ * schema 為 null 時不帶 responseSchema（schema 被 API 拒絕時的退路）。
+ */
+export function buildServiceReportPhotoRequest(
+  images: readonly PhotoInput[],
+  schema: unknown | null,
+): unknown {
+  const generationConfig: Record<string, unknown> = {
+    responseMimeType: "application/json",
+    temperature: 0.1,
+  };
+  if (schema) generationConfig.responseSchema = schema;
+  return {
+    contents: [
+      {
+        parts: [
+          { text: SERVICE_REPORT_PHOTO_PROMPT },
+          ...images.map((img) => ({
+            inlineData: { mimeType: img.mimeType, data: img.base64 },
+          })),
+        ],
+      },
+    ],
+    generationConfig,
+  };
+}
+
+/**
+ * 以 Gemini vision 從「機台維護報告單」照片（1 張以上，同一張單）擷取回填欄位，回傳原始 JSON 物件（#280）。
+ * prompt／schema 見 lib/service-report/photo-extract.ts；解析清洗交給 normalizeReportExtraction。
+ * 與保養卡辨識相同：優先 2.5 Pro，Pro 不可用時退回 2.5 Flash；responseSchema 被拒（400）時改不帶 schema 再試一次。
+ */
+export async function extractServiceReportPhotos(
+  images: readonly PhotoInput[],
+): Promise<{ raw: unknown; model: string }> {
+  const { apiKey } = await getAiConfig();
+  if (!apiKey) throw new Error(NO_KEY_ERROR);
+  if (images.length === 0) throw new Error("請至少選擇一張照片");
+
+  const buildUrl = (m: string) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  async function run(model: string): Promise<unknown> {
+    try {
+      return await fetchGeminiWithRetry(
+        buildUrl(model),
+        buildServiceReportPhotoRequest(images, SERVICE_REPORT_PHOTO_SCHEMA),
+      );
+    } catch (err) {
+      if (err instanceof GeminiHttpError && err.status === 400) {
+        return fetchGeminiWithRetry(
+          buildUrl(model),
+          buildServiceReportPhotoRequest(images, null),
+        );
+      }
+      throw err;
+    }
+  }
+
+  let data: unknown;
+  let usedModel = EXTRACT_MODEL;
+  try {
+    data = await run(EXTRACT_MODEL);
+  } catch {
+    usedModel = DEFAULT_MODEL;
+    data = await run(DEFAULT_MODEL);
+  }
+  const text = extractGeminiText(data);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stripCodeFence(text));
+  } catch {
+    throw new Error("辨識結果非 JSON，無法解析，請改用手動回填。");
   }
   return { raw, model: usedModel };
 }
