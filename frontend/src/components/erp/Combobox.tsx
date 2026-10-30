@@ -107,9 +107,18 @@ export function Combobox<T extends { id: string }>({
   );
 
   function pick(option: T | null) {
+    // onChange 可能開頁內確認框（例：報告單換客戶時問要不要覆蓋，#281）；確認框關閉時焦點會還給
+    // 輸入框，那次聚焦不要再展開清單。先設旗標，若之後焦點仍在輸入框（沒開確認框）就撤銷，
+    // 以免下次 Tab 進來時被略過。
+    skipFocusOpen.current = true;
     onChange(option?.id ?? null, option);
     setOpen(false);
     setQuery("");
+    setTimeout(() => {
+      if (anchor && document.activeElement === anchor) {
+        skipFocusOpen.current = false;
+      }
+    }, 0);
   }
 
   function create(q: string) {

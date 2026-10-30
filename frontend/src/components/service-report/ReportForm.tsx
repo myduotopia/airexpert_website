@@ -329,8 +329,10 @@ export function ReportForm({
         confirmLabel: "覆蓋",
         cancelLabel: "只填空白列",
       }));
+    // 確認框開著時（await 期間）「預先取號」的結果可能已寫回 state；以函式更新套在最新 state 上，
+    // 避免用 await 前的快照覆蓋掉單號。料件在 modal 開著時無法編輯，overflow 用快照計算即可。
     const applied = applyStageToState(state, row, { overwrite });
-    setState(applied.state);
+    setState((s) => applyStageToState(s, row, { overwrite }).state);
     setResultsOpen(true);
     setStageNotice(overflowMessage(applied.overflow));
     setPickedMilestone("");
