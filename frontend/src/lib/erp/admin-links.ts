@@ -14,8 +14,3 @@ export function maintenanceMachineHref(machineId: string): string {
 export function serviceReportHref(reportId: string): string {
   return `/admin/service-reports/${reportId}`;
 }
-
-/** 有權限才回連結；沒有權限回 null（呼叫端改顯示純文字）。 */
-export function gatedHref(href: string, allowed: boolean): string | null {
-  return allowed ? href : null;
-}

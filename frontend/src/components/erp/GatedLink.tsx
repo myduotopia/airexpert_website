@@ -5,7 +5,7 @@
 // fallback 則整個取代 children（例：「進入保養卡」按鈕改成只顯示提示）。
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { gatedHref, MAINTENANCE_PERMISSION_HINT } from "@/lib/erp/admin-links";
+import { MAINTENANCE_PERMISSION_HINT } from "@/lib/erp/admin-links";
 
 export function PermissionHint({ text = MAINTENANCE_PERMISSION_HINT }) {
   return (
@@ -35,10 +35,9 @@ export function GatedLink({
   fallback?: ReactNode;
   children: ReactNode;
 }) {
-  const target = gatedHref(href, allowed);
-  if (target) {
+  if (allowed) {
     return (
-      <Link href={target} className={className} title={title}>
+      <Link href={href} className={className} title={title}>
         {children}
       </Link>
     );
